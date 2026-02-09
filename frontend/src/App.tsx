@@ -94,10 +94,57 @@ export default function App() {
 
   const [currentDocPath, setCurrentDocPath] = useState("");
 
+  const [commitMessage, setCommitMessage] = useState("");
+  const [prBody, setPrBody] = useState("");
+  const [branch, setBranch] = useState("");
+  const [email, setEmail] = useState("");
+
+  const [loadingDocs, setLoadingDocs] = useState(true);
+
+  function saveLocal() {
+    fetch("http://localhost:4000/api/docs/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: currentDocPath,
+        content,
+        commitMessage,
+        email,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => console.log("Saved locally:", data));
+  }
+
+  function submitPR() {
+    fetch("http://localhost:4000/api/docs/submit-pr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: currentDocPath,
+        content,
+        commitMessage,
+        prBody,
+        branch,
+        email,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => console.log("PR submitted:", data));
+  }
+
   useEffect(() => {
+    setLoadingDocs(true);
+
     fetch("http://localhost:4000/api/docs/list")
       .then((res) => res.json())
-      .then((data) => setTree(buildTree(data.docs)));
+      .then((data) => {
+        setTree(buildTree(data.docs));
+        setLoadingDocs(false);
+      })
+      .catch(() => {
+        setLoadingDocs(false);
+      });
   }, []);
 
   function loadDoc(path: string) {
@@ -105,10 +152,7 @@ export default function App() {
 
     fetch(`http://localhost:4000/api/docs/load?path=${path}`)
       .then((res) => res.json())
-      .then((data) => {
-        console.log("Loaded content:", data.content.slice(0, 200));
-        setContent(data.content);
-      });
+      .then((data) => setContent(data.content));
   }
 
   function startDrag() {
@@ -134,18 +178,6 @@ export default function App() {
     };
   }, []);
 
-  console.log(
-    "PARENT → Preview props:",
-    "content type:",
-    typeof content,
-    "isNull:",
-    content === null,
-    "isUndefined:",
-    content === undefined,
-    "length:",
-    typeof content === "string" ? content.length : "n/a",
-  );
-
   return (
     <div style={{ display: "flex", height: "100vh" }}>
       <div
@@ -153,11 +185,92 @@ export default function App() {
           width: "300px",
           borderRight: "1px solid #ccc",
           padding: "1rem",
-          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
         }}
       >
         <h3>Docs</h3>
-        <Tree nodes={tree} onSelect={loadDoc} />
+
+        {loadingDocs && (
+          <div
+            style={{
+              padding: "0.5rem 0.75rem",
+              marginBottom: "0.75rem",
+              background: "#fff3cd",
+              border: "1px solid #ffeeba",
+              borderRadius: "4px",
+              color: "#856404",
+              fontSize: "0.9rem",
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            {" "}
+            <svg
+              className="loading-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+            >
+              {" "}
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                fill="none"
+                stroke="#856404"
+                strokeWidth="2"
+                strokeDasharray="56"
+                strokeDashoffset="28"
+                strokeLinecap="round"
+              />{" "}
+            </svg>{" "}
+            <span>Please wait… Loading docs from GitHub</span>{" "}
+          </div>
+        )}
+
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <Tree nodes={tree} onSelect={loadDoc} />
+        </div>
+
+        <div className="commit-panel" style={{ marginTop: "1rem" }}>
+          <input
+            type="text"
+            placeholder="Commit message"
+            value={commitMessage}
+            onChange={(e) => setCommitMessage(e.target.value)}
+          />
+
+          <textarea
+            placeholder="PR description (optional)"
+            value={prBody}
+            onChange={(e) => setPrBody(e.target.value)}
+          />
+
+          <div className="row" style={{ display: "flex", gap: "0.75rem" }}>
+            <input
+              type="text"
+              placeholder="Branch name"
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+            />
+
+            <input
+              type="text"
+              placeholder="Author email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div className="buttons" style={{ display: "flex", gap: "0.75rem" }}>
+            <button onClick={saveLocal}>Save to Local</button>
+            <button onClick={submitPR}>Submit PR</button>
+          </div>
+        </div>
       </div>
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
@@ -165,17 +278,21 @@ export default function App() {
           style={{
             width: `${editorWidth}%`,
             padding: "1rem",
-            overflowY: "auto",
             borderRight: "1px solid #ddd",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
           }}
         >
           <h3>Editor</h3>
+
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
             style={{
+              flex: 1,
               width: "100%",
-              height: "calc(100vh - 120px)",
+              minHeight: 0,
               fontFamily: "monospace",
               fontSize: "14px",
               padding: "1rem",
