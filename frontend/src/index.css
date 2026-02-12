@@ -181,10 +181,10 @@ button:focus-visible {
   }
 }
 
-/* Container */
+/* Base container */
 .admonition {
-  border-left: 4px solid var(--adm-color, #999);
-  background: var(--adm-bg, #f8f8f8);
+  border-left: 4px solid var(--adm-color);
+  background: var(--adm-bg);
   padding: 0.75rem 1rem;
   margin: 1.25rem 0;
   border-radius: 4px;
@@ -194,23 +194,24 @@ button:focus-visible {
 .admonition-title {
   font-weight: 600;
   margin-bottom: 0.5rem;
-  color: var(--adm-color, #555);
+  color: var(--adm-color);
 }
 
-/* Info */
-.admonition-info {
-  --adm-color: #2b6cb0;
-  --adm-bg: #ebf8ff;
-}
-
-/* Note */
+/* NOTE — blue */
 .admonition-note {
-  --adm-color: #3182ce;
-  --adm-bg: #e6f0ff;
+  --adm-color: #2b6cb0;
+  --adm-bg: #ebf4ff;
 }
 
-/* Warning */
-.admonition-warning {
+/* INFO — gray */
+.admonition-info {
+  --adm-color: #4a5568;
+  --adm-bg: #f7fafc;
+}
+
+/* CAUTION — yellow */
+.admonition-warning,
+.admonition-caution {
   --adm-color: #d69e2e;
   --adm-bg: #fffaf0;
 }
@@ -346,4 +347,85 @@ button:focus-visible {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Sidebar container */
+.sidebar {
+  background: #f8f9fa;
+  border-right: 1px solid #ddd;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+}
+
+/* New Page button */
+.new-page-btn {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  color: #24292f;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.new-page-btn:hover {
+  background: #f3f4f6;
+  border-color: #c2c8cf;
+}
+
+/* Tree list */
+.tree-list {
+  list-style: none;
+  padding-left: 0.5rem;
+  margin: 0;
+}
+
+/* Tree items */
+.tree-item {
+  padding: 0.25rem 0.25rem;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #0366d6;
+  font-size: 0.9rem;
+  transition: background 0.15s;
+}
+
+.tree-item:hover {
+  background: #e9ecef;
+}
+
+/* Directory <summary> styling */
+.tree-dir > summary {
+  cursor: pointer;
+  padding: 0.25rem 0.25rem;
+  border-radius: 4px;
+  font-weight: 600;
+  color: #24292f;
+  transition: background 0.15s;
+}
+
+.tree-dir > summary:hover {
+  background: #e9ecef;
+}
+
+.new-page-draggable {
+  padding: 0.5rem 0.75rem;
+  background: #ffffff;
+  border: 1px dashed #999;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  cursor: grab;
+  color: #333;
+}
+.new-page-draggable:active {
+  cursor: grabbing;
 }
