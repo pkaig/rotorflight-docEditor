@@ -300,15 +300,29 @@ export default function App() {
               borderRadius: "6px",
             }}
           >
-            <p>Open this page:</p>
             <p>
-              <strong>{verificationUri}</strong>
+              Open{" "}
+              <a
+                href={verificationUri}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                this page
+              </a>{" "}
+              and enter the code:
             </p>
 
-            <p>Enter this code:</p>
-            <p style={{ fontSize: "1.5rem", fontWeight: "bold" }}>{userCode}</p>
+            <p
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+                marginTop: "0.5rem",
+              }}
+            >
+              {userCode}
+            </p>
 
-            <p>Waiting for authorization…</p>
+            <p style={{ marginTop: "0.5rem" }}>Waiting for authorization…</p>
           </div>
         )}
       </div>

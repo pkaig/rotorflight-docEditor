@@ -1,12 +1,42 @@
 import express from "express";
 import fetch from "node-fetch";
+import fs from "fs";
 import { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET } from "./config/github";
 import { githubRequest } from "./githubClient";
 
 const router = express.Router();
 
-// In-memory token store
-let currentAccessToken: string | null = null;
+// -----------------------------
+// Token Persistence Helpers
+// -----------------------------
+const TOKEN_FILE = ".token";
+
+function loadToken(): string | null {
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      const token = fs.readFileSync(TOKEN_FILE, "utf8").trim();
+      if (token) {
+        console.log("🔐 Loaded existing GitHub token from disk");
+        return token;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load token:", err);
+  }
+  return null;
+}
+
+function saveToken(token: string) {
+  try {
+    fs.writeFileSync(TOKEN_FILE, token, "utf8");
+    console.log("💾 Saved GitHub token to disk");
+  } catch (err) {
+    console.error("Failed to save token:", err);
+  }
+}
+
+// In-memory token store (loaded from disk on startup)
+let currentAccessToken: string | null = loadToken();
 
 // -----------------------------
 // Start Device Flow
@@ -77,6 +107,7 @@ router.post("/device/poll", async (req, res) => {
 
   console.log("✅ GitHub returned access token:", data.access_token);
   currentAccessToken = data.access_token;
+  saveToken(currentAccessToken);
 
   res.json({ status: "ok" });
 });
@@ -110,6 +141,16 @@ router.get("/me", async (req, res) => {
     console.error("Failed to fetch user:", err);
     res.status(500).json({ error: "Failed to fetch user" });
   }
+});
+
+// -----------------------------
+// Block Merge Attempts (Safety Guard)
+// -----------------------------
+router.post("/merge", (_req, res) => {
+  console.log("🚫 Merge attempt blocked");
+  res.status(403).json({
+    error: "Merging pull requests is not allowed by this application.",
+  });
 });
 
 export default router;
