@@ -129,7 +129,6 @@ router.post("/device/poll", async (req, res) => {
   }
 
   // Fetch user identity
-  // Fetch user identity
   const user = await githubRequest<any>(data.access_token, "/user");
 
   // Compute expiration safely

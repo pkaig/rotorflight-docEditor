@@ -6,7 +6,7 @@ import remarkDirective from "remark-directive";
 import remarkAdmonitions from "./remarkAdmonitions";
 import remarkRehype from "remark-rehype";
 import rehypeRaw from "rehype-raw";
-import rehypeImages from "./rehypeImagesPlugin";
+import rehypeImages from "../rehypeImagesPlugin";
 import rehypeStringify from "rehype-stringify";
 
 export default function Preview({ content, currentDocPath }) {

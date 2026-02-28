@@ -42,7 +42,7 @@ function Tree({
               <div
                 className="tree-folder"
                 onClick={() => {
-                  console.log("CLICKED", node.path);
+                  //console.log("CLICKED", node.path);
                   toggleFolder(node.path);
                 }}
                 onDragOver={(e) => e.preventDefault()}
@@ -195,7 +195,7 @@ export default function App() {
         return;
       }
 
-      console.error("Auth error:", data);
+      //console.error("Auth error:", data);
     };
 
     poll();
@@ -214,7 +214,7 @@ export default function App() {
     )
       .then((res) => res.json())
       .then((data) => {
-        console.log("LIST RESPONSE:", data); // ← ADD THIS
+        //console.log("LIST RESPONSE:", data); // ← ADD THIS
 
         setTree(data.docs ?? []); // defensive fallback
         setLoadingDocs(false);
@@ -234,9 +234,8 @@ export default function App() {
         commitMessage,
         email,
       }),
-    })
-      .then((res) => res.json())
-      .then((data) => console.log("Saved locally:", data));
+    }).then((res) => res.json());
+    //.then((data) => console.log("Saved locally:", data));
   }
 
   function renameFileOnBackend(oldPath: string, newPath: string) {
@@ -259,9 +258,8 @@ export default function App() {
         branch,
         email,
       }),
-    })
-      .then((res) => res.json())
-      .then((data) => console.log("PR submitted:", data));
+    }).then((res) => res.json());
+    //.then((data) => console.log("PR submitted:", data));
   }
 
   // -----------------------------

@@ -43,7 +43,7 @@ router.get("/list", async (req, res) => {
   // RECURSIVE WALKER (collect everything)
   // -----------------------------
   async function walk(path: string) {
-    console.log(`\n➡️ ENTER: ${path}`);
+    //console.log(`\n➡️ ENTER: ${path}`);
 
     const apiPath =
       path === ""
@@ -79,9 +79,9 @@ router.get("/list", async (req, res) => {
       if (item.type === "file") {
         const isDoc = item.name.endsWith(".md") || item.name.endsWith(".mdx");
 
-        console.log(
-          `   📄 File ${item.path} → ${isDoc ? "ACCEPTED" : "ignored"}`,
-        );
+        // console.log(
+        //   `   📄 File ${item.path} → ${isDoc ? "ACCEPTED" : "ignored"}`,
+        // );
 
         if (isDoc) {
           node.children.push({
@@ -106,7 +106,7 @@ router.get("/list", async (req, res) => {
 
     const keep = node.children.length > 0;
 
-    console.log(`   🧹 PRUNE: ${node.path} → ${keep ? "KEEP" : "REMOVE"}`);
+    //    console.log(`   🧹 PRUNE: ${node.path} → ${keep ? "KEEP" : "REMOVE"}`);
 
     return keep;
   }
@@ -115,22 +115,22 @@ router.get("/list", async (req, res) => {
   // EXECUTE
   // -----------------------------
   try {
-    console.log("\n🚀 START WALK");
+    // console.log("\n🚀 START WALK");
     const tree = await walk("docs");
 
     if (!tree) {
-      console.log("❌ Walker returned null");
+      // console.log("❌ Walker returned null");
       return res.json({ docs: [] });
     }
 
     prune(tree);
 
-    console.log("\n✅ FINAL TREE:");
-    console.log(JSON.stringify(tree, null, 2));
+    // console.log("\n✅ FINAL TREE:");
+    // console.log(JSON.stringify(tree, null, 2));
 
     res.json({ docs: [tree] });
   } catch (err) {
-    console.error("❌ Failed to list docs:", err);
+    // console.error("❌ Failed to list docs:", err);
     res.status(500).json({ error: "Failed to list docs" });
   }
 });
