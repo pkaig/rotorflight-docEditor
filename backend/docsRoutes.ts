@@ -1,198 +1,318 @@
-// docsRoutes.ts
 import express from "express";
 import { githubRequest } from "./githubClient";
+import { getTokenForUser } from "./authRoutes";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
   GITHUB_DEFAULT_BRANCH,
 } from "./config/github";
-import { getAccessTokenOrThrow } from "./authRoutes";
 
 const router = express.Router();
 
-// Submit PR
-router.post("/submit-pr", async (req, res) => {
-  try {
-    const token = getAccessTokenOrThrow();
-    const { branch, commitMessage, prBody } = req.body;
-
-    // Assumes you've already committed to `branch` via /save or /rename
-    const pr = await githubRequest<any>(
-      token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          title: commitMessage || "Docs update",
-          body: prBody || "",
-          head: branch, // e.g. "user:feature-branch"
-          base: GITHUB_DEFAULT_BRANCH,
-        }),
-      },
-    );
-
-    res.json({ ok: true, pr });
-  } catch (err) {
-    console.error("PR submit failed:", err);
-    res.status(500).json({ error: "PR submit failed" });
+// ---------------------------------------------
+// Helper: Require login + load token
+// ---------------------------------------------
+function requireToken(req, res) {
+  const login = req.query.login as string;
+  if (!login) {
+    res.status(401).json({ error: "Missing login" });
+    return null;
   }
-});
 
-// Helper: get file content + sha
-async function getFile(token: string, path: string) {
-  return githubRequest<{
-    content: string;
-    sha: string;
-    encoding: string;
-  }>(
-    token,
-    `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encodeURIComponent(
-      path,
-    )}?ref=${GITHUB_DEFAULT_BRANCH}`,
-  );
+  try {
+    const token = getTokenForUser(login);
+    return { token, login };
+  } catch {
+    res.status(401).json({ error: "User not authenticated" });
+    return null;
+  }
 }
 
-// List docs (you can refine this later)
+// ---------------------------------------------
+// LIST DOCUMENTS (recursive, MD/MDX, stable version)
+// ---------------------------------------------
 router.get("/list", async (req, res) => {
-  try {
-    let token;
+  console.log("📥 /api/docs/list HIT");
+
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token } = auth;
+
+  // -----------------------------
+  // RECURSIVE WALKER (collect everything)
+  // -----------------------------
+  async function walk(path: string) {
+    console.log(`\n➡️ ENTER: ${path}`);
+
+    const apiPath =
+      path === ""
+        ? `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents?ref=${GITHUB_DEFAULT_BRANCH}`
+        : `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}?ref=${GITHUB_DEFAULT_BRANCH}`;
+
+    let items;
+
     try {
-      token = getAccessTokenOrThrow();
-    } catch {
-      return res.status(401).json({ error: "Not authenticated" });
+      items = await githubRequest<any>(token, apiPath);
+    } catch (err: any) {
+      console.log(`   ❌ GitHub error at ${path}:`, err?.status || err);
+      return null;
     }
 
-    const files = await githubRequest<any[]>(
-      token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/docs`,
-    );
+    if (!Array.isArray(items)) {
+      items = [items];
+    }
 
-    const docs = files
-      .filter((f) => f.type === "file" && f.name.endsWith(".mdx"))
-      .map((f) => ({
-        id: f.sha,
-        title: f.name,
-        path: f.path,
-        download_url: f.download_url,
-      }));
+    const node = {
+      type: "dir",
+      name: path.split("/").pop() || "root",
+      path,
+      children: [] as any[],
+    };
 
-    res.json({ docs });
+    for (const item of items) {
+      if (item.type === "dir") {
+        const child = await walk(item.path);
+        if (child) node.children.push(child);
+      }
+
+      if (item.type === "file") {
+        const isDoc = item.name.endsWith(".md") || item.name.endsWith(".mdx");
+
+        console.log(
+          `   📄 File ${item.path} → ${isDoc ? "ACCEPTED" : "ignored"}`,
+        );
+
+        if (isDoc) {
+          node.children.push({
+            type: "file",
+            name: item.name,
+            path: item.path,
+          });
+        }
+      }
+    }
+
+    return node;
+  }
+
+  // -----------------------------
+  // PRUNE PHASE (remove empty folders)
+  // -----------------------------
+  function prune(node) {
+    if (node.type === "file") return true;
+
+    node.children = node.children.filter(prune);
+
+    const keep = node.children.length > 0;
+
+    console.log(`   🧹 PRUNE: ${node.path} → ${keep ? "KEEP" : "REMOVE"}`);
+
+    return keep;
+  }
+
+  // -----------------------------
+  // EXECUTE
+  // -----------------------------
+  try {
+    console.log("\n🚀 START WALK");
+    const tree = await walk("docs");
+
+    if (!tree) {
+      console.log("❌ Walker returned null");
+      return res.json({ docs: [] });
+    }
+
+    prune(tree);
+
+    console.log("\n✅ FINAL TREE:");
+    console.log(JSON.stringify(tree, null, 2));
+
+    res.json({ docs: [tree] });
   } catch (err) {
-    console.error("List loader failed:", err);
+    console.error("❌ Failed to list docs:", err);
     res.status(500).json({ error: "Failed to list docs" });
   }
 });
 
-// Load a doc
+// ---------------------------------------------
+// LOAD DOCUMENT
+// ---------------------------------------------
 router.get("/load", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token } = auth;
+  const filePath = req.query.path as string;
+
   try {
-    const token = getAccessTokenOrThrow();
-    const path = String(req.query.path);
+    const result = await githubRequest<any>(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    );
 
-    const file = await getFile(token, path);
-    const content = Buffer.from(
-      file.content,
-      file.encoding as BufferEncoding,
-    ).toString("utf8");
-
-    res.json({ content, sha: file.sha });
+    const content = Buffer.from(result.content, "base64").toString("utf8");
+    res.json({ content });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to load doc" });
+    console.error("Failed to load doc:", err);
+    res.status(500).json({ error: "Failed to load document" });
   }
 });
 
-// Save (create/update) a doc
+// ---------------------------------------------
+// SAVE DOCUMENT
+// ---------------------------------------------
 router.post("/save", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token } = auth;
+  const { path: filePath, content, commitMessage, email } = req.body;
+
   try {
-    const token = getAccessTokenOrThrow();
-    const { path, content, commitMessage } = req.body;
+    const existing = await githubRequest<any>(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    );
 
-    // Try to get existing file to obtain sha
-    let sha: string | undefined;
-    try {
-      const existing = await getFile(token, path);
-      sha = existing.sha;
-    } catch {
-      sha = undefined;
-    }
+    const sha = existing.sha;
 
-    const encoded = Buffer.from(content, "utf8").toString("base64");
+    const body = {
+      message: commitMessage || "Update file",
+      content: Buffer.from(content).toString("base64"),
+      sha,
+      branch: GITHUB_DEFAULT_BRANCH,
+      committer: {
+        name: email || "Rotorflight Docs Editor",
+        email: email || "noreply@rotorflight.org",
+      },
+    };
 
     const result = await githubRequest<any>(
       token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encodeURIComponent(
-        path,
-      )}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          message: commitMessage || `Update ${path}`,
-          content: encoded,
-          sha,
-          branch: GITHUB_DEFAULT_BRANCH,
-        }),
-      },
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
+      "PUT",
+      body,
     );
 
-    res.json({ ok: true, result });
+    res.json({ saved: true, result });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to save doc" });
+    console.error("Failed to save doc:", err);
+    res.status(500).json({ error: "Failed to save document" });
   }
 });
 
-// Move or New Doc (pure GitHub API)
+// ---------------------------------------------
+// RENAME DOCUMENT
+// ---------------------------------------------
 router.post("/rename", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token } = auth;
+  const { oldPath, newPath } = req.body;
+
   try {
-    const token = getAccessTokenOrThrow();
-    const { oldPath, newPath, commitMessage } = req.body;
+    const existing = await githubRequest<any>(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${oldPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    );
 
-    // 1. Load old file
-    const file = await getFile(token, oldPath);
-    const content = Buffer.from(
-      file.content,
-      file.encoding as BufferEncoding,
-    ).toString("utf8");
-
-    const encoded = Buffer.from(content, "utf8").toString("base64");
-
-    // 2. Create new file
     await githubRequest<any>(
       token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encodeURIComponent(
-        newPath,
-      )}`,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${newPath}`,
+      "PUT",
       {
-        method: "PUT",
-        body: JSON.stringify({
-          message: commitMessage || `Move ${oldPath} → ${newPath}`,
-          content: encoded,
-          branch: GITHUB_DEFAULT_BRANCH,
-        }),
+        message: `Rename ${oldPath} → ${newPath}`,
+        content: existing.content,
+        branch: GITHUB_DEFAULT_BRANCH,
       },
     );
 
-    // 3. Delete old file
     await githubRequest<any>(
       token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encodeURIComponent(
-        oldPath,
-      )}`,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${oldPath}`,
+      "DELETE",
       {
-        method: "PUT",
-        body: JSON.stringify({
-          message: commitMessage || `Delete ${oldPath}`,
-          sha: file.sha,
-          branch: GITHUB_DEFAULT_BRANCH,
-        }),
+        message: `Remove old file ${oldPath}`,
+        sha: existing.sha,
+        branch: GITHUB_DEFAULT_BRANCH,
       },
     );
 
-    res.json({ ok: true });
+    res.json({ renamed: true });
   } catch (err) {
-    console.error("Rename failed:", err);
-    res.status(500).json({ error: "Rename failed" });
+    console.error("Failed to rename doc:", err);
+    res.status(500).json({ error: "Failed to rename document" });
+  }
+});
+
+// ---------------------------------------------
+// SUBMIT PR
+// ---------------------------------------------
+router.post("/submit-pr", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token, login } = auth;
+  const {
+    path: filePath,
+    content,
+    commitMessage,
+    prBody,
+    branch,
+    email,
+  } = req.body;
+
+  try {
+    const baseRef = await githubRequest<any>(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/ref/heads/${GITHUB_DEFAULT_BRANCH}`,
+    );
+
+    await githubRequest<any>(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/refs`,
+      "POST",
+      {
+        ref: `refs/heads/${branch}`,
+        sha: baseRef.object.sha,
+      },
+    );
+
+    const encoded = Buffer.from(content).toString("base64");
+
+    await githubRequest<any>(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
+      "PUT",
+      {
+        message: commitMessage,
+        content: encoded,
+        branch,
+        committer: {
+          name: email || login,
+          email: email || `${login}@users.noreply.github.com`,
+        },
+      },
+    );
+
+    const pr = await githubRequest<any>(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls`,
+      "POST",
+      {
+        title: commitMessage,
+        body: prBody,
+        head: branch,
+        base: GITHUB_DEFAULT_BRANCH,
+      },
+    );
+
+    res.json({ pr });
+  } catch (err) {
+    console.error("Failed to submit PR:", err);
+    res.status(500).json({ error: "Failed to submit PR" });
   }
 });
 

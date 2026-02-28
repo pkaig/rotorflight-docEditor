@@ -17,61 +17,51 @@ type TreeNode = {
   children?: TreeNode[];
 };
 
-function buildTree(docs: DocItem[]): TreeNode[] {
-  const root: Record<string, any> = {};
+function Tree({
+  nodes,
+  onSelect,
+  onDropFolder,
+  setDraggedItem,
+  openFolders,
+  setOpenFolders,
+}) {
+  const safeNodes = Array.isArray(nodes) ? nodes : [];
+  const folders = openFolders || {};
 
-  docs.forEach((doc) => {
-    const parts = doc.path.split("/");
-    let current = root;
-
-    parts.forEach((part, index) => {
-      const isFile = index === parts.length - 1;
-
-      if (!current[part]) {
-        current[part] = {
-          name: part,
-          path: parts.slice(0, index + 1).join("/"),
-          type: isFile ? "file" : "dir",
-          children: isFile ? undefined : {},
-        };
-      }
-
-      current = current[part].children || current;
-    });
-  });
-
-  function normalize(node: Record<string, any>): TreeNode[] {
-    return Object.values(node).map((n) => ({
-      ...n,
-      children: n.children ? normalize(n.children) : undefined,
-    }));
+  function toggleFolder(path) {
+    if (!path) return;
+    setOpenFolders((prev) => ({ ...prev, [path]: !prev[path] }));
   }
 
-  return normalize(root);
-}
-
-function Tree({ nodes, onSelect, onDropFolder, setDraggedItem }) {
   return (
     <ul className="tree-list">
-      {nodes.map((node) => (
-        <li key={node.path}>
+      {safeNodes.map((node) => (
+        <li key={node.path || node.name}>
           {node.type === "dir" ? (
-            <details className="tree-dir" open>
+            <div className="tree-dir">
               <div
                 className="tree-folder"
+                onClick={() => {
+                  console.log("CLICKED", node.path);
+                  toggleFolder(node.path);
+                }}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={() => onDropFolder(node.path)}
+                onDrop={() => node.path && onDropFolder(node.path)}
               >
                 {node.name}
               </div>
 
-              <Tree
-                nodes={node.children || []}
-                onSelect={onSelect}
-                onDropFolder={onDropFolder}
-                setDraggedItem={setDraggedItem}
-              />
-            </details>
+              {node.path && folders[node.path] && (
+                <Tree
+                  nodes={node.children || []}
+                  onSelect={onSelect}
+                  onDropFolder={onDropFolder}
+                  setDraggedItem={setDraggedItem}
+                  openFolders={folders}
+                  setOpenFolders={setOpenFolders}
+                />
+              )}
+            </div>
           ) : (
             <button
               className="tree-item"
@@ -107,17 +97,22 @@ export default function App() {
 
   const [loadingDocs, setLoadingDocs] = useState(true);
 
+  const [openFolders, setOpenFolders] = useState({});
+
   const [user, setUser] = useState<{
     login: string;
     name: string;
     avatar_url: string;
   } | null>(null);
 
-  // Authentication
+  // -----------------------------
+  // AUTH STATE
+  // -----------------------------
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authStep, setAuthStep] = useState<"idle" | "waiting" | "polling">(
     "idle",
   );
+  const [login, setLogin] = useState<string | null>(null);
   const [userCode, setUserCode] = useState("");
   const [verificationUri, setVerificationUri] = useState("");
 
@@ -125,7 +120,36 @@ export default function App() {
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
 
   // -----------------------------
-  // AUTH FUNCTIONS
+  // RESTORE LOGIN ON MOUNT
+  // -----------------------------
+  useEffect(() => {
+    const storedLogin = localStorage.getItem("rf_login");
+    if (!storedLogin) return;
+
+    fetch(`http://localhost:4000/api/auth/status/${storedLogin}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated) {
+          setLogin(storedLogin);
+          setIsAuthenticated(true);
+        } else {
+          localStorage.removeItem("rf_login");
+        }
+      })
+      .catch((err) => console.error("Failed to check auth status:", err));
+  }, []);
+
+  // -----------------------------
+  // CLEAR AUTH
+  // -----------------------------
+  function clearAuth() {
+    setIsAuthenticated(false);
+    setLogin(null);
+    localStorage.removeItem("rf_login");
+  }
+
+  // -----------------------------
+  // START DEVICE FLOW
   // -----------------------------
   async function startGitHubLogin() {
     const res = await fetch("http://localhost:4000/api/auth/device/start", {
@@ -140,6 +164,9 @@ export default function App() {
     pollForAuth(data.device_code, data.interval);
   }
 
+  // -----------------------------
+  // POLL FOR AUTH COMPLETION
+  // -----------------------------
   async function pollForAuth(deviceCode: string, interval: number) {
     const poll = async () => {
       const res = await fetch("http://localhost:4000/api/auth/device/poll", {
@@ -150,15 +177,11 @@ export default function App() {
 
       const data = await res.json();
 
-      if (data.status === "ok") {
+      if (data.status === "ok" && data.login) {
+        setLogin(data.login);
+        localStorage.setItem("rf_login", data.login);
         setIsAuthenticated(true);
         setAuthStep("idle");
-
-        // Fetch user info
-        fetch("http://localhost:4000/api/auth/me")
-          .then((res) => res.json())
-          .then((data) => setUser(data));
-
         return;
       }
 
@@ -177,6 +200,26 @@ export default function App() {
 
     poll();
   }
+
+  // -----------------------------
+  // INITIAL DOC LOAD (NOW LOGIN‑AWARE)
+  // -----------------------------
+  useEffect(() => {
+    if (!isAuthenticated || !login) return;
+
+    setLoadingDocs(true);
+
+    fetch(
+      `http://localhost:4000/api/docs/list?login=${encodeURIComponent(login)}`,
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("LIST RESPONSE:", data); // ← ADD THIS
+
+        setTree(data.docs ?? []); // defensive fallback
+        setLoadingDocs(false);
+      });
+  }, [isAuthenticated, login]);
 
   // -----------------------------
   // FILE OPERATIONS
@@ -222,31 +265,18 @@ export default function App() {
   }
 
   // -----------------------------
-  // INITIAL DOC LOAD
-  // -----------------------------
-  useEffect(() => {
-    setLoadingDocs(true);
-
-    fetch("http://localhost:4000/api/docs/list")
-      .then((res) => res.json())
-      .then((data) => {
-        setTree(buildTree(data.docs));
-        setLoadingDocs(false);
-      })
-      .catch(() => {
-        setLoadingDocs(false);
-      });
-  }, []);
-
-  // -----------------------------
   // LOAD DOCUMENT
   // -----------------------------
   function loadDoc(path: string) {
     setCurrentDocPath(path);
 
-    fetch(`http://localhost:4000/api/docs/load?path=${path}`)
+    fetch(
+      `http://localhost:4000/api/docs/load?path=${encodeURIComponent(path)}&login=${encodeURIComponent(login)}`,
+    )
       .then((res) => res.json())
-      .then((data) => setContent(data.content));
+      .then((data) => {
+        setContent(data.content);
+      });
   }
 
   // -----------------------------
@@ -274,6 +304,26 @@ export default function App() {
       window.removeEventListener("mouseup", stopDrag);
     };
   }, []);
+
+  function handleDrop(folderPath: string) {
+    if (!draggedItem) return;
+
+    // Creating a new page
+    if (draggedItem === "__NEW_PAGE__") {
+      const newPath = `${folderPath}/new-file.mdx`;
+      setCurrentDocPath(newPath);
+      setContent(newDocTemplate);
+      setDraggedItem(null);
+      return;
+    }
+
+    // Moving an existing file
+    const filename = draggedItem.split("/").pop();
+    const newPath = `${folderPath}/${filename}`;
+
+    renameFileOnBackend(draggedItem, newPath);
+    setDraggedItem(null);
+  }
 
   // -----------------------------
   // AUTH GATE
@@ -422,6 +472,8 @@ export default function App() {
               onSelect={loadDoc}
               onDropFolder={handleDrop}
               setDraggedItem={setDraggedItem}
+              openFolders={openFolders}
+              setOpenFolders={setOpenFolders}
             />
           </div>
 

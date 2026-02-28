@@ -1,54 +1,84 @@
 import express from "express";
 import fetch from "node-fetch";
 import fs from "fs";
+import path from "path";
 import { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET } from "./config/github";
 import { githubRequest } from "./githubClient";
 
 const router = express.Router();
 
-// -----------------------------
-// Token Persistence Helpers
-// -----------------------------
-const TOKEN_FILE = ".token";
+// ---------------------------------------------
+// Token Storage Directory
+// ---------------------------------------------
+const TOKENS_DIR = path.join(__dirname, "tokens");
 
-function loadToken(): string | null {
+if (!fs.existsSync(TOKENS_DIR)) {
+  fs.mkdirSync(TOKENS_DIR);
+  console.log("📁 Created tokens directory:", TOKENS_DIR);
+}
+
+// ---------------------------------------------
+// Helpers
+// ---------------------------------------------
+interface StoredToken {
+  access_token: string;
+  expires_at: number;
+  login: string;
+}
+
+function tokenPath(login: string) {
+  return path.join(TOKENS_DIR, `${login}.json`);
+}
+
+function loadToken(login: string): StoredToken | null {
+  const file = tokenPath(login);
+  if (!fs.existsSync(file)) return null;
+
   try {
-    if (fs.existsSync(TOKEN_FILE)) {
-      const token = fs.readFileSync(TOKEN_FILE, "utf8").trim();
-      if (token) {
-        console.log("🔐 Loaded existing GitHub token from disk");
-        return token;
-      }
+    const data = JSON.parse(fs.readFileSync(file, "utf8"));
+
+    // Validate expires_at
+    if (
+      !data.expires_at ||
+      typeof data.expires_at !== "number" ||
+      Number.isNaN(data.expires_at)
+    ) {
+      console.warn(
+        `Token for ${login} missing or invalid expires_at, deleting`,
+      );
+      fs.unlinkSync(file);
+      return null;
     }
+
+    // Check expiration
+    if (Date.now() > data.expires_at) {
+      console.log(`⏳ Token for ${login} expired, deleting`);
+      fs.unlinkSync(file);
+      return null;
+    }
+
+    return data;
   } catch (err) {
     console.error("Failed to load token:", err);
-  }
-  return null;
-}
-
-function saveToken(token: string) {
-  try {
-    fs.writeFileSync(TOKEN_FILE, token, "utf8");
-    console.log("💾 Saved GitHub token to disk");
-  } catch (err) {
-    console.error("Failed to save token:", err);
+    return null;
   }
 }
 
-// In-memory token store (loaded from disk on startup)
-let currentAccessToken: string | null = loadToken();
+function saveToken(token: StoredToken) {
+  const file = tokenPath(token.login);
+  fs.writeFileSync(file, JSON.stringify(token, null, 2), "utf8");
+  console.log(`💾 Saved token for ${token.login}`);
+}
 
-// -----------------------------
+// ---------------------------------------------
 // Start Device Flow
-// -----------------------------
-router.post("/device/start", async (req, res) => {
+// ---------------------------------------------
+router.post("/device/start", async (_req, res) => {
   console.log("📡 /device/start called");
 
   const params = new URLSearchParams();
   params.append("client_id", GITHUB_CLIENT_ID);
   params.append("scope", "repo");
-
-  console.log("➡️ Sending to GitHub /device/code:", params.toString());
 
   const resp = await fetch("https://github.com/login/device/code", {
     method: "POST",
@@ -59,10 +89,8 @@ router.post("/device/start", async (req, res) => {
     body: params.toString(),
   });
 
-  console.log("⬅️ GitHub /device/code status:", resp.status);
-
   const data = await resp.json();
-  console.log("⬅️ GitHub /device/code response:", data);
+  console.log("⬅️ GitHub /device/code:", data);
 
   res.json({
     device_code: data.device_code,
@@ -72,19 +100,17 @@ router.post("/device/start", async (req, res) => {
   });
 });
 
-// -----------------------------
+// ---------------------------------------------
 // Poll for Token
-// -----------------------------
+// ---------------------------------------------
 router.post("/device/poll", async (req, res) => {
-  console.log("📡 /device/poll called with:", req.body);
+  console.log("📡 /device/poll called");
 
   const params = new URLSearchParams();
   params.append("client_id", GITHUB_CLIENT_ID);
   params.append("client_secret", GITHUB_CLIENT_SECRET);
   params.append("device_code", req.body.device_code);
   params.append("grant_type", "urn:ietf:params:oauth:grant-type:device_code");
-
-  console.log("➡️ Sending to GitHub /access_token:", params.toString());
 
   const resp = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
@@ -95,43 +121,56 @@ router.post("/device/poll", async (req, res) => {
     body: params.toString(),
   });
 
-  console.log("⬅️ GitHub /access_token status:", resp.status);
-
   const data = await resp.json();
-  console.log("⬅️ GitHub /access_token response:", data);
+  console.log("⬅️ GitHub /access_token:", data);
 
   if (data.error) {
-    console.log("⚠️ GitHub returned error:", data.error);
     return res.json({ status: "pending", error: data.error });
   }
 
-  console.log("✅ GitHub returned access token:", data.access_token);
-  currentAccessToken = data.access_token;
-  saveToken(currentAccessToken);
+  // Fetch user identity
+  // Fetch user identity
+  const user = await githubRequest<any>(data.access_token, "/user");
 
-  res.json({ status: "ok" });
+  // Compute expiration safely
+  const expires_at =
+    typeof data.expires_in === "number"
+      ? Date.now() + data.expires_in * 1000
+      : Date.now() + 8 * 60 * 60 * 1000; // fallback: 8 hours
+
+  const token: StoredToken = {
+    access_token: data.access_token,
+    expires_at,
+    login: user.login,
+  };
+
+  saveToken(token);
+
+  res.json({ status: "ok", login: user.login });
 });
 
-// -----------------------------
+// ---------------------------------------------
 // Auth Status
-// -----------------------------
-router.get("/status", (req, res) => {
-  res.json({ authenticated: !!currentAccessToken });
+// ---------------------------------------------
+router.get("/status/:login", (req, res) => {
+  const login = req.params.login;
+  const token = loadToken(login);
+  res.json({ authenticated: !!token });
 });
 
-// -----------------------------
+// ---------------------------------------------
 // Get User Info
-// -----------------------------
-export function getAccessTokenOrThrow(): string {
-  if (!currentAccessToken) throw new Error("Not authenticated with GitHub");
-  return currentAccessToken;
-}
+// ---------------------------------------------
+router.get("/me/:login", async (req, res) => {
+  const login = req.params.login;
+  const token = loadToken(login);
 
-router.get("/me", async (req, res) => {
+  if (!token) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
   try {
-    const token = getAccessTokenOrThrow();
-    const user = await githubRequest<any>(token, "/user");
-
+    const user = await githubRequest<any>(token.access_token, "/user");
     res.json({
       login: user.login,
       name: user.name,
@@ -143,9 +182,18 @@ router.get("/me", async (req, res) => {
   }
 });
 
-// -----------------------------
-// Block Merge Attempts (Safety Guard)
-// -----------------------------
+// ---------------------------------------------
+// Export helper for docsRoutes
+// ---------------------------------------------
+export function getTokenForUser(login: string): string {
+  const token = loadToken(login);
+  if (!token) throw new Error("User not authenticated");
+  return token.access_token;
+}
+
+// ---------------------------------------------
+// Block Merge Attempts
+// ---------------------------------------------
 router.post("/merge", (_req, res) => {
   console.log("🚫 Merge attempt blocked");
   res.status(403).json({

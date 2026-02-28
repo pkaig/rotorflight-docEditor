@@ -1,9 +1,9 @@
 // config/github.ts
 export const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 export const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
-export const GITHUB_OWNER = process.env.GITHUB_OWNER!;
-export const GITHUB_REPO = process.env.GITHUB_REPO!;
-export const GITHUB_DEFAULT_BRANCH = process.env.GITHUB_DEFAULT_BRANCH!;
+export const GITHUB_OWNER = "rotorflight";
+export const GITHUB_REPO = "rotorflight-docs";
+export const GITHUB_DEFAULT_BRANCH = "main";
 
 console.log("GitHub Config Loaded:");
 console.log("GITHUB_CLIENT_ID:", GITHUB_CLIENT_ID ? "✅" : "❌");
