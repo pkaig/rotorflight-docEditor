@@ -1,49 +1,45 @@
+console.log("scanImages module loaded");
 import path from "path";
 
-/**
- * Extracts all image references from a document:
- *  - MDX import statements (import foo from './img/foo.png')
- *  - Markdown inline images (![alt](./img/foo.png))
- *  - Raw HTML <img src="..."> tags
- *
- * Returns absolute doc-relative paths like:
- *   docs/setup/img/flyrotor-1.png
- */
-export function scanImages(content, docPath) {
-  const images = new Set();
+export function scanImages(content: string, docPath: string) {
+  //console.log("Scanning for images in:", docPath);
+  const images = new Set<string>();
 
-  // 1. MDX import statements
   const importRegex =
-    /import\s+[A-Za-z0-9_$]+\s+from\s+['"](.+?\.(png|jpe?g|gif|svg))['"]/g;
+    /import\s+([A-Za-z0-9_$]+)\s+from\s+["']([^"']+\.(?:png|jpe?g|gif|svg))["']/g;
 
-  // 2. Markdown inline images
-  const markdownImageRegex = /!\[[^\]]*]\((.+?\.(png|jpe?g|gif|svg))\)/g;
+  const markdownImageRegex = /!\[[^\]]*]\(([^)]+\.(?:png|jpe?g|gif|svg))\)/g;
 
-  // 3. Raw HTML <img src="...">
-  const htmlImageRegex = /<img[^>]+src=["'](.+?\.(png|jpe?g|gif|svg))["']/g;
+  const htmlImageRegex =
+    /<img[^>]+src=["']([^"']+\.(?:png|jpe?g|gif|svg))["']/g;
 
-  // Helper to resolve relative paths
-  const resolve = (imgPath) => {
+  const resolve = (imgPath: string) => {
     const baseDir = path.dirname(docPath);
-    return path.join(baseDir, imgPath).replace(/\\/g, "/"); // normalize for Windows
+    return path.join(baseDir, imgPath).replace(/\\/g, "/");
   };
 
   let match;
+  //console.log("Starting image scan...");
 
   // MDX imports
   while ((match = importRegex.exec(content))) {
-    images.add(resolve(match[1]));
+    const relPath = match[2];
+    console.log(" 📥 IMPORT REL PATH:", relPath);
+    images.add(resolve(relPath));
   }
 
   // Markdown images
   while ((match = markdownImageRegex.exec(content))) {
     images.add(resolve(match[1]));
+    //console.log(" 📸 MARKDOWN IMAGE MATCH:", match);
   }
 
   // HTML <img> tags
   while ((match = htmlImageRegex.exec(content))) {
     images.add(resolve(match[1]));
+    //console.log(" 🖼️ HTML IMAGE MATCH:", match);
   }
 
+  //console.log("IMAGES FOUND:", [...images]);
   return [...images];
 }

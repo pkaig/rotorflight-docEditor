@@ -7,6 +7,7 @@ import {
   GITHUB_DEFAULT_BRANCH,
 } from "./config/github";
 import { scanImages } from "./scanImages";
+import path from "path";
 
 const router = express.Router();
 
@@ -33,27 +34,45 @@ function requireToken(req, res) {
 // LIST DOCUMENTS (recursive, MD/MDX)
 // ---------------------------------------------
 router.get("/list", async (req, res) => {
-  console.log("📥 /api/docs/list HIT");
-
   const auth = requireToken(req, res);
   if (!auth) return;
 
   const { token } = auth;
 
-  // -----------------------------
+  // ---------------------------------------------
+  // Load all images in a doc's folder (/img/*)
+  // ---------------------------------------------
+  async function loadFolderImages(folderPath: string) {
+    const imgDir = `${folderPath}/img`;
+
+    try {
+      const items = await githubRequest<any>(
+        token,
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${imgDir}?ref=${GITHUB_DEFAULT_BRANCH}`,
+      );
+
+      return items
+        .filter((item) => item.type === "file")
+        .map((item) => item.path);
+    } catch {
+      return [];
+    }
+  }
+
+  // ---------------------------------------------
   // RECURSIVE WALKER
-  // -----------------------------
-  async function walk(path: string) {
+  // ---------------------------------------------
+  async function walk(currentPath: string) {
     const apiPath =
-      path === ""
+      currentPath === ""
         ? `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents?ref=${GITHUB_DEFAULT_BRANCH}`
-        : `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}?ref=${GITHUB_DEFAULT_BRANCH}`;
+        : `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${currentPath}?ref=${GITHUB_DEFAULT_BRANCH}`;
 
     let items;
     try {
       items = await githubRequest<any>(token, apiPath);
     } catch (err: any) {
-      console.log(`❌ GitHub error at ${path}:`, err?.status || err);
+      console.log(`❌ GitHub error at ${currentPath}:`, err?.status || err);
       return null;
     }
 
@@ -61,8 +80,8 @@ router.get("/list", async (req, res) => {
 
     const node = {
       type: "dir",
-      name: path.split("/").pop() || "root",
-      path,
+      name: currentPath.split("/").pop() || "root",
+      path: currentPath,
       children: [] as any[],
     };
 
@@ -87,18 +106,18 @@ router.get("/list", async (req, res) => {
     return node;
   }
 
-  // -----------------------------
+  // ---------------------------------------------
   // PRUNE EMPTY FOLDERS
-  // -----------------------------
+  // ---------------------------------------------
   function prune(node) {
     if (node.type === "file") return true;
     node.children = node.children.filter(prune);
     return node.children.length > 0;
   }
 
-  // -----------------------------
+  // ---------------------------------------------
   // FLATTEN TREE → FILE PATHS
-  // -----------------------------
+  // ---------------------------------------------
   function flatten(node, list = []) {
     if (node.type === "file") {
       list.push(node.path);
@@ -108,9 +127,9 @@ router.get("/list", async (req, res) => {
     return list;
   }
 
-  // -----------------------------
+  // ---------------------------------------------
   // LOAD FILE CONTENT
-  // -----------------------------
+  // ---------------------------------------------
   async function loadDocContent(filePath: string) {
     const result = await githubRequest<any>(
       token,
@@ -119,37 +138,44 @@ router.get("/list", async (req, res) => {
     return Buffer.from(result.content, "base64").toString("utf8");
   }
 
-  // -----------------------------
+  // ---------------------------------------------
   // EXECUTE
-  // -----------------------------
+  // ---------------------------------------------
   try {
     const tree = await walk("docs");
     if (!tree) return res.json({ docs: [] });
 
     prune(tree);
 
-    // -----------------------------
-    // IMAGE SCANNING PHASE
-    // -----------------------------
     const filePaths = flatten(tree);
     const allImages = new Set<string>();
 
     for (const filePath of filePaths) {
-      const content = await loadDocContent(filePath);
-      const imgs = scanImages(content, filePath);
-      imgs.forEach((img) => allImages.add(img));
+      try {
+        const content = await loadDocContent(filePath);
+
+        const imgs = scanImages(content, filePath);
+        imgs.forEach((img) => allImages.add(img));
+
+        const folder = path.dirname(filePath);
+        const folderImgs = await loadFolderImages(folder);
+        folderImgs.forEach((img) => allImages.add(img));
+      } catch (err) {
+        console.error("⚠️ Error processing file:", filePath, err);
+        continue;
+      }
     }
 
-    // -----------------------------
+    // ---------------------------------------------
     // PRELOAD IMAGES
-    // -----------------------------
+    // ---------------------------------------------
+    console.log("📸 Preloading images:", [...allImages]);
     await fetch("http://localhost:4000/api/images/preload", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ images: [...allImages] }),
     });
 
-    // Return the tree
     res.json({ docs: [tree] });
   } catch (err) {
     console.error("❌ Failed to list docs:", err);

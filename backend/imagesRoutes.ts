@@ -14,14 +14,12 @@ const GITHUB_RAW =
 
 // Local cache root
 const CACHE_ROOT = path.join(process.cwd(), "cache", "images");
-console.log("imagesRoutes loaded");
 
 // ---------------------------------------------
 // GET /api/images?path=docs/.../img/foo.png
 // ---------------------------------------------
 router.get("/", async (req, res) => {
   const relPath = req.query.path as string;
-  console.log("IMAGE ROUTE HIT:", relPath);
 
   if (!relPath) {
     return res.status(400).send("Missing ?path=");
