@@ -21,7 +21,7 @@ console.log("imagesRoutes loaded");
 // ---------------------------------------------
 router.get("/", async (req, res) => {
   const relPath = req.query.path as string;
-  console.log("IMAGE ROUTE HIT:", req.query.path);
+  console.log("IMAGE ROUTE HIT:", relPath);
 
   if (!relPath) {
     return res.status(400).send("Missing ?path=");

@@ -3,17 +3,19 @@ import react from "@vitejs/plugin-react";
 import mdx from "@mdx-js/rollup";
 
 import rehypeImages from "./rehypeImagesPlugin";
-import { remarkRewriteImageImports } from "./remarkRewriteImageImports";
+import rehypeImportedImages from "./rehypeRewriteImageImports";
 
 export default defineConfig({
   plugins: [
     react(),
-    mdx({
-      remarkPlugins: [
-        () => (tree, file) => remarkRewriteImageImports(file.path)(tree),
-      ],
-      rehypePlugins: [() => (tree, file) => rehypeImages(file.path)(tree)],
-    }),
+    {
+      ...mdx({
+        exclude: ["templates/**/*.mdx"],
+        remarkPlugins: [],
+        rehypePlugins: [rehypeImportedImages, rehypeImages],
+      }),
+      enforce: "pre",
+    },
   ],
   server: {
     proxy: {

@@ -13,6 +13,7 @@
     "@mdx-js/mdx": "^2.3.0",
     "@mdx-js/react": "^2.3.0",
     "@mdx-js/rollup": "^3.1.1",
+    "@types/mdx": "^2.0.13",
     "path-browserify": "^1.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -21,6 +22,7 @@
     "rehype-stringify": "^10.0.1",
     "remark-directive": "^4.0.0",
     "remark-gfm": "^4.0.1",
+    "remark-mdx": "^3.1.1",
     "remark-rehype": "^11.1.2"
   },
   "devDependencies": {
