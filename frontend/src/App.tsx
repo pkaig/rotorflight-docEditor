@@ -2,6 +2,14 @@ import { useEffect, useState, useRef } from "react";
 import PreviewErrorBoundary from "./PreviewErrorBoundary";
 import Preview from "./Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
+import {
+  MaintenanceModal,
+  ForceUpdateModal,
+  UpdateAvailableModal,
+  UpdateBanner,
+} from "./versionModals";
+
+const APP_VERSION = "1.4.0";
 
 type DocItem = {
   id: string;
@@ -105,6 +113,14 @@ export default function App() {
     avatar_url: string;
   } | null>(null);
 
+  const [editorStatus, setEditorStatus] = useState<null | {
+    type: "blocked" | "forceUpdate" | "updateAvailable" | "ok";
+    message?: string;
+    current?: string;
+    latest?: string;
+    downloadUrl?: string;
+  }>(null);
+
   // -----------------------------
   // AUTH STATE
   // -----------------------------
@@ -137,6 +153,71 @@ export default function App() {
         }
       })
       .catch((err) => console.error("Failed to check auth status:", err));
+  }, []);
+
+  // -----------------------------
+  // VERSION EVALUATION
+  // -----------------------------
+  function evaluateStatus(cfg, APP_VERSION) {
+    function compare(a, b) {
+      const pa = a.split(".").map(Number);
+      const pb = b.split(".").map(Number);
+      for (let i = 0; i < 3; i++) {
+        if (pa[i] > pb[i]) return 1;
+        if (pa[i] < pb[i]) return -1;
+      }
+      return 0;
+    }
+
+    if (cfg.blocked) {
+      return { type: "blocked", message: cfg.blockMessage };
+    }
+
+    if (compare(APP_VERSION, cfg.minSupportedVersion) < 0) {
+      return {
+        type: "forceUpdate",
+        current: APP_VERSION,
+        latest: cfg.latestVersion,
+        message: cfg.updateMessage,
+        downloadUrl: cfg.downloadUrl,
+      };
+    }
+
+    if (compare(APP_VERSION, cfg.latestVersion) < 0) {
+      return {
+        type: "updateAvailable",
+        current: APP_VERSION,
+        latest: cfg.latestVersion,
+        message: cfg.updateMessage,
+        downloadUrl: cfg.downloadUrl,
+      };
+    }
+
+    return { type: "ok" };
+  }
+
+  // -----------------------------
+  // EDITOR STATUS CHECK
+  // -----------------------------
+  useEffect(() => {
+    async function checkStatus() {
+      const url =
+        "https://raw.githubusercontent.com/rotorflight/rotorflight-docs/main/config/docEditorStatus.json";
+
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        setEditorStatus({ type: "ok" });
+        return;
+      }
+
+      const cfg = await res.json();
+      //const APP_VERSION = "1.0.0"; // or injected at build time
+
+      const status = evaluateStatus(cfg, APP_VERSION);
+      setEditorStatus(status);
+    }
+
+    checkStatus();
   }, []);
 
   // -----------------------------
@@ -323,6 +404,25 @@ export default function App() {
     setDraggedItem(null);
   }
 
+  if (editorStatus === null) return null;
+
+  if (editorStatus.type === "blocked") {
+    return <MaintenanceModal message={editorStatus.message} />;
+  }
+
+  if (editorStatus.type === "forceUpdate") {
+    return <ForceUpdateModal {...editorStatus} />;
+  }
+
+  if (editorStatus.type === "updateAvailable") {
+    return (
+      <UpdateAvailableModal
+        {...editorStatus}
+        onContinue={() => setEditorStatus({ type: "ok" })}
+      />
+    );
+  }
+
   // -----------------------------
   // AUTH GATE
   // -----------------------------
@@ -382,6 +482,9 @@ export default function App() {
   // -----------------------------
   return (
     <>
+      {editorStatus.type === "updateAvailable" && (
+        <UpdateBanner {...editorStatus} />
+      )}
       {user && (
         <div
           style={{

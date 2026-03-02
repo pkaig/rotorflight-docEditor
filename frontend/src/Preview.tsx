@@ -9,6 +9,16 @@ import rehypeRaw from "rehype-raw";
 import rehypeImages from "../rehypeImagesPlugin";
 import rehypeStringify from "rehype-stringify";
 
+async function fetchEditorStatus() {
+  const url =
+    "https://raw.githubusercontent.com/rotorflight/rotorflight-docs/main/config/docEditorStatus.json";
+
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+
+  return await res.json();
+}
+
 // ---------------------------------------------------------
 // Normalize MDX import paths (./, ../, /, bare paths)
 // ---------------------------------------------------------
