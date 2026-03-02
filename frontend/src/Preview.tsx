@@ -58,7 +58,7 @@ function extractImportMap(content, currentDocPath) {
   console.log("🔍 [extractImportMap] Extracting imports for:", currentDocPath);
 
   const importRegex =
-    /import\s+([A-Za-z0-9_$]+)\s+from\s+["']([^"']+\.(?:png|jpe?g|gif|svg))["']/g;
+    /import\s+([A-Za-z0-9_$]+)\s+from\s+["']([^"']+\.(?:png|jpe?g|gif|svg|mp4|webm))["']/g;
 
   const map = {};
   let match;
@@ -73,7 +73,7 @@ function extractImportMap(content, currentDocPath) {
 
     const normalized = resolveImportPath(currentDocPath, relPath);
 
-    // ⭐ FIX: use ?path= route so backend cache + preload work
+    // ⭐ Unified backend route for ALL media
     const url = `/api/images?path=${normalized}`;
 
     console.log("      resolved URL:", url);
@@ -86,7 +86,8 @@ function extractImportMap(content, currentDocPath) {
 }
 
 // ---------------------------------------------------------
-// Rewrite JSX-style <img src={varName}> BEFORE unified()
+// Rewrite JSX-style <img src={var}> and <video src={var}>
+// BEFORE unified()
 // ---------------------------------------------------------
 function rewriteJSXInRawMDX(raw, importMap) {
   console.log("🔧 [rewriteJSXInRawMDX] START");
@@ -95,30 +96,21 @@ function rewriteJSXInRawMDX(raw, importMap) {
   let rewriteCount = 0;
 
   for (const [varName, url] of Object.entries(importMap)) {
-    const regex = new RegExp(`src=\\{${varName}\\}`, "g");
+    // ⭐ Match both <img> and <video> tags
+    const regex = new RegExp(`<(img|video)[^>]*src=\\{${varName}\\}`, "g");
 
-    console.log(`   Checking for src={${varName}} → ${url}`);
+    console.log(`   Checking for <img|video src={${varName}}> → ${url}`);
 
-    if (regex.test(rewritten)) {
-      console.log(`   🔄 Rewriting src={${varName}} → src="${url}"`);
-
-      const beforeSnippet = rewritten.match(
-        new RegExp(`.{0,40}src=\\{${varName}\\}.{0,40}`),
+    rewritten = rewritten.replace(regex, (match) => {
+      console.log(
+        `   🔄 Rewriting src={${varName}} → src="http://localhost:4000${url}"`,
       );
-      if (beforeSnippet) console.log("      BEFORE:", beforeSnippet[0]);
-
-      // ⭐ FIX: absolute backend URL using ?path=
-      rewritten = rewritten.replace(regex, `src="http://localhost:4000${url}"`);
-
       rewriteCount++;
-
-      const afterSnippet = rewritten.match(
-        new RegExp(`.{0,40}src="http://localhost:4000${url}".{0,40}`),
+      return match.replace(
+        `src={${varName}}`,
+        `src="http://localhost:4000${url}"`,
       );
-      if (afterSnippet) console.log("      AFTER :", afterSnippet[0]);
-    } else {
-      console.log(`   ⚠️ No occurrences of src={${varName}} found`);
-    }
+    });
   }
 
   console.log(`🔧 [rewriteJSXInRawMDX] Total rewrites: ${rewriteCount}\n`);

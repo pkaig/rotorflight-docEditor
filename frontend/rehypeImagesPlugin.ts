@@ -1,23 +1,27 @@
+console.log("rehypeImagesPlugin loaded");
+
 import { visit } from "unist-util-visit";
-import path from "path-browserify";
 
 export default function rehypeImages(currentDocPath: string) {
+  // e.g. "docs/setup/governor-flyrotor-setup.mdx" → "docs/setup/"
+  const docDir = currentDocPath.replace(/[^/]+$/, "");
+
   return (tree: any) => {
     if (!tree || typeof tree !== "object") return;
 
-    const docDir = currentDocPath.split("/").slice(0, -1).join("/");
-
     visit(tree, "element", (node: any) => {
-      if (node.tagName !== "img") return;
+      if (!node || !node.properties) return;
 
-      const props = node.properties;
-      if (!props || typeof props !== "object") return;
+      const tag = node.tagName;
+      if (tag !== "img" && tag !== "video") return; // ⭐ support both
 
+      const props = node.properties as { [key: string]: any };
       const src = props.src;
+
       if (typeof src !== "string" || !src) return;
 
-      // 1. Skip backend URLs (critical)
-      if (src.startsWith("/api/images")) {
+      // 1. Skip already‑rewritten backend URLs
+      if (src.startsWith("http://localhost:4000/api/images")) {
         console.log("🟦 [rehypeImages] Skipping backend URL:", src);
         return;
       }
@@ -34,12 +38,14 @@ export default function rehypeImages(currentDocPath: string) {
         return;
       }
 
-      // 4. Rewrite relative paths only
-      const resolved = path.posix.join(docDir, src).replace(/\\/g, "/");
+      // 4. Treat everything else as doc‑relative
+      //    e.g. "docs/setup/" + "./img/foo.png" → "docs/setup/./img/foo.png"
+      const combined = `${docDir}${src}`;
+      const resolved = combined.replace(/\/\.\//g, "/");
 
-      console.log("🟥 [rehypeImages] Rewriting relative:", src, "→", resolved);
+      console.log(`🟥 [rehypeImages] Rewriting relative: ${src} → ${resolved}`);
 
-      props.src = `http://localhost:4000/api/images?path=${encodeURIComponent(resolved)}`;
+      props.src = `http://localhost:4000/api/images?path=${resolved}`;
     });
   };
 }
