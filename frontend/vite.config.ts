@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import mdx from "@mdx-js/rollup";
 
 import rehypeImages from "./rehypeImagesPlugin";
+import rehypeRewriteMarkdownImages from "./rehypeRewriteMarkdownImages";
 import rehypeImportedImages from "./rehypeRewriteImageImports";
 
 export default defineConfig({

@@ -73,18 +73,23 @@ function extractImportMap(content, currentDocPath) {
   const map = {};
   let match;
 
+  const isLocal = currentDocPath.startsWith("local-workspace/");
+
   while ((match = importRegex.exec(content))) {
     const varName = match[1];
     const relPath = match[2];
 
-    console.log("   📥 MDX IMPORT FOUND:");
-    console.log("      varName:", varName);
-    console.log("      relPath:", relPath);
+    console.log("   📥 MDX IMPORT FOUND:", varName, relPath);
 
     const normalized = resolveImportPath(currentDocPath, relPath);
 
-    const clean = normalized.replace(/^local\//, "");
-    const url = `/api/images/local?path=${clean}`;
+    const clean = normalized
+      .replace(/^local-workspace\//, "")
+      .replace(/^local\//, "");
+
+    const url = isLocal
+      ? `/api/images/local?path=${clean}`
+      : `/api/images?path=${normalized}`;
 
     console.log("      resolved URL:", url);
 
@@ -146,6 +151,7 @@ export default function Preview({ content, currentDocPath }) {
         .use(remarkDirective)
         .use(remarkAdmonitions)
         .use(remarkRehype, { allowDangerousHtml: true })
+        .use(rehypeImages, currentDocPath)
         .use(rehypeRaw)
         .use(rehypeImages, currentDocPath)
         .use(rehypeStringify)

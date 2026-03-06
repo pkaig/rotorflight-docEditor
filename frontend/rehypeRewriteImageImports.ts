@@ -6,7 +6,24 @@ export default function rehypeImportedImages(tree, file) {
   console.log("rehypeImportedImages running");
   if (!file || typeof file.path !== "string") return;
 
-  const currentDocPath = file.path.replace(/^.*\/docs\//, "docs/");
+  let currentDocPath;
+
+  // Local workspace file
+  if (file.path.includes("/local-workspace/")) {
+    const after = file.path.split("/local-workspace/")[1];
+    currentDocPath = "local-workspace/" + after;
+  }
+
+  // GitHub docs file
+  else if (file.path.includes("/docs/")) {
+    const after = file.path.split("/docs/")[1];
+    currentDocPath = "docs/" + after;
+  }
+
+  // Fallback (should never happen)
+  else {
+    currentDocPath = file.path;
+  }
 
   visit(tree, "mdxjsEsm", (node) => {
     console.log("MDX ESM NODE:", node);
