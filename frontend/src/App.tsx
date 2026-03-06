@@ -49,11 +49,12 @@ function Tree({
           {node.type === "dir" ? (
             <div className="tree-dir">
               <div
-                className="tree-folder"
-                onClick={() => {
-                  //console.log("CLICKED", node.path);
-                  toggleFolder(node.path);
-                }}
+                className={
+                  "tree-folder " +
+                  (node.name === "local-workspace" ? "folder-local" : "") +
+                  (node.name === "docs" ? "folder-docs" : "")
+                }
+                onClick={() => toggleFolder(node.path)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => node.path && onDropFolder(node.path)}
               >

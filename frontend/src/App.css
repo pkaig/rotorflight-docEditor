@@ -131,3 +131,43 @@
 .edit-modal-buttons button:last-child:hover {
   background: #f0f0f0;
 }
+
+/* Shared styling for docs and local-workspace root folders */
+.folder-local,
+.folder-docs {
+  background: #e6f3ff; /* light blue */
+  border: 1px solid #bcdcff; /* soft blue border */
+  padding: 6px 10px;
+  border-radius: 8px; /* rounded corners */
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #004a80; /* dark blue text */
+  cursor: pointer;
+  display: inline-block;
+}
+
+/* Optional slight tint difference */
+.folder-local {
+  background: #eaf7ff;
+}
+
+.folder-docs {
+  background: #e0f0ff;
+}
+
+/* Hover effect */
+.folder-local:hover,
+.folder-docs:hover {
+  background: #d4eaff;
+}
+/* Extra margin above the root folders */
+.folder-local,
+.folder-docs {
+  margin-top: 10px; /* space above */
+}
+
+/* Optional: even more separation from previous items */
+.tree-list > li > .tree-dir > .folder-local,
+.tree-list > li > .tree-dir > .folder-docs {
+  margin-top: 12px;
+}
