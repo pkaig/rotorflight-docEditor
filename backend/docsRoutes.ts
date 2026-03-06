@@ -37,6 +37,40 @@ function requireToken(req, res) {
   }
 }
 
+function extractImagePaths(mdx) {
+  const patterns = [
+    /!\[[^\]]*\]\(([^)]+\.(?:png|jpe?g|gif|svg|webp|mp4|webm))\)/g,
+    /<img[^>]+src=["']([^"']+\.(?:png|jpe?g|gif|svg|webp))["']/g,
+    /import\s+[A-Za-z0-9_$]+\s+from\s+["']([^"']+\.(?:png|jpe?g|gif|svg|webp|mp4|webm))["']/g,
+  ];
+
+  const results = new Set();
+  for (const regex of patterns) {
+    let match;
+    while ((match = regex.exec(mdx))) {
+      results.add(match[1]);
+    }
+  }
+  return [...results];
+}
+
+function resolveDocsPath(docPath, relPath) {
+  const baseDir = docPath.replace(/[^/]+$/, "");
+  const combined = baseDir + relPath;
+
+  const parts = combined.split("/").reduce((acc, part) => {
+    if (part === "" || part === ".") return acc;
+    if (part === "..") {
+      acc.pop();
+      return acc;
+    }
+    acc.push(part);
+    return acc;
+  }, []);
+
+  return parts.join("/");
+}
+
 // ---------------------------------------------
 // LIST DOCUMENTS (GitHub + Local Workspace)
 // ---------------------------------------------
@@ -288,7 +322,7 @@ router.post("/clone-to-local", async (req, res) => {
     //
     // 1. Fetch MDX file from GitHub
     //
-    const result = await githubRequest<any>(
+    const result = await githubRequest(
       token,
       `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
     );
@@ -298,7 +332,7 @@ router.post("/clone-to-local", async (req, res) => {
     //
     // 2. Write MDX file to workspace
     //
-    const clean = filePath.replace(/^docs\//, ""); // strip docs/
+    const clean = filePath.replace(/^docs\//, "");
     const workspaceRoot = path.join(process.cwd(), "workspaces", login);
     const localPath = path.join(workspaceRoot, clean);
 
@@ -306,51 +340,47 @@ router.post("/clone-to-local", async (req, res) => {
     await fs.promises.writeFile(localPath, content, "utf8");
 
     //
-    // 3. Determine GitHub img folder
+    // 3. Extract referenced image paths from MDX
     //
-    const folder = clean.replace(/[^/]+$/, ""); // e.g. "setup/"
-    const imgFolder = folder + "img"; // "setup/img"
+    const referenced = extractImagePaths(content);
 
     //
-    // 4. Workspace destination
+    // 4. Resolve each referenced path to an absolute docs path
     //
-    const destImgFolder = path.join(workspaceRoot, imgFolder);
-    await fs.promises.mkdir(destImgFolder, { recursive: true });
+    const resolvedDocsPaths = referenced.map((rel) =>
+      resolveDocsPath(filePath, rel),
+    );
 
     //
-    // 5. Try to fetch GitHub img folder listing
+    // 5. Copy each referenced image into the local workspace
     //
-    let githubImages = null;
-    try {
-      githubImages = await githubRequest<any>(
-        token,
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/docs/${imgFolder}?ref=${GITHUB_DEFAULT_BRANCH}`,
-      );
-    } catch {
-      githubImages = null; // folder does not exist — safe fallback
-    }
+    for (const absDocsPath of resolvedDocsPaths) {
+      try {
+        // Fetch file from GitHub
+        const imgRes = await githubRequest(
+          token,
+          `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${absDocsPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+        );
 
-    //
-    // 6. Copy each image file (if folder exists)
-    //
-    if (Array.isArray(githubImages)) {
-      for (const item of githubImages) {
-        if (item.type === "file") {
-          const imgRes = await githubRequest<any>(
-            token,
-            `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${item.path}?ref=${GITHUB_DEFAULT_BRANCH}`,
-          );
+        const imgData = Buffer.from(imgRes.content, "base64");
 
-          const imgData = Buffer.from(imgRes.content, "base64");
-          const dest = path.join(destImgFolder, item.name);
+        // Convert docs/... → local-workspace/...
+        const localImgPath = path.join(
+          workspaceRoot,
+          absDocsPath.replace(/^docs\//, ""),
+        );
 
-          await fs.promises.writeFile(dest, imgData);
-        }
+        await fs.promises.mkdir(path.dirname(localImgPath), {
+          recursive: true,
+        });
+        await fs.promises.writeFile(localImgPath, imgData);
+      } catch (err) {
+        console.warn("⚠️ Failed to copy referenced image:", absDocsPath);
       }
     }
 
     //
-    // 7. Return correct local path (NO docs/)
+    // 6. Return correct local path
     //
     return res.json({
       localPath: `local/${clean}`,

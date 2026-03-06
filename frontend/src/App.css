@@ -171,3 +171,30 @@
 .tree-list > li > .tree-dir > .folder-docs {
   margin-top: 12px;
 }
+
+.loading-banner {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: #fff3cd;
+  border: 1px solid #ffeeba;
+  border-radius: 4px;
+  color: #856404;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.loading-icon {
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

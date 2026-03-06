@@ -105,11 +105,12 @@ export default function App() {
   const [branch, setBranch] = useState("");
   const [email, setEmail] = useState("");
 
-  const [loadingDocs, setLoadingDocs] = useState(true);
-
   const [openFolders, setOpenFolders] = useState({});
   const [showEditModal, setShowEditModal] = useState(false);
   const [pendingGitHubPath, setPendingGitHubPath] = useState("");
+
+  const [loadingLocal, setLoadingLocal] = useState(true);
+  const [loadingGithub, setLoadingGithub] = useState(true);
 
   const [user, setUser] = useState<{
     login: string;
@@ -165,16 +166,44 @@ export default function App() {
       })
       .catch((err) => console.error("Failed to check auth status:", err));
   }, []);
-
+  // -----------------------------
+  // LOAD LOCAL TREE AFTER AUTH
+  // -----------------------------
   useEffect(() => {
     if (!isAuthenticated || !login) return;
-    loadLocalTree(); // instant
+    loadLocalTree(); // stage 1
   }, [isAuthenticated, login]);
 
+  // -----------------------------
+  // LOAD GITHUB TREE AFTER LOCAL IS READY
+  // -----------------------------
   useEffect(() => {
-    if (!localTree || !isAuthenticated || !login) return;
-    loadGithubTree(); // async
+    // must be authenticated
+    if (!isAuthenticated || !login) return;
+
+    // must have a real local tree (not null, not undefined)
+    if (!localTree) return;
+
+    // must have children (ensures the tree is fully loaded)
+    if (!localTree.children) return;
+
+    loadGithubTree(); // stage 2
   }, [localTree, isAuthenticated, login]);
+
+  // -----------------------------
+  // GITHUB LOADER (stage 2)
+  // -----------------------------
+  // async function loadGithubTree() {
+  //   setLoadingGithub(true);
+
+  //   const res = await fetch(`/api/docs/list?login=${login}`);
+  //   const data = await res.json();
+
+  //   const github = data.docs.find((x) => x.name !== "local-workspace");
+  //   setGithubTree(github);
+
+  //   setLoadingGithub(false);
+  // }
 
   // -----------------------------
   // VERSION EVALUATION
@@ -256,6 +285,30 @@ export default function App() {
     localStorage.removeItem("rf_login");
   }
 
+  async function loadLocalTree() {
+    setLoadingLocal(true);
+
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+
+    const local = data.docs.find((x) => x.name === "local-workspace");
+    setLocalTree(local);
+
+    setLoadingLocal(false);
+  }
+
+  async function loadGithubTree() {
+    setLoadingGithub(true);
+
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+
+    const github = data.docs.find((x) => x.name !== "local-workspace");
+    setGithubTree(github);
+
+    setLoadingGithub(false);
+  }
+
   // -----------------------------
   // START DEVICE FLOW
   // -----------------------------
@@ -308,26 +361,6 @@ export default function App() {
 
     poll();
   }
-
-  // -----------------------------
-  // INITIAL DOC LOAD (NOW LOGIN‑AWARE)
-  // -----------------------------
-  // useEffect(() => {
-  //   if (!isAuthenticated || !login) return;
-
-  //   setLoadingDocs(true);
-
-  //   fetch(
-  //     `http://localhost:4000/api/docs/list?login=${encodeURIComponent(login)}`,
-  //   )
-  //     .then((res) => res.json())
-  //     .then((data) => {
-  //       //console.log("LIST RESPONSE:", data); // ← ADD THIS
-
-  //       setTree(data.docs ?? []); // defensive fallback
-  //       setLoadingDocs(false);
-  //     });
-  // }, [isAuthenticated, login]);
 
   // -----------------------------
   // FILE OPERATIONS
@@ -442,23 +475,23 @@ export default function App() {
     setLocalTree(local);
   }
 
-  async function loadLocalTree() {
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
+  // async function loadLocalTree() {
+  //   const res = await fetch(`/api/docs/list?login=${login}`);
+  //   const data = await res.json();
 
-    const local = data.docs.find((x) => x.name === "local-workspace");
-    setLocalTree(local);
-  }
+  //   const local = data.docs.find((x) => x.name === "local-workspace");
+  //   setLocalTree(local);
+  // }
 
   async function loadGithubTree() {
-    setLoadingDocs(true); // optional but clean
+    setLoadingGithub(true); // optional but clean
 
     const res = await fetch(`/api/docs/list?login=${login}`);
     const data = await res.json();
 
     const github = data.docs.find((x) => x.name !== "local-workspace");
     setGithubTree(github);
-    setLoadingDocs(false);
+    setLoadingGithub(false);
   }
 
   async function refreshLocalWorkspace() {
@@ -644,6 +677,32 @@ export default function App() {
     setDraggedItem(null);
   }
 
+  function LoadingBanner({ message }) {
+    return (
+      <div className="loading-banner">
+        <svg
+          className="loading-icon"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="9"
+            fill="none"
+            stroke="#856404"
+            strokeWidth="2"
+            strokeDasharray="56"
+            strokeDashoffset="28"
+            strokeLinecap="round"
+          />
+        </svg>
+        <span>{message}</span>
+      </div>
+    );
+  }
+
   // -----------------------------
   // MAIN RETURN (AUTHENTICATED UI)
   // -----------------------------
@@ -689,42 +748,12 @@ export default function App() {
         >
           <h3>Docs</h3>
 
-          {loadingDocs && (
-            <div
-              style={{
-                padding: "0.5rem 0.75rem",
-                marginBottom: "0.75rem",
-                background: "#fff3cd",
-                border: "1px solid #ffeeba",
-                borderRadius: "4px",
-                color: "#856404",
-                fontSize: "0.9rem",
-                fontWeight: 500,
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
-            >
-              <svg
-                className="loading-icon"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  fill="none"
-                  stroke="#856404"
-                  strokeWidth="2"
-                  strokeDasharray="56"
-                  strokeDashoffset="28"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span>Please wait… Loading docs from GitHub</span>
-            </div>
+          {loadingLocal && (
+            <LoadingBanner message="Please wait… Loading local workspace" />
+          )}
+
+          {!loadingLocal && loadingGithub && (
+            <LoadingBanner message="Please wait… Loading docs from GitHub" />
           )}
 
           <div style={{ flex: 1, overflowY: "auto" }}>
