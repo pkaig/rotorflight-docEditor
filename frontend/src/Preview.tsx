@@ -83,8 +83,8 @@ function extractImportMap(content, currentDocPath) {
 
     const normalized = resolveImportPath(currentDocPath, relPath);
 
-    // ⭐ Unified backend route for ALL media
-    const url = `/api/images?path=${normalized}`;
+    const clean = normalized.replace(/^local\//, "");
+    const url = `/api/images/local?path=${clean}`;
 
     console.log("      resolved URL:", url);
 

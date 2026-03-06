@@ -6,13 +6,15 @@ import {
   GITHUB_REPO,
   GITHUB_DEFAULT_BRANCH,
 } from "./config/github";
-import { scanImages } from "./scanImages";
 import path from "path";
+import fs from "fs";
+import multer from "multer";
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // ---------------------------------------------
-// Helper: Require login + load token
+// Helper: Require login + ensure workspace root
 // ---------------------------------------------
 function requireToken(req, res) {
   const login = req.query.login as string;
@@ -23,6 +25,11 @@ function requireToken(req, res) {
 
   try {
     const token = getTokenForUser(login);
+
+    // Workspace root is now: workspaces/<login>/
+    const workspaceRoot = path.join(process.cwd(), "workspaces", login);
+    fs.mkdirSync(workspaceRoot, { recursive: true });
+
     return { token, login };
   } catch {
     res.status(401).json({ error: "User not authenticated" });
@@ -31,36 +38,16 @@ function requireToken(req, res) {
 }
 
 // ---------------------------------------------
-// LIST DOCUMENTS (recursive, MD/MDX)
+// LIST DOCUMENTS (GitHub + Local Workspace)
 // ---------------------------------------------
 router.get("/list", async (req, res) => {
   const auth = requireToken(req, res);
   if (!auth) return;
 
-  const { token } = auth;
+  const { token, login } = auth;
 
   // ---------------------------------------------
-  // Load all images in a doc's folder (/img/*)
-  // ---------------------------------------------
-  async function loadFolderImages(folderPath: string) {
-    const imgDir = `${folderPath}/img`;
-
-    try {
-      const items = await githubRequest<any>(
-        token,
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${imgDir}?ref=${GITHUB_DEFAULT_BRANCH}`,
-      );
-
-      return items
-        .filter((item) => item.type === "file")
-        .map((item) => item.path);
-    } catch {
-      return [];
-    }
-  }
-
-  // ---------------------------------------------
-  // RECURSIVE WALKER
+  // GitHub recursive walker
   // ---------------------------------------------
   async function walk(currentPath: string) {
     const apiPath =
@@ -71,8 +58,7 @@ router.get("/list", async (req, res) => {
     let items;
     try {
       items = await githubRequest<any>(token, apiPath);
-    } catch (err: any) {
-      console.log(`❌ GitHub error at ${currentPath}:`, err?.status || err);
+    } catch {
       return null;
     }
 
@@ -82,7 +68,7 @@ router.get("/list", async (req, res) => {
       type: "dir",
       name: currentPath.split("/").pop() || "root",
       path: currentPath,
-      children: [] as any[],
+      children: [],
     };
 
     for (const item of items) {
@@ -93,7 +79,9 @@ router.get("/list", async (req, res) => {
 
       if (item.type === "file") {
         const isDoc = item.name.endsWith(".md") || item.name.endsWith(".mdx");
-        if (isDoc) {
+        const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(item.name);
+
+        if (isDoc || isImage) {
           node.children.push({
             type: "file",
             name: item.name,
@@ -107,35 +95,56 @@ router.get("/list", async (req, res) => {
   }
 
   // ---------------------------------------------
-  // PRUNE EMPTY FOLDERS
+  // Local recursive walker (root = workspaces/<login>/)
   // ---------------------------------------------
-  function prune(node) {
-    if (node.type === "file") return true;
-    node.children = node.children.filter(prune);
-    return node.children.length > 0;
-  }
+  async function walkLocalWorkspace(rootPath: string) {
+    async function walkDir(dir: string) {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
-  // ---------------------------------------------
-  // FLATTEN TREE → FILE PATHS
-  // ---------------------------------------------
-  function flatten(node, list = []) {
-    if (node.type === "file") {
-      list.push(node.path);
-      return list;
+      const relative = path
+        .relative(rootPath, dir)
+        .replace(/\\/g, "/")
+        .replace(/^docs\//, "");
+
+      const node = {
+        type: "dir",
+        name: path.basename(dir),
+        path: `local-workspace/${relative}`,
+        children: [],
+      };
+
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          node.children.push(await walkDir(full));
+          continue;
+        }
+
+        if (entry.isFile()) {
+          const isDoc =
+            entry.name.endsWith(".md") || entry.name.endsWith(".mdx");
+          const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(entry.name);
+
+          if (isDoc || isImage) {
+            const relFile = path
+              .relative(rootPath, full)
+              .replace(/\\/g, "/")
+              .replace(/^docs\//, "");
+
+            node.children.push({
+              type: "file",
+              name: entry.name,
+              path: `local-workspace/${relFile}`,
+            });
+          }
+        }
+      }
+
+      return node;
     }
-    for (const child of node.children) flatten(child, list);
-    return list;
-  }
 
-  // ---------------------------------------------
-  // LOAD FILE CONTENT
-  // ---------------------------------------------
-  async function loadDocContent(filePath: string) {
-    const result = await githubRequest<any>(
-      token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
-    );
-    return Buffer.from(result.content, "base64").toString("utf8");
+    return walkDir(rootPath);
   }
 
   // ---------------------------------------------
@@ -143,40 +152,27 @@ router.get("/list", async (req, res) => {
   // ---------------------------------------------
   try {
     const tree = await walk("docs");
-    if (!tree) return res.json({ docs: [] });
+    const workspaceRoot = path.join(process.cwd(), "workspaces", login);
 
-    prune(tree);
+    let localTree = null;
+    try {
+      localTree = await walkLocalWorkspace(workspaceRoot);
+    } catch {}
 
-    const filePaths = flatten(tree);
-    const allImages = new Set<string>();
+    const roots = [];
 
-    for (const filePath of filePaths) {
-      try {
-        const content = await loadDocContent(filePath);
+    if (tree) roots.push(tree);
 
-        const imgs = scanImages(content, filePath);
-        imgs.forEach((img) => allImages.add(img));
-
-        const folder = path.dirname(filePath);
-        const folderImgs = await loadFolderImages(folder);
-        folderImgs.forEach((img) => allImages.add(img));
-      } catch (err) {
-        console.error("⚠️ Error processing file:", filePath, err);
-        continue;
-      }
+    if (localTree) {
+      roots.push({
+        type: "dir",
+        name: "local-workspace",
+        path: "local",
+        children: localTree.children,
+      });
     }
 
-    // ---------------------------------------------
-    // PRELOAD IMAGES
-    // ---------------------------------------------
-    console.log("📸 Preloading images:", [...allImages]);
-    await fetch("http://localhost:4000/api/images/preload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ images: [...allImages] }),
-    });
-
-    res.json({ docs: [tree] });
+    res.json({ docs: roots });
   } catch (err) {
     console.error("❌ Failed to list docs:", err);
     res.status(500).json({ error: "Failed to list docs" });
@@ -184,29 +180,240 @@ router.get("/list", async (req, res) => {
 });
 
 // ---------------------------------------------
-// LOAD DOCUMENT
+// LOCAL UPLOAD
+// ---------------------------------------------
+router.post("/local/upload", upload.single("file"), async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login } = auth;
+  const { folder } = req.body;
+  const file = req.file;
+
+  if (!folder || !file) {
+    return res.status(400).json({ error: "Missing folder or file" });
+  }
+
+  // folder example: "setup/img"
+  const workspaceRoot = path.join(process.cwd(), "workspaces", login);
+  const dest = path.join(workspaceRoot, folder, file.originalname);
+
+  await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+  await fs.promises.writeFile(dest, file.buffer);
+
+  res.json({
+    ok: true,
+    path: `${folder}/${file.originalname}`, // workspace-relative
+  });
+});
+
+// ---------------------------------------------
+// LOAD DOCUMENT (GitHub or Local)
 // ---------------------------------------------
 router.get("/load", async (req, res) => {
   const auth = requireToken(req, res);
   if (!auth) return;
 
-  const { token } = auth;
-  const filePath = req.query.path as string;
+  const { token, login } = auth;
+  let filePath = req.query.path as string;
+
+  filePath = filePath.replace(/\\/g, "/");
 
   try {
+    //
+    // LOCAL FILE (new logic)
+    //
+    if (filePath.startsWith("local-workspace/")) {
+      const localRelative = filePath
+        .replace(/^local-workspace\//, "")
+        .replace(/^docs\//, "");
+
+      const fullPath = path.join(
+        process.cwd(),
+        "workspaces",
+        login,
+        localRelative,
+      );
+
+      const content = await fs.promises.readFile(fullPath, "utf8");
+      return res.json({ content });
+    }
+
+    //
+    // OLD LOCAL PREFIX (still supported)
+    //
+    if (filePath.startsWith("local/")) {
+      const localRelative = filePath
+        .replace(/^local\//, "")
+        .replace(/^docs\//, "");
+
+      const fullPath = path.join(
+        process.cwd(),
+        "workspaces",
+        login,
+        localRelative,
+      );
+
+      const content = await fs.promises.readFile(fullPath, "utf8");
+      return res.json({ content });
+    }
+
+    //
+    // GITHUB FILE
+    //
     const result = await githubRequest<any>(
       token,
       `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
     );
 
     const content = Buffer.from(result.content, "base64").toString("utf8");
-    res.json({ content });
+    return res.json({ content });
   } catch (err) {
-    console.error("Failed to load doc:", err);
-    res.status(500).json({ error: "Failed to load document" });
+    console.error("❌ LOAD ERROR:", err);
+    return res.status(500).json({ error: "Failed to load document" });
   }
 });
 
-// (SAVE, RENAME, SUBMIT PR unchanged…)
+// ---------------------------------------------
+// CLONE GITHUB FILE TO LOCAL WORKSPACE
+// ---------------------------------------------
+router.post("/clone-to-local", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token, login } = auth;
+  const { path: filePath } = req.body;
+
+  try {
+    //
+    // 1. Fetch MDX file from GitHub
+    //
+    const result = await githubRequest<any>(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    );
+
+    const content = Buffer.from(result.content, "base64").toString("utf8");
+
+    //
+    // 2. Write MDX file to workspace
+    //
+    const clean = filePath.replace(/^docs\//, ""); // strip docs/
+    const workspaceRoot = path.join(process.cwd(), "workspaces", login);
+    const localPath = path.join(workspaceRoot, clean);
+
+    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+    await fs.promises.writeFile(localPath, content, "utf8");
+
+    //
+    // 3. Determine GitHub img folder
+    //
+    const folder = clean.replace(/[^/]+$/, ""); // e.g. "setup/"
+    const imgFolder = folder + "img"; // "setup/img"
+
+    //
+    // 4. Workspace destination
+    //
+    const destImgFolder = path.join(workspaceRoot, imgFolder);
+    await fs.promises.mkdir(destImgFolder, { recursive: true });
+
+    //
+    // 5. Try to fetch GitHub img folder listing
+    //
+    let githubImages = null;
+    try {
+      githubImages = await githubRequest<any>(
+        token,
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/docs/${imgFolder}?ref=${GITHUB_DEFAULT_BRANCH}`,
+      );
+    } catch {
+      githubImages = null; // folder does not exist — safe fallback
+    }
+
+    //
+    // 6. Copy each image file (if folder exists)
+    //
+    if (Array.isArray(githubImages)) {
+      for (const item of githubImages) {
+        if (item.type === "file") {
+          const imgRes = await githubRequest<any>(
+            token,
+            `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${item.path}?ref=${GITHUB_DEFAULT_BRANCH}`,
+          );
+
+          const imgData = Buffer.from(imgRes.content, "base64");
+          const dest = path.join(destImgFolder, item.name);
+
+          await fs.promises.writeFile(dest, imgData);
+        }
+      }
+    }
+
+    //
+    // 7. Return correct local path (NO docs/)
+    //
+    return res.json({
+      localPath: `local/${clean}`,
+    });
+  } catch (err) {
+    console.error("❌ clone-to-local error:", err);
+    res.status(500).json({ error: "Failed to clone file locally" });
+  }
+});
+
+// ---------------------------------------------
+// SERVE LOCAL IMAGES
+// ---------------------------------------------
+router.get("/images/local", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login } = auth;
+  let imgPath = req.query.path as string;
+
+  imgPath = imgPath.replace(/\\/g, "/");
+
+  if (currentDocPath.startsWith("local/")) {
+    // LOCAL IMAGE
+    const clean = resolved.replace(/^local\//, "").replace(/^docs\//, "");
+    props.src = `/api/docs/images/local?path=${clean}&login=${login}`;
+  } else {
+    // GITHUB IMAGE
+    props.src = `/api/docs/image?path=${resolved}&login=${login}`;
+  }
+
+  try {
+    return res.sendFile(fullPath);
+  } catch {
+    return res.status(404).end();
+  }
+});
+
+// ---------------------------------------------
+// SAVE DOCUMENT LOCALLY
+// ---------------------------------------------
+router.post("/save", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login } = auth;
+  const { path: filePath, content } = req.body;
+
+  if (!filePath) {
+    return res.status(400).json({ error: "Missing file path" });
+  }
+
+  try {
+    const fullPath = path.join(process.cwd(), "workspaces", login, filePath);
+
+    await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.promises.writeFile(fullPath, content, "utf8");
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ Failed to save file:", err);
+    res.status(500).json({ error: "Failed to save file" });
+  }
+});
 
 export default router;

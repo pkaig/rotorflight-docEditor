@@ -1,9 +1,9 @@
-#root {
+/* #root {
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
-}
+} */
 
 .logo {
   height: 6em;
@@ -17,6 +17,16 @@
 .logo.react:hover {
   filter: drop-shadow(0 0 2em #61dafbaa);
 }
+
+/* .commit-panel {
+  padding: 0 1rem; 
+ } */
+
+/* .commit-panel input,
+.commit-panel textarea {
+  width: 100%;
+  box-sizing: border-box; 
+} */
 
 @keyframes logo-spin {
   from {
@@ -39,4 +49,85 @@
 
 .read-the-docs {
   color: #888;
+}
+
+/* Optional: subtle fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Overlay that covers ONLY the editor panel */
+.edit-modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20; /* above editor content */
+  pointer-events: auto;
+}
+
+/* Modal box */
+.edit-modal-box {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 430px;
+  width: 90%;
+  text-align: center;
+  margin: 2rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Fade animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.edit-modal-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.edit-modal-buttons button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.edit-modal-buttons button:first-child {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.edit-modal-buttons button:first-child:hover {
+  background: #0069d9;
+}
+
+.edit-modal-buttons button:last-child:hover {
+  background: #f0f0f0;
 }

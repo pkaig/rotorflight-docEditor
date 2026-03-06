@@ -1,3 +1,4 @@
+import "./App.css";
 import { useEffect, useState, useRef } from "react";
 import PreviewErrorBoundary from "./PreviewErrorBoundary";
 import Preview from "./Preview";
@@ -6,10 +7,10 @@ import {
   MaintenanceModal,
   ForceUpdateModal,
   UpdateAvailableModal,
-  UpdateBanner,
 } from "./versionModals";
 
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.2";
+//localStorage.setItem("rf_dismissed_until", Date.now().toString());
 
 type DocItem = {
   id: string;
@@ -90,7 +91,7 @@ export default function App() {
   // -----------------------------
   // STATE
   // -----------------------------
-  const [tree, setTree] = useState<TreeNode[]>([]);
+  // const [tree, setTree] = useState<TreeNode[]>([]);
   const [content, setContent] = useState("");
   const [editorWidth, setEditorWidth] = useState(50);
   const [errorLine, setErrorLine] = useState<number | null>(null);
@@ -106,6 +107,8 @@ export default function App() {
   const [loadingDocs, setLoadingDocs] = useState(true);
 
   const [openFolders, setOpenFolders] = useState({});
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [pendingGitHubPath, setPendingGitHubPath] = useState("");
 
   const [user, setUser] = useState<{
     login: string;
@@ -131,6 +134,13 @@ export default function App() {
   const [login, setLogin] = useState<string | null>(null);
   const [userCode, setUserCode] = useState("");
   const [verificationUri, setVerificationUri] = useState("");
+  const [editorImageFolder, setEditorImageFolder] = useState<string | null>(
+    null,
+  );
+
+  // Tree states
+  const [githubTree, setGithubTree] = useState(null);
+  const [localTree, setLocalTree] = useState(null);
 
   // Drag state
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
@@ -154,6 +164,16 @@ export default function App() {
       })
       .catch((err) => console.error("Failed to check auth status:", err));
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !login) return;
+    loadLocalTree(); // instant
+  }, [isAuthenticated, login]);
+
+  useEffect(() => {
+    if (!localTree || !isAuthenticated || !login) return;
+    loadGithubTree(); // async
+  }, [localTree, isAuthenticated, login]);
 
   // -----------------------------
   // VERSION EVALUATION
@@ -211,7 +231,13 @@ export default function App() {
       }
 
       const cfg = await res.json();
-      //const APP_VERSION = "1.0.0"; // or injected at build time
+
+      // TIMEOUT CHECK
+      const dismissedUntil = localStorage.getItem("rf_dismissed_until");
+      if (dismissedUntil && Date.now() < Number(dismissedUntil)) {
+        setEditorStatus({ type: "ok" });
+        return;
+      }
 
       const status = evaluateStatus(cfg, APP_VERSION);
       setEditorStatus(status);
@@ -285,38 +311,40 @@ export default function App() {
   // -----------------------------
   // INITIAL DOC LOAD (NOW LOGIN‑AWARE)
   // -----------------------------
-  useEffect(() => {
-    if (!isAuthenticated || !login) return;
+  // useEffect(() => {
+  //   if (!isAuthenticated || !login) return;
 
-    setLoadingDocs(true);
+  //   setLoadingDocs(true);
 
-    fetch(
-      `http://localhost:4000/api/docs/list?login=${encodeURIComponent(login)}`,
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        //console.log("LIST RESPONSE:", data); // ← ADD THIS
+  //   fetch(
+  //     `http://localhost:4000/api/docs/list?login=${encodeURIComponent(login)}`,
+  //   )
+  //     .then((res) => res.json())
+  //     .then((data) => {
+  //       //console.log("LIST RESPONSE:", data); // ← ADD THIS
 
-        setTree(data.docs ?? []); // defensive fallback
-        setLoadingDocs(false);
-      });
-  }, [isAuthenticated, login]);
+  //       setTree(data.docs ?? []); // defensive fallback
+  //       setLoadingDocs(false);
+  //     });
+  // }, [isAuthenticated, login]);
 
   // -----------------------------
   // FILE OPERATIONS
   // -----------------------------
   function saveLocal() {
-    fetch("http://localhost:4000/api/docs/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: currentDocPath,
-        content,
-        commitMessage,
-        email,
-      }),
-    }).then((res) => res.json());
-    //.then((data) => console.log("Saved locally:", data));
+    fetch(
+      `http://localhost:4000/api/docs/save?login=${encodeURIComponent(login)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: currentDocPath,
+          content,
+          commitMessage,
+          email,
+        }),
+      },
+    );
   }
 
   function renameFileOnBackend(oldPath: string, newPath: string) {
@@ -340,13 +368,115 @@ export default function App() {
         email,
       }),
     }).then((res) => res.json());
-    //.then((data) => console.log("PR submitted:", data));
+  }
+
+  async function refreshDocsList() {
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+    setTree(data.docs);
+  }
+
+  async function handleCloneToLocal() {
+    const res = await fetch(
+      `http://localhost:4000/api/docs/clone-to-local?login=${encodeURIComponent(login)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: pendingGitHubPath }),
+      },
+    );
+
+    const data = await res.json();
+
+    // Compute workspace image folder
+    const clean = pendingGitHubPath.replace(/^docs\//, "");
+    const folder = clean.replace(/[^/]+$/, "") + "img";
+    setEditorImageFolder(folder);
+
+    // Load the new local file
+    await loadDoc(data.localPath);
+
+    // ⭐ MUST happen immediately after loadDoc
+    setCurrentDocPath(data.localPath);
+
+    // Refresh ONLY the local workspace tree
+    await refreshLocalWorkspace();
+
+    // Collapse GitHub docs tree
+    setOpenFolders((prev) => ({
+      ...prev,
+      docs: false,
+    }));
+
+    // Expand local-workspace tree
+    setOpenFolders((prev) => ({
+      ...prev,
+      "local-workspace": true,
+    }));
+
+    // Expand the folder containing the file
+    const parentFolder = clean.replace(/[^/]+$/, "").replace(/\/$/, "");
+    if (parentFolder) {
+      setOpenFolders((prev) => ({
+        ...prev,
+        [`local-workspace/${parentFolder}`]: true,
+      }));
+    }
+
+    setShowEditModal(false);
+  }
+
+  // -----------------------------
+  // LOAD DOCUMENT Trees
+  // -----------------------------
+
+  async function loadDocsTree() {
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+
+    const github = data.docs.find((x) => x.name !== "local-workspace");
+    const local = data.docs.find((x) => x.name === "local-workspace");
+
+    setGithubTree(github);
+    setLocalTree(local);
+  }
+
+  async function loadLocalTree() {
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+
+    const local = data.docs.find((x) => x.name === "local-workspace");
+    setLocalTree(local);
+  }
+
+  async function loadGithubTree() {
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+
+    const github = data.docs.find((x) => x.name !== "local-workspace");
+    setGithubTree(github);
+  }
+
+  async function refreshLocalWorkspace() {
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+
+    const local = data.docs.find((x) => x.name === "local-workspace");
+    setLocalTree(local);
   }
 
   // -----------------------------
   // LOAD DOCUMENT
   // -----------------------------
   function loadDoc(path: string) {
+    // 🔥 Intercept GitHub files before loading them
+    console.log("📄 [loadDoc] Requested path:", path);
+    if (path.startsWith("docs/")) {
+      setShowEditModal(true);
+      setPendingGitHubPath(path);
+    }
+
+    // Normal local load
     setCurrentDocPath(path);
 
     fetch(
@@ -372,7 +502,7 @@ export default function App() {
   function onDrag(e: MouseEvent) {
     if (!dragging.current) return;
     const pct = (e.clientX / window.innerWidth) * 100;
-    if (pct > 20 && pct < 80) setEditorWidth(pct);
+    if (pct > 35 && pct < 80) setEditorWidth(pct);
   }
 
   useEffect(() => {
@@ -404,10 +534,14 @@ export default function App() {
     setDraggedItem(null);
   }
 
-  if (editorStatus === null) return null;
+  // VERSION GATE — safe and correct
+  if (!editorStatus) {
+    // still loading version info
+    return null;
+  }
 
   if (editorStatus.type === "blocked") {
-    return <MaintenanceModal message={editorStatus.message} />;
+    return <MaintenanceModal {...editorStatus} />;
   }
 
   if (editorStatus.type === "forceUpdate") {
@@ -418,7 +552,13 @@ export default function App() {
     return (
       <UpdateAvailableModal
         {...editorStatus}
-        onContinue={() => setEditorStatus({ type: "ok" })}
+        //      onContinue={() => setEditorStatus({ type: "ok" })}
+        onContinue={() => {
+          const timeout = Date.now() + 60 * 1000;
+          //const timeout = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+          localStorage.setItem("rf_dismissed_until", timeout.toString());
+          setEditorStatus({ type: "ok" });
+        }}
       />
     );
   }
@@ -477,14 +617,29 @@ export default function App() {
     );
   }
 
+  const onSelect = (path: string) => {
+    setCurrentDocPath(path);
+    loadDoc(path);
+  };
+
+  function onDropFolder(targetFolderPath: string) {
+    if (!draggedItem) return;
+    renameFileOnBackend(
+      draggedItem,
+      `${targetFolderPath}/${draggedItem.split("/").pop()}`,
+    ).then(() => refreshLocalWorkspace());
+    setDraggedItem(null);
+  }
+
   // -----------------------------
   // MAIN RETURN (AUTHENTICATED UI)
   // -----------------------------
   return (
     <>
-      {editorStatus.type === "updateAvailable" && (
+      {editorStatus && editorStatus.type === "updateAvailable" && (
         <UpdateBanner {...editorStatus} />
       )}
+
       {user && (
         <div
           style={{
@@ -568,14 +723,27 @@ export default function App() {
               + New Page (drag into folder)
             </div>
 
-            <Tree
-              nodes={tree}
-              onSelect={loadDoc}
-              onDropFolder={handleDrop}
-              setDraggedItem={setDraggedItem}
-              openFolders={openFolders}
-              setOpenFolders={setOpenFolders}
-            />
+            {localTree && (
+              <Tree
+                nodes={[localTree]}
+                onSelect={onSelect}
+                onDropFolder={onDropFolder}
+                setDraggedItem={setDraggedItem}
+                openFolders={openFolders}
+                setOpenFolders={setOpenFolders}
+              />
+            )}
+
+            {githubTree && (
+              <Tree
+                nodes={[githubTree]}
+                onSelect={onSelect}
+                onDropFolder={onDropFolder}
+                setDraggedItem={setDraggedItem}
+                openFolders={openFolders}
+                setOpenFolders={setOpenFolders}
+              />
+            )}
           </div>
 
           <div className="commit-panel" style={{ marginTop: "1rem" }}>
@@ -622,6 +790,7 @@ export default function App() {
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
           {/* EDITOR */}
           <div
+            className="editor-container"
             style={{
               width: `${editorWidth}%`,
               padding: "1rem",
@@ -629,8 +798,28 @@ export default function App() {
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
+              position: "relative",
+              minWidth: "420px",
             }}
           >
+            {showEditModal && (
+              <div className="edit-modal-overlay">
+                <div className="edit-modal-box">
+                  <h3>Edit this file?</h3>
+                  <p>
+                    This file is from GitHub. A local copy will be created and
+                    its
+                    <code> img/ </code> folder will be synced so you can edit
+                    safely.
+                  </p>
+
+                  <div className="edit-modal-buttons">
+                    <button onClick={handleCloneToLocal}>Edit this file</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <h3>Editor</h3>
 
             <textarea
