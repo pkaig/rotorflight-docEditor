@@ -450,11 +450,14 @@ export default function App() {
   }
 
   async function loadGithubTree() {
+    setLoadingDocs(true); // optional but clean
+
     const res = await fetch(`/api/docs/list?login=${login}`);
     const data = await res.json();
 
     const github = data.docs.find((x) => x.name !== "local-workspace");
     setGithubTree(github);
+    setLoadingDocs(false);
   }
 
   async function refreshLocalWorkspace() {
@@ -474,9 +477,11 @@ export default function App() {
     if (path.startsWith("docs/")) {
       setShowEditModal(true);
       setPendingGitHubPath(path);
+    } else {
+      // Local file → hide modal
+      setShowEditModal(false);
     }
 
-    // Normal local load
     setCurrentDocPath(path);
 
     fetch(
@@ -502,7 +507,7 @@ export default function App() {
   function onDrag(e: MouseEvent) {
     if (!dragging.current) return;
     const pct = (e.clientX / window.innerWidth) * 100;
-    if (pct > 35 && pct < 80) setEditorWidth(pct);
+    // if (pct > 35 && pct < 80) setEditorWidth(pct);
   }
 
   useEffect(() => {
@@ -618,7 +623,14 @@ export default function App() {
   }
 
   const onSelect = (path: string) => {
-    setCurrentDocPath(path);
+    const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
+
+    if (isImage) {
+      setEditorWidth(0); // collapse editor
+    } else {
+      setEditorWidth(50); // restore editor
+    }
+
     loadDoc(path);
   };
 

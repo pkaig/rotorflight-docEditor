@@ -138,6 +138,18 @@ function rewriteJSXInRawMDX(raw, importMap) {
 export default function Preview({ content, currentDocPath }) {
   const html = useMemo(() => {
     if (!content) return "";
+    // If the selected file is an image, render it directly
+    if (/\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath)) {
+      const clean = currentDocPath
+        .replace(/^local-workspace\//, "")
+        .replace(/^local\//, "");
+
+      const src = currentDocPath.startsWith("local-workspace/")
+        ? `/api/images/local?path=${clean}`
+        : `/api/images?path=${currentDocPath}`;
+
+      return `<img src="${src}" style="max-width:100%; height:auto;" />`;
+    }
 
     console.log("🟦 [Preview] Rendering:", currentDocPath);
 
