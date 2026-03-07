@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from "react";
 import PreviewErrorBoundary from "./PreviewErrorBoundary";
 import Preview from "./Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
+import { useAutosave } from "./hooks/useAutosave";
 import {
   MaintenanceModal,
   ForceUpdateModal,
@@ -50,7 +51,7 @@ function Tree({
             <div className="tree-dir">
               <div
                 className={
-                  "tree-folder " +
+                  "tree-folder folder-root " +
                   (node.name === "local-workspace" ? "folder-local" : "") +
                   (node.name === "docs" ? "folder-docs" : "")
                 }
@@ -86,6 +87,10 @@ function Tree({
       ))}
     </ul>
   );
+}
+
+function isLocalPath(p: string) {
+  return p?.startsWith("local-workspace/") || p?.startsWith("local/");
 }
 
 export default function App() {
@@ -166,6 +171,43 @@ export default function App() {
       })
       .catch((err) => console.error("Failed to check auth status:", err));
   }, []);
+
+  // -----------------------------
+  // LOAD LAST OPENED DOC ON LOGIN
+  // -----------------------------
+  useEffect(() => {
+    if (!isAuthenticated || !login) return;
+
+    const last = localStorage.getItem("rf_last_opened_doc");
+    if (!last) return;
+
+    // Try to open immediately
+    loadDoc(last);
+  }, [isAuthenticated, login]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !login) return;
+    if (!localTree || !localTree.children) return;
+    if (!githubTree) return;
+
+    const last = localStorage.getItem("rf_last_opened_doc");
+    if (!last) return;
+
+    function treeHasPath(node, target) {
+      if (!node) return false;
+      if (node.path === target) return true;
+      if (!node.children) return false;
+      return node.children.some((child) => treeHasPath(child, target));
+    }
+
+    const exists =
+      treeHasPath(localTree, last) || treeHasPath(githubTree, last);
+
+    if (!exists) {
+      localStorage.removeItem("rf_last_opened_doc");
+    }
+  }, [isAuthenticated, login, localTree, githubTree]);
+
   // -----------------------------
   // LOAD LOCAL TREE AFTER AUTH
   // -----------------------------
@@ -189,21 +231,6 @@ export default function App() {
 
     loadGithubTree(); // stage 2
   }, [localTree, isAuthenticated, login]);
-
-  // -----------------------------
-  // GITHUB LOADER (stage 2)
-  // -----------------------------
-  // async function loadGithubTree() {
-  //   setLoadingGithub(true);
-
-  //   const res = await fetch(`/api/docs/list?login=${login}`);
-  //   const data = await res.json();
-
-  //   const github = data.docs.find((x) => x.name !== "local-workspace");
-  //   setGithubTree(github);
-
-  //   setLoadingGithub(false);
-  // }
 
   // -----------------------------
   // VERSION EVALUATION
@@ -245,6 +272,31 @@ export default function App() {
 
     return { type: "ok" };
   }
+
+  const effectivePath = isLocalPath(currentDocPath) ? currentDocPath : "";
+
+  function normalizeLocalPath(p: string) {
+    return p
+      ?.replace(/^local-workspace\//, "")
+      .replace(/^local\//, "")
+      .replace(/^docs\//, "");
+  }
+
+  const saving = useAutosave(
+    login,
+    effectivePath,
+    content,
+    async (path, content) => {
+      const clean = normalizeLocalPath(path);
+      console.log("Autosaving:", { path, clean });
+
+      await fetch(`/api/docs/save?login=${encodeURIComponent(login)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: clean, content }),
+      });
+    },
+  );
 
   // -----------------------------
   // EDITOR STATUS CHECK
@@ -475,14 +527,6 @@ export default function App() {
     setLocalTree(local);
   }
 
-  // async function loadLocalTree() {
-  //   const res = await fetch(`/api/docs/list?login=${login}`);
-  //   const data = await res.json();
-
-  //   const local = data.docs.find((x) => x.name === "local-workspace");
-  //   setLocalTree(local);
-  // }
-
   async function loadGithubTree() {
     setLoadingGithub(true); // optional but clean
 
@@ -517,6 +561,9 @@ export default function App() {
     }
 
     setCurrentDocPath(path);
+    if (isLocalPath(path)) {
+      localStorage.setItem("rf_last_opened_doc", path);
+    }
 
     fetch(
       `http://localhost:4000/api/docs/load?path=${encodeURIComponent(path)}&login=${encodeURIComponent(login)}`,
@@ -677,9 +724,35 @@ export default function App() {
     setDraggedItem(null);
   }
 
-  function LoadingBanner({ message }) {
+  function LoadingLocalBanner({ message }) {
     return (
-      <div className="loading-banner">
+      <div className="loading-local-banner">
+        <svg
+          className="loading-icon"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="9"
+            fill="none"
+            stroke="#856404"
+            strokeWidth="2"
+            strokeDasharray="56"
+            strokeDashoffset="28"
+            strokeLinecap="round"
+          />
+        </svg>
+        <span>{message}</span>
+      </div>
+    );
+  }
+
+  function LoadingGithubBanner({ message }) {
+    return (
+      <div className="loading-github-banner">
         <svg
           className="loading-icon"
           width="20"
@@ -708,6 +781,20 @@ export default function App() {
   // -----------------------------
   return (
     <>
+      {saving && (
+        <div
+          style={{
+            position: "absolute",
+            top: "8px",
+            right: "12px",
+            fontSize: "0.85rem",
+            color: "#666",
+          }}
+        >
+          Saving…
+        </div>
+      )}
+
       {editorStatus && editorStatus.type === "updateAvailable" && (
         <UpdateBanner {...editorStatus} />
       )}
@@ -749,11 +836,15 @@ export default function App() {
           <h3>Docs</h3>
 
           {loadingLocal && (
-            <LoadingBanner message="Please wait… Loading local workspace" />
+            <div className="loadingLocalWorkspace">
+              <LoadingLocalBanner message="Please wait… Loading local workspace" />
+            </div>
           )}
 
           {!loadingLocal && loadingGithub && (
-            <LoadingBanner message="Please wait… Loading docs from GitHub" />
+            <div className="loadingGithub">
+              <LoadingGithubBanner message="Please wait… Loading docs from GitHub" />
+            </div>
           )}
 
           <div style={{ flex: 1, overflowY: "auto" }}>

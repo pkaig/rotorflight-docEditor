@@ -132,34 +132,37 @@
   background: #f0f0f0;
 }
 
-/* Shared styling for docs and local-workspace root folders */
-.folder-local,
-.folder-docs {
-  background: #e6f3ff; /* light blue */
-  border: 1px solid #bcdcff; /* soft blue border */
-  padding: 6px 10px;
-  border-radius: 8px; /* rounded corners */
-  margin-bottom: 6px;
+.folder-root {
+  display: block;
+  width: 100%;
+  padding: 5px 14px; /* increased padding */
+  border-radius: 10px; /* stronger rounded corners */
   font-weight: 600;
-  color: #004a80; /* dark blue text */
+  margin: 2px 0 0px 0; /* consistent spacing */
   cursor: pointer;
-  display: inline-block;
+  box-sizing: border-box;
 }
 
-/* Optional slight tint difference */
 .folder-local {
   background: #eaf7ff;
+  border: 1px solid #bcdcff;
+  color: #004a80;
+}
+
+.folder-local:hover {
+  background: #d4eaff;
 }
 
 .folder-docs {
-  background: #e0f0ff;
+  background: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
 }
 
-/* Hover effect */
-.folder-local:hover,
 .folder-docs:hover {
-  background: #d4eaff;
+  background: #ffe8a6;
 }
+
 /* Extra margin above the root folders */
 .folder-local,
 .folder-docs {
@@ -170,20 +173,6 @@
 .tree-list > li > .tree-dir > .folder-local,
 .tree-list > li > .tree-dir > .folder-docs {
   margin-top: 12px;
-}
-
-.loading-banner {
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
-  background: #fff3cd;
-  border: 1px solid #ffeeba;
-  border-radius: 4px;
-  color: #856404;
-  font-size: 0.9rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .loading-icon {
@@ -197,4 +186,34 @@
   100% {
     transform: rotate(360deg);
   }
+}
+
+.loading-local-banner {
+  background: #e6f3ff; /* same light blue */
+  margin-bottom: 0.75rem;
+  border: 1px solid #bcdcff; /* same border tone */
+  border-radius: 8px; /* same rounded corners */
+  padding: 8px 12px; /* slightly larger for banner */
+  color: #004a80; /* same text tone as tree root */
+  font-weight: 500; /* match tree button weight */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* optional subtle lift */
+}
+
+.loading-github-banner {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: #fff3cd;
+  border: 1px solid #ffeeba;
+  border-radius: 4px;
+  color: #856404;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* optional subtle lift */
 }
