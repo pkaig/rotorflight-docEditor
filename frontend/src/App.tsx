@@ -11,15 +11,10 @@ import {
 } from "./versionModals";
 
 const APP_VERSION = "1.4.2";
-//localStorage.setItem("rf_dismissed_until", Date.now().toString());
 
-type DocItem = {
-  id: string;
-  title: string;
-  path: string;
-  download_url: string;
-};
-
+/* -------------------------------------------------------
+   Types
+------------------------------------------------------- */
 type TreeNode = {
   name: string;
   path: string;
@@ -27,6 +22,23 @@ type TreeNode = {
   children?: TreeNode[];
 };
 
+/* -------------------------------------------------------
+   Helpers
+------------------------------------------------------- */
+function isLocalPath(p: string) {
+  return p?.startsWith("local-workspace/") || p?.startsWith("local/");
+}
+
+function normalizeLocalPath(p: string) {
+  return p
+    ?.replace(/^local-workspace\//, "")
+    .replace(/^local\//, "")
+    .replace(/^docs\//, "");
+}
+
+/* -------------------------------------------------------
+   Tree Component
+------------------------------------------------------- */
 function Tree({
   nodes,
   onSelect,
@@ -89,40 +101,56 @@ function Tree({
   );
 }
 
-function isLocalPath(p: string) {
-  return p?.startsWith("local-workspace/") || p?.startsWith("local/");
-}
-
+/* -------------------------------------------------------
+   Main App Component
+------------------------------------------------------- */
 export default function App() {
-  // -----------------------------
-  // STATE
-  // -----------------------------
-  // const [tree, setTree] = useState<TreeNode[]>([]);
+  /* Core editor state */
   const [content, setContent] = useState("");
-  const [editorWidth, setEditorWidth] = useState(50);
-  const [errorLine, setErrorLine] = useState<number | null>(null);
-  const dragging = useRef(false);
-
   const [currentDocPath, setCurrentDocPath] = useState("");
+  const [errorLine, setErrorLine] = useState<number | null>(null);
+  const [editorWidth, setEditorWidth] = useState(50);
 
+  /* Commit / PR state */
   const [commitMessage, setCommitMessage] = useState("");
   const [prBody, setPrBody] = useState("");
   const [branch, setBranch] = useState("");
   const [email, setEmail] = useState("");
 
+  /* Tree + drag state */
   const [openFolders, setOpenFolders] = useState({});
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [pendingGitHubPath, setPendingGitHubPath] = useState("");
+  const [draggedItem, setDraggedItem] = useState<string | null>(null);
+  const dragging = useRef(false);
 
+  const [localTree, setLocalTree] = useState<TreeNode | null>(null);
+  const [githubTree, setGithubTree] = useState<TreeNode | null>(null);
   const [loadingLocal, setLoadingLocal] = useState(true);
   const [loadingGithub, setLoadingGithub] = useState(true);
 
+  /* User (for avatar / header) */
   const [user, setUser] = useState<{
     login: string;
     name: string;
     avatar_url: string;
   } | null>(null);
 
+  /* Auth state */
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authStep, setAuthStep] = useState<"idle" | "waiting" | "polling">(
+    "idle",
+  );
+  const [login, setLogin] = useState<string | null>(null);
+  const [userCode, setUserCode] = useState("");
+  const [verificationUri, setVerificationUri] = useState("");
+
+  /* GitHub clone modal */
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [pendingGitHubPath, setPendingGitHubPath] = useState("");
+  const [editorImageFolder, setEditorImageFolder] = useState<string | null>(
+    null,
+  );
+
+  /* Version gate */
   const [editorStatus, setEditorStatus] = useState<null | {
     type: "blocked" | "forceUpdate" | "updateAvailable" | "ok";
     message?: string;
@@ -131,30 +159,27 @@ export default function App() {
     downloadUrl?: string;
   }>(null);
 
-  // -----------------------------
-  // AUTH STATE
-  // -----------------------------
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authStep, setAuthStep] = useState<"idle" | "waiting" | "polling">(
-    "idle",
+  /* Autosave */
+  const effectivePath = isLocalPath(currentDocPath) ? currentDocPath : "";
+
+  const saving = useAutosave(
+    login,
+    effectivePath,
+    content,
+    async (path, content) => {
+      const clean = normalizeLocalPath(path);
+
+      await fetch(`/api/docs/save?login=${encodeURIComponent(login)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: clean, content }),
+      });
+    },
   );
-  const [login, setLogin] = useState<string | null>(null);
-  const [userCode, setUserCode] = useState("");
-  const [verificationUri, setVerificationUri] = useState("");
-  const [editorImageFolder, setEditorImageFolder] = useState<string | null>(
-    null,
-  );
 
-  // Tree states
-  const [githubTree, setGithubTree] = useState(null);
-  const [localTree, setLocalTree] = useState(null);
-
-  // Drag state
-  const [draggedItem, setDraggedItem] = useState<string | null>(null);
-
-  // -----------------------------
-  // RESTORE LOGIN ON MOUNT
-  // -----------------------------
+  /* -------------------------------------------------------
+     Restore login on mount
+  ------------------------------------------------------- */
   useEffect(() => {
     const storedLogin = localStorage.getItem("rf_login");
     if (!storedLogin) return;
@@ -169,22 +194,21 @@ export default function App() {
           localStorage.removeItem("rf_login");
         }
       })
-      .catch((err) => console.error("Failed to check auth status:", err));
+      .catch(() => {});
   }, []);
-
-  // -----------------------------
-  // LOAD LAST OPENED DOC ON LOGIN
-  // -----------------------------
+  /* -------------------------------------------------------
+     Restore last opened doc immediately after login
+  ------------------------------------------------------- */
   useEffect(() => {
     if (!isAuthenticated || !login) return;
 
     const last = localStorage.getItem("rf_last_opened_doc");
-    if (!last) return;
-
-    // Try to open immediately
-    loadDoc(last);
+    if (last) loadDoc(last);
   }, [isAuthenticated, login]);
 
+  /* -------------------------------------------------------
+     Verify last opened doc exists after trees load
+  ------------------------------------------------------- */
   useEffect(() => {
     if (!isAuthenticated || !login) return;
     if (!localTree || !localTree.children) return;
@@ -193,7 +217,7 @@ export default function App() {
     const last = localStorage.getItem("rf_last_opened_doc");
     if (!last) return;
 
-    function treeHasPath(node, target) {
+    function treeHasPath(node: TreeNode, target: string): boolean {
       if (!node) return false;
       if (node.path === target) return true;
       if (!node.children) return false;
@@ -208,99 +232,45 @@ export default function App() {
     }
   }, [isAuthenticated, login, localTree, githubTree]);
 
-  // -----------------------------
-  // LOAD LOCAL TREE AFTER AUTH
-  // -----------------------------
+  /* -------------------------------------------------------
+     Load trees
+  ------------------------------------------------------- */
   useEffect(() => {
     if (!isAuthenticated || !login) return;
-    loadLocalTree(); // stage 1
+    loadLocalTree();
   }, [isAuthenticated, login]);
 
-  // -----------------------------
-  // LOAD GITHUB TREE AFTER LOCAL IS READY
-  // -----------------------------
   useEffect(() => {
-    // must be authenticated
     if (!isAuthenticated || !login) return;
-
-    // must have a real local tree (not null, not undefined)
-    if (!localTree) return;
-
-    // must have children (ensures the tree is fully loaded)
-    if (!localTree.children) return;
-
-    loadGithubTree(); // stage 2
+    if (!localTree || !localTree.children) return;
+    loadGithubTree();
   }, [localTree, isAuthenticated, login]);
 
-  // -----------------------------
-  // VERSION EVALUATION
-  // -----------------------------
-  function evaluateStatus(cfg, APP_VERSION) {
-    function compare(a, b) {
-      const pa = a.split(".").map(Number);
-      const pb = b.split(".").map(Number);
-      for (let i = 0; i < 3; i++) {
-        if (pa[i] > pb[i]) return 1;
-        if (pa[i] < pb[i]) return -1;
-      }
-      return 0;
-    }
-
-    if (cfg.blocked) {
-      return { type: "blocked", message: cfg.blockMessage };
-    }
-
-    if (compare(APP_VERSION, cfg.minSupportedVersion) < 0) {
-      return {
-        type: "forceUpdate",
-        current: APP_VERSION,
-        latest: cfg.latestVersion,
-        message: cfg.updateMessage,
-        downloadUrl: cfg.downloadUrl,
-      };
-    }
-
-    if (compare(APP_VERSION, cfg.latestVersion) < 0) {
-      return {
-        type: "updateAvailable",
-        current: APP_VERSION,
-        latest: cfg.latestVersion,
-        message: cfg.updateMessage,
-        downloadUrl: cfg.downloadUrl,
-      };
-    }
-
-    return { type: "ok" };
+  async function loadLocalTree() {
+    setLoadingLocal(true);
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+    setLocalTree(data.docs.find((x) => x.name === "local-workspace"));
+    setLoadingLocal(false);
   }
 
-  const effectivePath = isLocalPath(currentDocPath) ? currentDocPath : "";
-
-  function normalizeLocalPath(p: string) {
-    return p
-      ?.replace(/^local-workspace\//, "")
-      .replace(/^local\//, "")
-      .replace(/^docs\//, "");
+  async function loadGithubTree() {
+    setLoadingGithub(true);
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+    setGithubTree(data.docs.find((x) => x.name !== "local-workspace"));
+    setLoadingGithub(false);
   }
 
-  const saving = useAutosave(
-    login,
-    effectivePath,
-    content,
-    async (path, content) => {
-      const clean = normalizeLocalPath(path);
-      console.log("Autosaving:", { path, clean });
+  async function refreshLocalWorkspace() {
+    const res = await fetch(`/api/docs/list?login=${login}`);
+    const data = await res.json();
+    setLocalTree(data.docs.find((x) => x.name === "local-workspace"));
+  }
 
-      await fetch(`/api/docs/save?login=${encodeURIComponent(login)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: clean, content }),
-      });
-    },
-  );
-
-  // -----------------------------
-  // EDITOR STATUS CHECK
-  // -----------------------------
+  /* -------------------------------------------------------
+     Version gate check
+  ------------------------------------------------------- */
   useEffect(() => {
     async function checkStatus() {
       const url =
@@ -313,57 +283,59 @@ export default function App() {
       }
 
       const cfg = await res.json();
-
-      // TIMEOUT CHECK
       const dismissedUntil = localStorage.getItem("rf_dismissed_until");
+
       if (dismissedUntil && Date.now() < Number(dismissedUntil)) {
         setEditorStatus({ type: "ok" });
         return;
       }
 
-      const status = evaluateStatus(cfg, APP_VERSION);
-      setEditorStatus(status);
+      function compare(a: string, b: string) {
+        const pa = a.split(".").map(Number);
+        const pb = b.split(".").map(Number);
+        for (let i = 0; i < 3; i++) {
+          if (pa[i] > pb[i]) return 1;
+          if (pa[i] < pb[i]) return -1;
+        }
+        return 0;
+      }
+
+      if (cfg.blocked) {
+        setEditorStatus({ type: "blocked", message: cfg.blockMessage });
+        return;
+      }
+
+      if (compare(APP_VERSION, cfg.minSupportedVersion) < 0) {
+        setEditorStatus({
+          type: "forceUpdate",
+          current: APP_VERSION,
+          latest: cfg.latestVersion,
+          message: cfg.updateMessage,
+          downloadUrl: cfg.downloadUrl,
+        });
+        return;
+      }
+
+      if (compare(APP_VERSION, cfg.latestVersion) < 0) {
+        setEditorStatus({
+          type: "updateAvailable",
+          current: APP_VERSION,
+          latest: cfg.latestVersion,
+          message: cfg.updateMessage,
+          downloadUrl: cfg.downloadUrl,
+        });
+        return;
+      }
+
+      setEditorStatus({ type: "ok" });
     }
 
     checkStatus();
   }, []);
 
-  // -----------------------------
-  // CLEAR AUTH
-  // -----------------------------
-  function clearAuth() {
-    setIsAuthenticated(false);
-    setLogin(null);
-    localStorage.removeItem("rf_login");
-  }
-
-  async function loadLocalTree() {
-    setLoadingLocal(true);
-
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
-
-    const local = data.docs.find((x) => x.name === "local-workspace");
-    setLocalTree(local);
-
-    setLoadingLocal(false);
-  }
-
-  async function loadGithubTree() {
-    setLoadingGithub(true);
-
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
-
-    const github = data.docs.find((x) => x.name !== "local-workspace");
-    setGithubTree(github);
-
-    setLoadingGithub(false);
-  }
-
-  // -----------------------------
-  // START DEVICE FLOW
-  // -----------------------------
+  /* -------------------------------------------------------
+     GitHub device flow
+  ------------------------------------------------------- */
   async function startGitHubLogin() {
     const res = await fetch("http://localhost:4000/api/auth/device/start", {
       method: "POST",
@@ -377,9 +349,6 @@ export default function App() {
     pollForAuth(data.device_code, data.interval);
   }
 
-  // -----------------------------
-  // POLL FOR AUTH COMPLETION
-  // -----------------------------
   async function pollForAuth(deviceCode: string, interval: number) {
     const poll = async () => {
       const res = await fetch("http://localhost:4000/api/auth/device/poll", {
@@ -407,30 +376,29 @@ export default function App() {
         setTimeout(poll, (interval + 2) * 1000);
         return;
       }
-
-      //console.error("Auth error:", data);
     };
 
     poll();
   }
 
-  // -----------------------------
-  // FILE OPERATIONS
-  // -----------------------------
+  /* -------------------------------------------------------
+     File operations
+  ------------------------------------------------------- */
   function saveLocal() {
-    fetch(
-      `http://localhost:4000/api/docs/save?login=${encodeURIComponent(login)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: currentDocPath,
-          content,
-          commitMessage,
-          email,
-        }),
-      },
-    );
+    if (!isLocalPath(currentDocPath)) return;
+
+    const clean = normalizeLocalPath(currentDocPath);
+
+    fetch(`/api/docs/save?login=${encodeURIComponent(login)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: clean,
+        content,
+        commitMessage,
+        email,
+      }),
+    });
   }
 
   function renameFileOnBackend(oldPath: string, newPath: string) {
@@ -453,15 +421,11 @@ export default function App() {
         branch,
         email,
       }),
-    }).then((res) => res.json());
+    });
   }
-
-  async function refreshDocsList() {
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
-    setTree(data.docs);
-  }
-
+  /* -------------------------------------------------------
+     Clone GitHub file to local
+  ------------------------------------------------------- */
   async function handleCloneToLocal() {
     const res = await fetch(
       `http://localhost:4000/api/docs/clone-to-local?login=${encodeURIComponent(login)}`,
@@ -474,33 +438,21 @@ export default function App() {
 
     const data = await res.json();
 
-    // Compute workspace image folder
     const clean = pendingGitHubPath.replace(/^docs\//, "");
     const folder = clean.replace(/[^/]+$/, "") + "img";
     setEditorImageFolder(folder);
 
-    // Load the new local file
     await loadDoc(data.localPath);
-
-    // ⭐ MUST happen immediately after loadDoc
     setCurrentDocPath(data.localPath);
 
-    // Refresh ONLY the local workspace tree
     await refreshLocalWorkspace();
 
-    // Collapse GitHub docs tree
     setOpenFolders((prev) => ({
       ...prev,
       docs: false,
-    }));
-
-    // Expand local-workspace tree
-    setOpenFolders((prev) => ({
-      ...prev,
       "local-workspace": true,
     }));
 
-    // Expand the folder containing the file
     const parentFolder = clean.replace(/[^/]+$/, "").replace(/\/$/, "");
     if (parentFolder) {
       setOpenFolders((prev) => ({
@@ -512,43 +464,9 @@ export default function App() {
     setShowEditModal(false);
   }
 
-  // -----------------------------
-  // LOAD DOCUMENT Trees
-  // -----------------------------
-
-  async function loadDocsTree() {
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
-
-    const github = data.docs.find((x) => x.name !== "local-workspace");
-    const local = data.docs.find((x) => x.name === "local-workspace");
-
-    setGithubTree(github);
-    setLocalTree(local);
-  }
-
-  async function loadGithubTree() {
-    setLoadingGithub(true); // optional but clean
-
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
-
-    const github = data.docs.find((x) => x.name !== "local-workspace");
-    setGithubTree(github);
-    setLoadingGithub(false);
-  }
-
-  async function refreshLocalWorkspace() {
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
-
-    const local = data.docs.find((x) => x.name === "local-workspace");
-    setLocalTree(local);
-  }
-
-  // -----------------------------
-  // LOAD DOCUMENT
-  // -----------------------------
+  /* -------------------------------------------------------
+     Load document
+  ------------------------------------------------------- */
   function loadDoc(path: string) {
     console.log("📄 [loadDoc] Requested path:", path);
 
@@ -560,6 +478,7 @@ export default function App() {
     }
 
     setCurrentDocPath(path);
+
     if (isLocalPath(path)) {
       localStorage.setItem("rf_last_opened_doc", path);
     }
@@ -571,16 +490,9 @@ export default function App() {
     )
       .then(async (res) => {
         if (!res.ok) {
-          // File is gone or load failed → clean up and don’t crash
-          console.warn(
-            "⚠️ loadDoc failed for path:",
-            path,
-            "status:",
-            res.status,
-          );
+          console.warn("⚠️ loadDoc failed:", path, res.status);
 
           if (res.status === 404) {
-            // Clear last-opened if it no longer exists
             const last = localStorage.getItem("rf_last_opened_doc");
             if (last === path) {
               localStorage.removeItem("rf_last_opened_doc");
@@ -599,17 +511,16 @@ export default function App() {
         if (!data) return;
         setContent(data.content || "");
       })
-      .catch((err) => {
-        console.error("❌ loadDoc error:", err);
+      .catch(() => {
         setContent("");
         setCurrentDocPath("");
         setShowEditModal(false);
       });
   }
 
-  // -----------------------------
-  // DRAG / RESIZE
-  // -----------------------------
+  /* -------------------------------------------------------
+     Drag / resize
+  ------------------------------------------------------- */
   function startDrag() {
     dragging.current = true;
   }
@@ -653,11 +564,10 @@ export default function App() {
     setDraggedItem(null);
   }
 
-  // VERSION GATE — safe and correct
-  if (!editorStatus) {
-    // still loading version info
-    return null;
-  }
+  /* -------------------------------------------------------
+     Version gate UI
+  ------------------------------------------------------- */
+  if (!editorStatus) return null;
 
   if (editorStatus.type === "blocked") {
     return <MaintenanceModal {...editorStatus} />;
@@ -671,10 +581,8 @@ export default function App() {
     return (
       <UpdateAvailableModal
         {...editorStatus}
-        //      onContinue={() => setEditorStatus({ type: "ok" })}
         onContinue={() => {
           const timeout = Date.now() + 60 * 1000;
-          //const timeout = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
           localStorage.setItem("rf_dismissed_until", timeout.toString());
           setEditorStatus({ type: "ok" });
         }}
@@ -682,9 +590,9 @@ export default function App() {
     );
   }
 
-  // -----------------------------
-  // AUTH GATE
-  // -----------------------------
+  /* -------------------------------------------------------
+     Auth gate
+  ------------------------------------------------------- */
   if (!isAuthenticated) {
     return (
       <div style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
@@ -736,13 +644,16 @@ export default function App() {
     );
   }
 
+  /* -------------------------------------------------------
+     Tree selection / drop handlers
+  ------------------------------------------------------- */
   const onSelect = (path: string) => {
     const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
 
     if (isImage) {
-      setEditorWidth(0); // collapse editor
+      setEditorWidth(0);
     } else {
-      setEditorWidth(50); // restore editor
+      setEditorWidth(50);
     }
 
     loadDoc(path);
@@ -808,10 +719,9 @@ export default function App() {
       </div>
     );
   }
-
-  // -----------------------------
-  // MAIN RETURN (AUTHENTICATED UI)
-  // -----------------------------
+  /* -------------------------------------------------------
+     Main return (authenticated UI)
+  ------------------------------------------------------- */
   return (
     <>
       {saving && (
@@ -828,9 +738,10 @@ export default function App() {
         </div>
       )}
 
-      {editorStatus && editorStatus.type === "updateAvailable" && (
+      {/* Optional: if you have an UpdateBanner component */}
+      {/* {editorStatus && editorStatus.type === "updateAvailable" && (
         <UpdateBanner {...editorStatus} />
-      )}
+      )} */}
 
       {user && (
         <div
