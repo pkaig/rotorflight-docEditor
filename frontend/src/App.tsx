@@ -145,6 +145,8 @@ export default function App() {
 
   /* GitHub clone modal */
   const [showEditModal, setShowEditModal] = useState(false);
+  const [isSyncingImages, setIsSyncingImages] = useState(false);
+
   const [pendingGitHubPath, setPendingGitHubPath] = useState("");
   const [editorImageFolder, setEditorImageFolder] = useState<string | null>(
     null,
@@ -427,6 +429,7 @@ export default function App() {
      Clone GitHub file to local
   ------------------------------------------------------- */
   async function handleCloneToLocal() {
+    setShowEditModal(false);
     const res = await fetch(
       `http://localhost:4000/api/docs/clone-to-local?login=${encodeURIComponent(login)}`,
       {
@@ -460,7 +463,7 @@ export default function App() {
         [`local-workspace/${parentFolder}`]: true,
       }));
     }
-
+    setIsSyncingImages(false);
     setShowEditModal(false);
   }
 
@@ -879,7 +882,7 @@ export default function App() {
               minWidth: "420px",
             }}
           >
-            {showEditModal && (
+            {showEditModal && !isSyncingImages && (
               <div className="edit-modal-overlay">
                 <div className="edit-modal-box">
                   <h3>Edit this file?</h3>
@@ -891,7 +894,53 @@ export default function App() {
                   </p>
 
                   <div className="edit-modal-buttons">
-                    <button onClick={handleCloneToLocal}>Edit this file</button>
+                    <button
+                      onClick={() => {
+                        setIsSyncingImages(true);
+                        handleCloneToLocal();
+                      }}
+                    >
+                      Edit this file
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isSyncingImages && (
+              <div className="edit-modal-overlay">
+                <div className="edit-modal-box">
+                  <h3>Loading images into workspace…</h3>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      marginTop: "1rem",
+                    }}
+                  >
+                    <svg
+                      className="loading-icon"
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      style={{ animation: "spin 1s linear infinite" }}
+                    >
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="9"
+                        fill="none"
+                        stroke="#856404"
+                        strokeWidth="2"
+                        strokeDasharray="56"
+                        strokeDashoffset="28"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+
+                    <span>Please wait while we sync the img/ folder…</span>
                   </div>
                 </div>
               </div>
