@@ -550,13 +550,12 @@ export default function App() {
   // LOAD DOCUMENT
   // -----------------------------
   function loadDoc(path: string) {
-    // 🔥 Intercept GitHub files before loading them
     console.log("📄 [loadDoc] Requested path:", path);
+
     if (path.startsWith("docs/")) {
       setShowEditModal(true);
       setPendingGitHubPath(path);
     } else {
-      // Local file → hide modal
       setShowEditModal(false);
     }
 
@@ -566,11 +565,45 @@ export default function App() {
     }
 
     fetch(
-      `http://localhost:4000/api/docs/load?path=${encodeURIComponent(path)}&login=${encodeURIComponent(login)}`,
+      `http://localhost:4000/api/docs/load?path=${encodeURIComponent(
+        path,
+      )}&login=${encodeURIComponent(login)}`,
     )
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          // File is gone or load failed → clean up and don’t crash
+          console.warn(
+            "⚠️ loadDoc failed for path:",
+            path,
+            "status:",
+            res.status,
+          );
+
+          if (res.status === 404) {
+            // Clear last-opened if it no longer exists
+            const last = localStorage.getItem("rf_last_opened_doc");
+            if (last === path) {
+              localStorage.removeItem("rf_last_opened_doc");
+            }
+          }
+
+          setContent("");
+          setCurrentDocPath("");
+          setShowEditModal(false);
+          return null;
+        }
+
+        return res.json();
+      })
       .then((data) => {
-        setContent(data.content);
+        if (!data) return;
+        setContent(data.content || "");
+      })
+      .catch((err) => {
+        console.error("❌ loadDoc error:", err);
+        setContent("");
+        setCurrentDocPath("");
+        setShowEditModal(false);
       });
   }
 
