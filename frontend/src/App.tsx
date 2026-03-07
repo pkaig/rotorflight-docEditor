@@ -121,6 +121,9 @@ export default function App() {
   const [openFolders, setOpenFolders] = useState({});
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const dragging = useRef(false);
+  const [showNewFileModal, setShowNewFileModal] = useState(false);
+  const [newFileFolder, setNewFileFolder] = useState<string | null>(null);
+  const [newFileName, setNewFileName] = useState("");
 
   const [localTree, setLocalTree] = useState<TreeNode | null>(null);
   const [githubTree, setGithubTree] = useState<TreeNode | null>(null);
@@ -481,9 +484,10 @@ export default function App() {
     }
 
     setCurrentDocPath(path);
-
+    console.log("📁 [loadDoc] Set currentDocPath:", path);
     if (isLocalPath(path)) {
       localStorage.setItem("rf_last_opened_doc", path);
+      console.log("📁 [loadDoc] Loading local path:", path);
     }
 
     fetch(
@@ -552,9 +556,9 @@ export default function App() {
 
     // Creating a new page
     if (draggedItem === "__NEW_PAGE__") {
-      const newPath = `${folderPath}/new-file.mdx`;
-      setCurrentDocPath(newPath);
-      setContent(newDocTemplate);
+      setNewFileFolder(targetFolderPath);
+      setNewFileName("");
+      setShowNewFileModal(true);
       setDraggedItem(null);
       return;
     }
@@ -664,10 +668,23 @@ export default function App() {
 
   function onDropFolder(targetFolderPath: string) {
     if (!draggedItem) return;
-    renameFileOnBackend(
-      draggedItem,
-      `${targetFolderPath}/${draggedItem.split("/").pop()}`,
-    ).then(() => refreshLocalWorkspace());
+
+    // Creating a new page
+    if (draggedItem === "__NEW_PAGE__") {
+      setNewFileFolder(targetFolderPath);
+      setNewFileName("");
+      setShowNewFileModal(true);
+      setDraggedItem(null);
+      return;
+    }
+
+    // Moving an existing file
+    const filename = draggedItem.split("/").pop();
+    const newPath = `${targetFolderPath}/${filename}`;
+
+    renameFileOnBackend(draggedItem, newPath).then(() =>
+      refreshLocalWorkspace(),
+    );
     setDraggedItem(null);
   }
 
@@ -741,6 +758,53 @@ export default function App() {
         </div>
       )}
 
+      {showNewFileModal && (
+        <div className="edit-modal-overlay">
+          <div className="edit-modal-box">
+            <h3>Create new page</h3>
+
+            <p>Enter a file name (without extension):</p>
+
+            <input
+              type="text"
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              placeholder="my-new-page"
+              style={{ width: "100%", marginTop: "0.5rem" }}
+            />
+
+            <div className="edit-modal-buttons" style={{ marginTop: "1rem" }}>
+              <button
+                onClick={() => {
+                  const safe = newFileName.trim().replace(/\s+/g, "-");
+                  if (!safe) return;
+
+                  const newPath = `${newFileFolder}/${safe}.mdx`;
+
+                  setCurrentDocPath(newPath);
+                  setContent(newDocTemplate);
+
+                  setShowNewFileModal(false);
+                  setNewFileFolder(null);
+                  refreshLocalWorkspace();
+                }}
+              >
+                Create
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowNewFileModal(false);
+                  setNewFileFolder(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Optional: if you have an UpdateBanner component */}
       {/* {editorStatus && editorStatus.type === "updateAvailable" && (
         <UpdateBanner {...editorStatus} />
@@ -797,7 +861,10 @@ export default function App() {
           <div style={{ flex: 1, overflowY: "auto" }}>
             <div
               draggable
-              onDragStart={() => setDraggedItem("__NEW_PAGE__")}
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", "__NEW_PAGE__");
+                setDraggedItem("__NEW_PAGE__");
+              }}
               className="new-page-draggable new-page-btn"
             >
               + New Page (drag into folder)
@@ -811,6 +878,12 @@ export default function App() {
                 setDraggedItem={setDraggedItem}
                 openFolders={openFolders}
                 setOpenFolders={setOpenFolders}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const payload = e.dataTransfer.getData("text/plain");
+                  if (payload) setDraggedItem(payload);
+                  if (node.path) onDropFolder(node.path);
+                }}
               />
             )}
 
