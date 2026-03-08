@@ -253,6 +253,7 @@ export default function App() {
 
   async function loadLocalTree() {
     setLoadingLocal(true);
+
     const res = await fetch(`/api/docs/list?login=${login}`);
     const data = await res.json();
     setLocalTree(data.docs.find((x) => x.name === "local-workspace"));
@@ -550,26 +551,6 @@ export default function App() {
       window.removeEventListener("mouseup", stopDrag);
     };
   }, []);
-
-  function handleDrop(folderPath: string) {
-    if (!draggedItem) return;
-
-    // Creating a new page
-    if (draggedItem === "__NEW_PAGE__") {
-      setNewFileFolder(targetFolderPath);
-      setNewFileName("");
-      setShowNewFileModal(true);
-      setDraggedItem(null);
-      return;
-    }
-
-    // Moving an existing file
-    const filename = draggedItem.split("/").pop();
-    const newPath = `${folderPath}/${filename}`;
-
-    renameFileOnBackend(draggedItem, newPath);
-    setDraggedItem(null);
-  }
 
   /* -------------------------------------------------------
      Version gate UI
