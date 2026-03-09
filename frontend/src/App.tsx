@@ -30,10 +30,7 @@ function isLocalPath(p: string) {
 }
 
 function normalizeLocalPath(p: string) {
-  return p
-    ?.replace(/^local-workspace\//, "")
-    .replace(/^local\//, "")
-    .replace(/^docs\//, "");
+  return p?.replace(/^local-workspace\//, "").replace(/^local\//, "");
 }
 
 /* -------------------------------------------------------
@@ -65,7 +62,7 @@ function Tree({
                 className={
                   "tree-folder folder-root " +
                   (node.name === "local-workspace" ? "folder-local" : "") +
-                  (node.name === "docs" ? "folder-docs" : "")
+                  (node.name === "Rotorflight-docs" ? "folder-docs" : "")
                 }
                 onClick={() => toggleFolder(node.path)}
                 onDragOver={(e) => e.preventDefault()}
@@ -208,7 +205,13 @@ export default function App() {
     if (!isAuthenticated || !login) return;
 
     const last = localStorage.getItem("rf_last_opened_doc");
-    if (last) loadDoc(last);
+    if (
+      last &&
+      (last.startsWith("local-workspace/") ||
+        last.startsWith("Rotorflight-docs/"))
+    ) {
+      loadDoc(last);
+    }
   }, [isAuthenticated, login]);
 
   /* -------------------------------------------------------
@@ -264,8 +267,13 @@ export default function App() {
     setLoadingGithub(true);
     const res = await fetch(`/api/docs/list?login=${login}`);
     const data = await res.json();
-    setGithubTree(data.docs.find((x) => x.name !== "local-workspace"));
+    setGithubTree(data.docs.find((x) => x.name === "Rotorflight-docs"));
     setLoadingGithub(false);
+
+    setOpenFolders((prev) => ({
+      ...prev,
+      "Rotorflight-docs": false,
+    }));
   }
 
   async function refreshLocalWorkspace() {
@@ -445,7 +453,7 @@ export default function App() {
 
     const data = await res.json();
 
-    const clean = pendingGitHubPath.replace(/^docs\//, "");
+    const clean = pendingGitHubPath.replace(/^Rotorflight-docs\//, "");
     const folder = clean.replace(/[^/]+$/, "") + "img";
     setEditorImageFolder(folder);
 
@@ -477,7 +485,7 @@ export default function App() {
   function loadDoc(path: string) {
     console.log("📄 [loadDoc] Requested path:", path);
 
-    if (path.startsWith("docs/")) {
+    if (path.startsWith("Rotorflight-docs/")) {
       setShowEditModal(true);
       setPendingGitHubPath(path);
     } else {
@@ -994,7 +1002,9 @@ export default function App() {
                       />
                     </svg>
 
-                    <span>Please wait while we sync the img/ folder…</span>
+                    <span>
+                      Please wait while we sync to the <br></br>local-workspace…
+                    </span>
                   </div>
                 </div>
               </div>

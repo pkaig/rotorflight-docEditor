@@ -55,6 +55,9 @@ function extractImagePaths(mdx) {
 }
 
 function resolveDocsPath(docPath, relPath) {
+  docPath = docPath.replace(/^Rotorflight-docs\//, "");
+  relPath = relPath.replace(/^Rotorflight-docs\//, "");
+
   const baseDir = docPath.replace(/[^/]+$/, "");
   const combined = baseDir + relPath;
 
@@ -101,7 +104,7 @@ router.get("/list", async (req, res) => {
     const node = {
       type: "dir",
       name: currentPath.split("/").pop() || "root",
-      path: currentPath,
+      path: `Rotorflight-docs/${currentPath}`,
       children: [],
     };
 
@@ -119,7 +122,7 @@ router.get("/list", async (req, res) => {
           node.children.push({
             type: "file",
             name: item.name,
-            path: item.path,
+            path: `Rotorflight-docs/${item.path}`,
           });
         }
       }
@@ -135,10 +138,7 @@ router.get("/list", async (req, res) => {
     async function walkDir(dir: string) {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
-      const relative = path
-        .relative(rootPath, dir)
-        .replace(/\\/g, "/")
-        .replace(/^docs\//, "");
+      const relative = path.relative(rootPath, dir).replace(/\\/g, "/");
 
       const node = {
         type: "dir",
@@ -185,7 +185,7 @@ router.get("/list", async (req, res) => {
   // EXECUTE
   // ---------------------------------------------
   try {
-    const tree = await walk("docs");
+    const tree = await walk("");
     const workspaceRoot = path.join(process.cwd(), "workspaces", login);
 
     let localTree = null;
@@ -195,13 +195,24 @@ router.get("/list", async (req, res) => {
 
     const roots = [];
 
-    if (tree) roots.push(tree);
+    // Wrap GitHub docs under Rotorflight-docs
+    if (tree) {
+      const allowed = ["docs", "versioned_docs"];
 
+      roots.push({
+        type: "dir",
+        name: "Rotorflight-docs",
+        path: "Rotorflight-docs",
+        children: tree.children.filter((child) => allowed.includes(child.name)),
+      });
+    }
+
+    // Local workspace
     if (localTree) {
       roots.push({
         type: "dir",
         name: "local-workspace",
-        path: "local",
+        path: "local-workspace",
         children: localTree.children,
       });
     }
@@ -258,9 +269,7 @@ router.get("/load", async (req, res) => {
     // LOCAL FILE (new logic)
     //
     if (filePath.startsWith("local-workspace/")) {
-      const localRelative = filePath
-        .replace(/^local-workspace\//, "")
-        .replace(/^docs\//, "");
+      const localRelative = filePath.replace(/^local-workspace\//, "");
 
       const fullPath = path.join(
         process.cwd(),
@@ -277,9 +286,7 @@ router.get("/load", async (req, res) => {
     // OLD LOCAL PREFIX (still supported)
     //
     if (filePath.startsWith("local/")) {
-      const localRelative = filePath
-        .replace(/^local\//, "")
-        .replace(/^docs\//, "");
+      const localRelative = filePath.replace(/^local\//, "");
 
       const fullPath = path.join(
         process.cwd(),
@@ -292,12 +299,17 @@ router.get("/load", async (req, res) => {
       return res.json({ content });
     }
 
-    //
     // GITHUB FILE
-    //
-    const result = await githubRequest<any>(
+    filePath = filePath.replace(/^Rotorflight-docs\//, "");
+
+    const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
+    console.log(
+      "Loading GitHub file:",
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    );
+    const result = await githubRequest(
       token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
     );
 
     const content = Buffer.from(result.content, "base64").toString("utf8");
@@ -322,17 +334,22 @@ router.post("/clone-to-local", async (req, res) => {
     //
     // 1. Fetch MDX file from GitHub
     //
+    const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
+    console.log(
+      "Cloning GitHub file:",
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    );
     const result = await githubRequest(
       token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
     );
 
     const content = Buffer.from(result.content, "base64").toString("utf8");
-
+    console.log("Fetched file from GitHub:", filePath);
     //
     // 2. Write MDX file to workspace
     //
-    const clean = filePath.replace(/^docs\//, "");
+    const clean = filePath.replace(/^Rotorflight-docs\//, "");
     const workspaceRoot = path.join(process.cwd(), "workspaces", login);
     const localPath = path.join(workspaceRoot, clean);
 
@@ -357,9 +374,14 @@ router.post("/clone-to-local", async (req, res) => {
     for (const absDocsPath of resolvedDocsPaths) {
       try {
         // Fetch file from GitHub
+        const githubImgPath = absDocsPath.replace(/^Rotorflight-docs\//, "");
+        console.log(
+          "Cloning imagese:",
+          `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubImgPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+        );
         const imgRes = await githubRequest(
           token,
-          `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${absDocsPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+          `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubImgPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
         );
 
         const imgData = Buffer.from(imgRes.content, "base64");
@@ -367,7 +389,7 @@ router.post("/clone-to-local", async (req, res) => {
         // Convert docs/... → local-workspace/...
         const localImgPath = path.join(
           workspaceRoot,
-          absDocsPath.replace(/^docs\//, ""),
+          absDocsPath.replace(/^Rotorflight-docs\//, ""),
         );
 
         await fs.promises.mkdir(path.dirname(localImgPath), {
@@ -383,7 +405,8 @@ router.post("/clone-to-local", async (req, res) => {
     // 6. Return correct local path
     //
     return res.json({
-      localPath: `local/${clean}`,
+      localPath: `local-workspace/${clean}`,
+      //localPath: `local/${clean}`,
     });
   } catch (err) {
     console.error("❌ clone-to-local error:", err);
@@ -392,8 +415,52 @@ router.post("/clone-to-local", async (req, res) => {
 });
 
 // ---------------------------------------------
-// SERVE LOCAL IMAGES
+// SERVE IMAGES
 // ---------------------------------------------
+// GITHUB images
+router.get("/image", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token } = auth;
+  let imgPath = req.query.path as string;
+
+  imgPath = imgPath.replace(/\\/g, "/");
+
+  // Strip Rotorflight-docs/ prefix
+  imgPath = imgPath.replace(/^Rotorflight-docs\//, "");
+
+  try {
+    const result = await githubRequest(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${imgPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    );
+
+    const data = Buffer.from(result.content, "base64");
+
+    const ext = path.extname(imgPath).toLowerCase();
+    const mime =
+      ext === ".png"
+        ? "image/png"
+        : ext === ".jpg" || ext === ".jpeg"
+          ? "image/jpeg"
+          : ext === ".gif"
+            ? "image/gif"
+            : ext === ".svg"
+              ? "image/svg+xml"
+              : ext === ".webp"
+                ? "image/webp"
+                : "application/octet-stream";
+
+    res.setHeader("Content-Type", mime);
+    return res.send(data);
+  } catch (err) {
+    console.error("❌ GitHub image error:", err);
+    return res.status(404).end();
+  }
+});
+
+// LOCAL IMAGES
 router.get("/images/local", async (req, res) => {
   const auth = requireToken(req, res);
   if (!auth) return;
@@ -403,14 +470,8 @@ router.get("/images/local", async (req, res) => {
 
   imgPath = imgPath.replace(/\\/g, "/");
 
-  if (currentDocPath.startsWith("local/")) {
-    // LOCAL IMAGE
-    const clean = resolved.replace(/^local\//, "").replace(/^docs\//, "");
-    props.src = `/api/docs/images/local?path=${clean}&login=${login}`;
-  } else {
-    // GITHUB IMAGE
-    props.src = `/api/docs/image?path=${resolved}&login=${login}`;
-  }
+  // imgPath is already "docs/.../img/foo.png"
+  const fullPath = path.join(process.cwd(), "workspaces", login, imgPath);
 
   try {
     return res.sendFile(fullPath);

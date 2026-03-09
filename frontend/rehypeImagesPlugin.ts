@@ -1,55 +1,44 @@
-console.log("rehypeImagesPlugin loaded");
-
 import { visit } from "unist-util-visit";
 
 export default function rehypeImages(currentDocPath: string) {
-  // e.g. "docs/setup/governor-flyrotor-setup.mdx" → "docs/setup/"
+  // Determine if this is a local workspace file
+  const isLocal = currentDocPath.startsWith("local-workspace/");
+
+  // Directory containing the MDX file
+  // e.g. "Rotorflight-docs/docs/setup/foo.mdx" → "Rotorflight-docs/docs/setup/"
+  // e.g. "local-workspace/docs/setup/foo.mdx" → "local-workspace/docs/setup/"
   const docDir = currentDocPath.replace(/[^/]+$/, "");
-  const isLocal = currentDocPath.startsWith("local/");
 
   return (tree: any) => {
-    if (!tree || typeof tree !== "object") return;
-
     visit(tree, "element", (node: any) => {
-      if (!node || !node.properties) return;
+      if (!node.properties) return;
 
       const tag = node.tagName;
       if (tag !== "img" && tag !== "video") return;
 
-      const props = node.properties as { [key: string]: any };
+      const props = node.properties;
       const src = props.src;
+      if (!src || typeof src !== "string") return;
 
-      if (typeof src !== "string" || !src) return;
+      // Skip URLs already rewritten
+      if (src.startsWith("http://") || src.startsWith("https://")) return;
+      if (src.startsWith("data:")) return;
 
-      // 1. Skip already‑rewritten backend URLs
-      if (src.startsWith("http://localhost:4000/api/images")) {
-        return;
-      }
-
-      // 2. Skip external URLs
-      if (src.startsWith("http://") || src.startsWith("https://")) {
-        return;
-      }
-
-      // 3. Skip data URLs
-      if (src.startsWith("data:")) {
-        return;
-      }
-
-      // 4. Treat everything else as doc‑relative
-      const cleanDocDir = docDir.replace(/^local\//, "");
-      const combined = `${cleanDocDir}${src}`;
+      // Resolve relative to the MDX file directory
+      const combined = `${docDir}${src}`;
       const resolved = combined.replace(/\/\.\//g, "/");
-
-      console.log(`🟥 [rehypeImages] Rewriting relative: ${src} → ${resolved}`);
-
+      const login = localStorage.getItem("rf_login");
       if (isLocal) {
-        // LOCAL WORKSPACE IMAGE: strip local/ and docs/
-        const clean = resolved.replace(/^local\//, "").replace(/^docs\//, "");
-        props.src = `http://localhost:4000/api/images/local?path=${clean}`;
+        // LOCAL WORKSPACE
+        // Strip "local-workspace/" prefix so backend receives "docs/.../img/foo.png"
+        const clean = resolved.replace(/^local-workspace\//, "");
+
+        props.src = `/api/docs/images/local?path=${clean}&login=${encodeURIComponent(login)}`;
       } else {
-        // GITHUB IMAGE: keep docs/ and go through cache
-        props.src = `http://localhost:4000/api/images?path=${resolved}`;
+        // GITHUB
+        // Preserve full path including Rotorflight-docs and version folders
+
+        props.src = `/api/docs/image?path=${resolved}&login=${encodeURIComponent(login)}`;
       }
     });
   };
