@@ -138,7 +138,10 @@ router.get("/list", async (req, res) => {
     async function walkDir(dir: string) {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
-      const relative = path.relative(rootPath, dir).replace(/\\/g, "/");
+      const relative = path
+        .relative(rootPath, dir)
+        .replace(/\\/g, "/")
+        .replace(/^docs\//, "");
 
       const node = {
         type: "dir",
@@ -269,7 +272,9 @@ router.get("/load", async (req, res) => {
     // LOCAL FILE (new logic)
     //
     if (filePath.startsWith("local-workspace/")) {
-      const localRelative = filePath.replace(/^local-workspace\//, "");
+      const localRelative = filePath
+        .replace(/^local-workspace\//, "")
+        .replace(/^docs\//, "");
 
       const fullPath = path.join(
         process.cwd(),
@@ -286,7 +291,9 @@ router.get("/load", async (req, res) => {
     // OLD LOCAL PREFIX (still supported)
     //
     if (filePath.startsWith("local/")) {
-      const localRelative = filePath.replace(/^local\//, "");
+      const localRelative = filePath
+        .replace(/^local\//, "")
+        .replace(/^docs\//, "");
 
       const fullPath = path.join(
         process.cwd(),
@@ -335,13 +342,9 @@ router.post("/clone-to-local", async (req, res) => {
     // 1. Fetch MDX file from GitHub
     //
     const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
-    console.log(
-      "Cloning GitHub file:",
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
-    );
     const result = await githubRequest(
       token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
     );
 
     const content = Buffer.from(result.content, "base64").toString("utf8");
@@ -504,6 +507,28 @@ router.post("/save", async (req, res) => {
   } catch (err) {
     console.error("❌ Failed to save file:", err);
     res.status(500).json({ error: "Failed to save file" });
+  }
+});
+
+// ---------------------------------------------
+// GET CURRENT GITHUB COMMIT HASH
+// ---------------------------------------------
+router.get("/github-hash", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token } = auth;
+
+  try {
+    const commit = await githubRequest(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${GITHUB_DEFAULT_BRANCH}`,
+    );
+
+    return res.json({ hash: commit.sha });
+  } catch (err) {
+    console.error("❌ Failed to fetch GitHub hash:", err);
+    return res.status(500).json({ error: "Failed to fetch GitHub hash" });
   }
 });
 

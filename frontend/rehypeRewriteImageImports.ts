@@ -12,21 +12,21 @@ export default function rehypeImportedImages(tree, file) {
   if (file.path.includes("/local-workspace/")) {
     const after = file.path.split("/local-workspace/")[1];
     currentDocPath = "local-workspace/" + after;
+    console.log("Detected local workspace file:", currentDocPath);
   }
 
   // GitHub docs file
-  else if (file.path.includes("/docs/")) {
-    const after = file.path.split("/docs/")[1];
-    currentDocPath = "docs/" + after;
+  else if (file.path.includes("/Rotorflight-docs/")) {
+    const after = file.path.split("/Rotorflight-docs/")[1];
+    currentDocPath = "Rotorflight-docs/" + after;
   }
 
-  // Fallback (should never happen)
+  // Fallback
   else {
     currentDocPath = file.path;
   }
 
   visit(tree, "mdxjsEsm", (node) => {
-    console.log("MDX ESM NODE:", node);
     if (!node || typeof node.value !== "string") return;
 
     const match = node.value.match(
@@ -41,7 +41,24 @@ export default function rehypeImportedImages(tree, file) {
       .join(path.dirname(currentDocPath), importPath)
       .replace(/\\/g, "/");
 
-    const rewritten = `/api/images?path=${resolved}`;
+    const login =
+      typeof window !== "undefined" ? localStorage.getItem("rf_login") : "";
+
+    let rewritten;
+
+    if (resolved.startsWith("local-workspace/")) {
+      // LOCAL WORKSPACE
+      const clean = resolved.replace(/^local-workspace\//, "");
+      rewritten = `/api/docs/images/local?path=${clean}&login=${encodeURIComponent(login)}`;
+      console.log("Resolved local workspace image:", {
+        resolved,
+        clean,
+        rewritten,
+      });
+    } else {
+      // GITHUB
+      rewritten = `/api/docs/image?path=${resolved}&login=${encodeURIComponent(login)}`;
+    }
 
     console.log("IMPORT REWRITE HIT:", { importPath, resolved, rewritten });
 

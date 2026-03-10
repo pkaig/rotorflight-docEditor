@@ -10,6 +10,8 @@ import {
   UpdateAvailableModal,
 } from "./versionModals";
 
+const HASH_KEY = "rf_github_hash";
+const TREE_KEY = "rf_github_tree";
 const APP_VERSION = "1.4.2";
 
 /* -------------------------------------------------------
@@ -198,83 +200,153 @@ export default function App() {
       })
       .catch(() => {});
   }, []);
+
   /* -------------------------------------------------------
-     Restore last opened doc immediately after login
-  ------------------------------------------------------- */
+   Has the Rotorflight-docs changed?
+   If so, invalidate cache and reload tree
+------------------------------------------------------- */
   useEffect(() => {
     if (!isAuthenticated || !login) return;
 
-    const last = localStorage.getItem("rf_last_opened_doc");
-    if (
-      last &&
-      (last.startsWith("local-workspace/") ||
-        last.startsWith("Rotorflight-docs/"))
-    ) {
-      loadDoc(last);
+    async function init() {
+      console.log("🔍 Hash check starting…");
+
+      const cachedHash = localStorage.getItem(HASH_KEY);
+      const cachedTree = localStorage.getItem(TREE_KEY);
+
+      const res = await fetch(
+        `http://localhost:4000/api/docs/github-hash?login=${encodeURIComponent(login)}`,
+      );
+
+      if (!res.ok) {
+        console.warn("⚠️ Failed to fetch GitHub hash");
+        return;
+      }
+
+      const { hash: currentHash } = await res.json();
+      console.log("📦 Current hash:", currentHash, "Cached:", cachedHash);
+
+      if (cachedHash && cachedHash === currentHash && cachedTree) {
+        console.log("🌳 Using cached GitHub tree");
+        const parsed = JSON.parse(cachedTree);
+
+        const githubRoot = parsed.find((n) => n.name === "Rotorflight-docs");
+        const localRoot = parsed.find((n) => n.name === "local-workspace");
+
+        setGithubTree(githubRoot || null);
+        setLocalTree(localRoot || null);
+
+        setLoadingGithub(false);
+        setLoadingLocal(false);
+        return;
+      }
+
+      console.log("🔄 Hash changed → refreshing GitHub tree");
+
+      const treeRes = await fetch(
+        `http://localhost:4000/api/docs/list?login=${encodeURIComponent(login)}`,
+      );
+
+      if (!treeRes.ok) {
+        console.warn("⚠️ Failed to fetch GitHub tree");
+        return;
+      }
+
+      const { docs } = await treeRes.json();
+
+      localStorage.setItem(TREE_KEY, JSON.stringify(docs));
+      localStorage.setItem(HASH_KEY, currentHash);
+
+      const githubRoot = docs.find((n) => n.name === "Rotorflight-docs");
+      const localRoot = docs.find((n) => n.name === "local-workspace");
+
+      setGithubTree(githubRoot || null);
+      setLocalTree(localRoot || null);
+
+      setLoadingGithub(false);
+      setLoadingLocal(false);
     }
+
+    init();
   }, [isAuthenticated, login]);
+
+  /* -------------------------------------------------------
+     Restore last opened doc immediately after login
+  ------------------------------------------------------- */
+  // useEffect(() => {
+  //   if (!isAuthenticated || !login) return;
+
+  //   const last = localStorage.getItem("rf_last_opened_doc");
+  //   if (
+  //     last &&
+  //     (last.startsWith("local-workspace/") ||
+  //       last.startsWith("Rotorflight-docs/"))
+  //   ) {
+  //     loadDoc(last);
+  //   }
+  // }, [isAuthenticated, login]);
 
   /* -------------------------------------------------------
      Verify last opened doc exists after trees load
   ------------------------------------------------------- */
-  useEffect(() => {
-    if (!isAuthenticated || !login) return;
-    if (!localTree || !localTree.children) return;
-    if (!githubTree) return;
+  // useEffect(() => {
+  //   if (!isAuthenticated || !login) return;
+  //   if (!localTree || !localTree.children) return;
+  //   if (!githubTree) return;
 
-    const last = localStorage.getItem("rf_last_opened_doc");
-    if (!last) return;
+  //   const last = localStorage.getItem("rf_last_opened_doc");
+  //   if (!last) return;
 
-    function treeHasPath(node: TreeNode, target: string): boolean {
-      if (!node) return false;
-      if (node.path === target) return true;
-      if (!node.children) return false;
-      return node.children.some((child) => treeHasPath(child, target));
-    }
+  //   function treeHasPath(node: TreeNode, target: string): boolean {
+  //     if (!node) return false;
+  //     if (node.path === target) return true;
+  //     if (!node.children) return false;
+  //     return node.children.some((child) => treeHasPath(child, target));
+  //   }
 
-    const exists =
-      treeHasPath(localTree, last) || treeHasPath(githubTree, last);
+  //   const exists =
+  //     treeHasPath(localTree, last) || treeHasPath(githubTree, last);
 
-    if (!exists) {
-      localStorage.removeItem("rf_last_opened_doc");
-    }
-  }, [isAuthenticated, login, localTree, githubTree]);
+  //   if (!exists) {
+  //     localStorage.removeItem("rf_last_opened_doc");
+  //   }
+  // }, [isAuthenticated, login, localTree, githubTree]);
 
   /* -------------------------------------------------------
      Load trees
   ------------------------------------------------------- */
-  useEffect(() => {
-    if (!isAuthenticated || !login) return;
-    loadLocalTree();
-  }, [isAuthenticated, login]);
+  // useEffect(() => {
+  //   if (!isAuthenticated || !login) return;
+  //   loadLocalTree();
+  // }, [isAuthenticated, login]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !login) return;
-    if (!localTree || !localTree.children) return;
-    loadGithubTree();
-  }, [localTree, isAuthenticated, login]);
+  // useEffect(() => {
+  //   if (!isAuthenticated || !login) return;
+  //   if (!localTree || !localTree.children) return;
+  //   loadGithubTree();
+  // }, [localTree, isAuthenticated, login]);
 
-  async function loadLocalTree() {
-    setLoadingLocal(true);
+  // async function loadLocalTree() {
+  //   setLoadingLocal(true);
 
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
-    setLocalTree(data.docs.find((x) => x.name === "local-workspace"));
-    setLoadingLocal(false);
-  }
+  //   const res = await fetch(`/api/docs/list?login=${login}`);
+  //   const data = await res.json();
+  //   setLocalTree(data.docs.find((x) => x.name === "local-workspace"));
+  //   setLoadingLocal(false);
+  // }
 
-  async function loadGithubTree() {
-    setLoadingGithub(true);
-    const res = await fetch(`/api/docs/list?login=${login}`);
-    const data = await res.json();
-    setGithubTree(data.docs.find((x) => x.name === "Rotorflight-docs"));
-    setLoadingGithub(false);
+  // async function loadGithubTree() {
+  //   setLoadingGithub(true);
+  //   const res = await fetch(`/api/docs/list?login=${login}`);
+  //   const data = await res.json();
+  //   setGithubTree(data.docs.find((x) => x.name === "Rotorflight-docs"));
+  //   setLoadingGithub(false);
 
-    setOpenFolders((prev) => ({
-      ...prev,
-      "Rotorflight-docs": false,
-    }));
-  }
+  //   setOpenFolders((prev) => ({
+  //     ...prev,
+  //     "Rotorflight-docs": false,
+  //   }));
+  // }
 
   async function refreshLocalWorkspace() {
     const res = await fetch(`/api/docs/list?login=${login}`);
@@ -482,35 +554,67 @@ export default function App() {
   /* -------------------------------------------------------
      Load document
   ------------------------------------------------------- */
-  function loadDoc(path: string) {
-    console.log("📄 [loadDoc] Requested path:", path);
+  function loadDoc(inputPath: string) {
+    console.log("📄 [loadDoc] Requested path:", inputPath);
 
-    if (path.startsWith("Rotorflight-docs/")) {
+    const login = localStorage.getItem("rf_login");
+
+    // --- 1. Normalize the path -----------------------------------------
+    let normalized: string;
+
+    // Local workspace
+    if (inputPath.startsWith("local-workspace/")) {
+      // Backend expects "docs/.../file.mdx"
+      //normalized = inputPath;
+      normalized = inputPath.replace(/^local-workspace\//, "");
+    }
+
+    // GitHub docs
+    else if (inputPath.startsWith("Rotorflight-docs/")) {
+      // Pass through unchanged
+      normalized = inputPath;
+    }
+
+    // Fallback: treat as GitHub path missing prefix
+    else if (inputPath.startsWith("docs/")) {
+      normalized = "Rotorflight-docs/" + inputPath;
+    } else {
+      console.warn("⚠️ Unknown path format, passing through:", inputPath);
+      normalized = inputPath;
+    }
+
+    console.log("📁 [loadDoc] Normalized path:", normalized);
+
+    // --- 2. Modal gating for GitHub files -------------------------------
+    if (normalized.startsWith("Rotorflight-docs/")) {
       setShowEditModal(true);
-      setPendingGitHubPath(path);
+      setPendingGitHubPath(normalized);
     } else {
       setShowEditModal(false);
     }
 
-    setCurrentDocPath(path);
-    console.log("📁 [loadDoc] Set currentDocPath:", path);
-    if (isLocalPath(path)) {
-      localStorage.setItem("rf_last_opened_doc", path);
-      console.log("📁 [loadDoc] Loading local path:", path);
+    // --- 3. Update state ------------------------------------------------
+    setCurrentDocPath(normalized);
+    console.log("📁 [loadDoc] Set currentDocPath:", normalized);
+
+    // Save last opened local doc
+    if (normalized.startsWith("local-workspace/")) {
+      localStorage.setItem("rf_last_opened_doc", normalized);
     }
 
+    // --- 4. Fetch from backend -----------------------------------------
     fetch(
       `http://localhost:4000/api/docs/load?path=${encodeURIComponent(
-        path,
+        normalized,
       )}&login=${encodeURIComponent(login)}`,
     )
       .then(async (res) => {
         if (!res.ok) {
-          console.warn("⚠️ loadDoc failed:", path, res.status);
+          console.warn("⚠️ loadDoc failed:", normalized, res.status);
 
           if (res.status === 404) {
             const last = localStorage.getItem("rf_last_opened_doc");
-            if (last === path) {
+            if (last === normalized) {
               localStorage.removeItem("rf_last_opened_doc");
             }
           }

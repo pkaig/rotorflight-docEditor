@@ -31,9 +31,10 @@ export default function rehypeImages(currentDocPath: string) {
       if (isLocal) {
         // LOCAL WORKSPACE
         // Strip "local-workspace/" prefix so backend receives "docs/.../img/foo.png"
-        const clean = resolved.replace(/^local-workspace\//, "");
+        //const clean = resolved.replace(/^local-workspace\//, "");
 
-        props.src = `/api/docs/images/local?path=${clean}&login=${encodeURIComponent(login)}`;
+        //props.src = `/api/docs/images/local?path=${clean}&login=${encodeURIComponent(login)}`;
+        props.src = `/api/docs/images/local?path=${resolved}&login=${encodeURIComponent(login)}`;
       } else {
         // GITHUB
         // Preserve full path including Rotorflight-docs and version folders
