@@ -564,9 +564,12 @@ export default function App() {
 
     // Local workspace
     if (inputPath.startsWith("local-workspace/")) {
-      // Backend expects "docs/.../file.mdx"
-      //normalized = inputPath;
-      normalized = inputPath.replace(/^local-workspace\//, "");
+      if (inputPath.startsWith("local-workspace/versioned_docs/")) {
+        normalized = inputPath.replace(/^local-workspace\//, "");
+      } else {
+        //normalized = inputPath;
+        normalized = inputPath.replace(/^local-workspace\//, "docs/");
+      }
     }
 
     // GitHub docs
