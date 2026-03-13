@@ -4,6 +4,8 @@ import PreviewErrorBoundary from "./PreviewErrorBoundary";
 import Preview from "./Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
 import { useAutosave } from "./hooks/useAutosave";
+import { useGitPR } from "./useGitPR";
+import { PRPanel } from "./PRPanel";
 import {
   MaintenanceModal,
   ForceUpdateModal,
@@ -154,6 +156,23 @@ export default function App() {
     null,
   );
 
+  function refreshGitHubTree() {
+    fetch(`/api/docs/list?login=${login}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setGithubTree(data.docs.find((x) => x.name === "Rotorflight-docs"));
+      });
+  }
+
+  function clearEditor() {
+    setContent("");
+    setCurrentDocPath(null);
+  }
+
+  function openEditFileModal() {
+    setShowEditModal(true);
+  }
+
   /* Version gate */
   const [editorStatus, setEditorStatus] = useState<null | {
     type: "blocked" | "forceUpdate" | "updateAvailable" | "ok";
@@ -271,82 +290,27 @@ export default function App() {
   }, [isAuthenticated, login]);
 
   /* -------------------------------------------------------
-     Restore last opened doc immediately after login
+     Git PR hooks
   ------------------------------------------------------- */
-  // useEffect(() => {
-  //   if (!isAuthenticated || !login) return;
-
-  //   const last = localStorage.getItem("rf_last_opened_doc");
-  //   if (
-  //     last &&
-  //     (last.startsWith("local-workspace/") ||
-  //       last.startsWith("Rotorflight-docs/"))
-  //   ) {
-  //     loadDoc(last);
-  //   }
-  // }, [isAuthenticated, login]);
-
-  /* -------------------------------------------------------
-     Verify last opened doc exists after trees load
-  ------------------------------------------------------- */
-  // useEffect(() => {
-  //   if (!isAuthenticated || !login) return;
-  //   if (!localTree || !localTree.children) return;
-  //   if (!githubTree) return;
-
-  //   const last = localStorage.getItem("rf_last_opened_doc");
-  //   if (!last) return;
-
-  //   function treeHasPath(node: TreeNode, target: string): boolean {
-  //     if (!node) return false;
-  //     if (node.path === target) return true;
-  //     if (!node.children) return false;
-  //     return node.children.some((child) => treeHasPath(child, target));
-  //   }
-
-  //   const exists =
-  //     treeHasPath(localTree, last) || treeHasPath(githubTree, last);
-
-  //   if (!exists) {
-  //     localStorage.removeItem("rf_last_opened_doc");
-  //   }
-  // }, [isAuthenticated, login, localTree, githubTree]);
+  const {
+    banner,
+    activePR,
+    submitPR,
+    notifyFileSaved,
+    notifyFileRenamed,
+    notifyFileDeleted,
+    notifyFileCreated,
+    editFile,
+    clearBanner,
+  } = useGitPR({
+    refreshGitHubTree,
+    clearEditor,
+    openEditFileModal,
+  });
 
   /* -------------------------------------------------------
      Load trees
   ------------------------------------------------------- */
-  // useEffect(() => {
-  //   if (!isAuthenticated || !login) return;
-  //   loadLocalTree();
-  // }, [isAuthenticated, login]);
-
-  // useEffect(() => {
-  //   if (!isAuthenticated || !login) return;
-  //   if (!localTree || !localTree.children) return;
-  //   loadGithubTree();
-  // }, [localTree, isAuthenticated, login]);
-
-  // async function loadLocalTree() {
-  //   setLoadingLocal(true);
-
-  //   const res = await fetch(`/api/docs/list?login=${login}`);
-  //   const data = await res.json();
-  //   setLocalTree(data.docs.find((x) => x.name === "local-workspace"));
-  //   setLoadingLocal(false);
-  // }
-
-  // async function loadGithubTree() {
-  //   setLoadingGithub(true);
-  //   const res = await fetch(`/api/docs/list?login=${login}`);
-  //   const data = await res.json();
-  //   setGithubTree(data.docs.find((x) => x.name === "Rotorflight-docs"));
-  //   setLoadingGithub(false);
-
-  //   setOpenFolders((prev) => ({
-  //     ...prev,
-  //     "Rotorflight-docs": false,
-  //   }));
-  // }
 
   async function refreshLocalWorkspace() {
     const res = await fetch(`/api/docs/list?login=${login}`);
@@ -495,20 +459,20 @@ export default function App() {
     });
   }
 
-  function submitPR() {
-    fetch("http://localhost:4000/api/docs/submit-pr", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: currentDocPath,
-        content,
-        commitMessage,
-        prBody,
-        branch,
-        email,
-      }),
-    });
-  }
+  // function submitPR() {
+  //   fetch("http://localhost:4000/api/docs/submit-pr", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json" },
+  //     body: JSON.stringify({
+  //       path: currentDocPath,
+  //       content,
+  //       commitMessage,
+  //       prBody,
+  //       branch,
+  //       email,
+  //     }),
+  //   });
+  // }
   /* -------------------------------------------------------
      Clone GitHub file to local
   ------------------------------------------------------- */
@@ -840,6 +804,14 @@ export default function App() {
   ------------------------------------------------------- */
   return (
     <>
+      {/* {banner && (
+        <Banner
+          type={banner.type}
+          prNumber={banner.prNumber}
+          onClose={clearBanner}
+        />
+      )} */}
+
       {saving && (
         <div
           style={{
@@ -994,45 +966,15 @@ export default function App() {
               />
             )}
           </div>
-
-          <div className="commit-panel" style={{ marginTop: "1rem" }}>
-            <input
-              type="text"
-              placeholder="Commit message"
-              value={commitMessage}
-              onChange={(e) => setCommitMessage(e.target.value)}
-            />
-
-            <textarea
-              placeholder="PR description (optional)"
-              value={prBody}
-              onChange={(e) => setPrBody(e.target.value)}
-            />
-
-            <div className="row" style={{ display: "flex", gap: "0.75rem" }}>
-              <input
-                type="text"
-                placeholder="Branch name"
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-              />
-
-              <input
-                type="text"
-                placeholder="Author email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-
-            <div
-              className="buttons"
-              style={{ display: "flex", gap: "0.75rem" }}
-            >
-              <button onClick={saveLocal}>Save to Local</button>
-              <button onClick={submitPR}>Submit PR</button>
-            </div>
-          </div>
+          <PRPanel
+            slug={currentDocPath}
+            refreshGitHubTree={refreshGitHubTree}
+            clearEditor={() => {
+              setContent("");
+              setCurrentDocPath(null);
+            }}
+            openEditFileModal={() => setShowEditFileModal(true)}
+          />
         </div>
 
         {/* EDITOR + PREVIEW */}

@@ -1,9 +1,8 @@
-/* #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-} */
+/* ============================================================
+   1. LEGACY VITE / LOGO STYLES
+   These are from the original Vite template. Safe to keep,
+   but isolated so they don’t clutter the real app styles.
+   ============================================================ */
 
 .logo {
   height: 6em;
@@ -11,22 +10,14 @@
   will-change: filter;
   transition: filter 300ms;
 }
+
 .logo:hover {
   filter: drop-shadow(0 0 2em #646cffaa);
 }
+
 .logo.react:hover {
   filter: drop-shadow(0 0 2em #61dafbaa);
 }
-
-/* .commit-panel {
-  padding: 0 1rem; 
- } */
-
-/* .commit-panel input,
-.commit-panel textarea {
-  width: 100%;
-  box-sizing: border-box; 
-} */
 
 @keyframes logo-spin {
   from {
@@ -51,7 +42,11 @@
   color: #888;
 }
 
-/* Optional: subtle fade-in animation */
+/* ============================================================
+   2. SHARED ANIMATIONS
+   Used by modals, spinners, and fade‑in UI elements.
+   ============================================================ */
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -63,22 +58,31 @@
   }
 }
 
-/* Overlay that covers ONLY the editor panel */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================
+   3. EDITOR "EDIT THIS FILE" MODAL
+   This modal appears when the user opens a GitHub-backed file.
+   ============================================================ */
+
 .edit-modal-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 20; /* above editor content */
+  z-index: 20;
   pointer-events: auto;
 }
 
-/* Modal box */
 .edit-modal-box {
   background: white;
   padding: 2rem;
@@ -89,18 +93,6 @@
   margin: 2rem;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   animation: fadeIn 0.2s ease-out;
-}
-
-/* Fade animation */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 
 .edit-modal-buttons {
@@ -132,17 +124,23 @@
   background: #f0f0f0;
 }
 
+/* ============================================================
+   4. FILE TREE ROOT FOLDER STYLING
+   Local workspace (blue) and GitHub docs (yellow).
+   ============================================================ */
+
 .folder-root {
   display: block;
   width: 100%;
-  padding: 5px 14px; /* increased padding */
-  border-radius: 10px; /* stronger rounded corners */
+  padding: 5px 14px;
+  border-radius: 10px;
   font-weight: 600;
-  margin: 2px 0 0px 0; /* consistent spacing */
+  margin: 2px 0 0 0;
   cursor: pointer;
   box-sizing: border-box;
 }
 
+/* Local workspace root */
 .folder-local {
   background: #eaf7ff;
   border: 1px solid #bcdcff;
@@ -153,6 +151,7 @@
   background: #d4eaff;
 }
 
+/* GitHub docs root */
 .folder-docs {
   background: #fff3cd;
   border: 1px solid #ffeeba;
@@ -163,57 +162,319 @@
   background: #ffe8a6;
 }
 
-/* Extra margin above the root folders */
+/* Extra spacing above root folders */
 .folder-local,
 .folder-docs {
-  margin-top: 10px; /* space above */
+  margin-top: 10px;
 }
 
-/* Optional: even more separation from previous items */
 .tree-list > li > .tree-dir > .folder-local,
 .tree-list > li > .tree-dir > .folder-docs {
   margin-top: 12px;
 }
 
+/* Remove bullet only for top-level roots (local-workspace, rotorflight-docs) */
+/* .tree-list > li:has(> details > summary.folder-root) {
+  list-style: none;
+} */
+
+/* Remove bullet only for leaf items (final files: md/mdx) */
+/* .tree-list li:not(:has(details)) {
+  list-style: none;
+} */
+
+/* ============================================================
+   5. LOADING BANNERS
+   These appear when local workspace or GitHub data is loading.
+   ============================================================ */
+
 .loading-icon {
   animation: spin 1.2s linear infinite;
 }
 
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
 .loading-local-banner {
-  background: #e6f3ff; /* same light blue */
-  margin-bottom: 0.75rem;
-  border: 1px solid #bcdcff; /* same border tone */
-  border-radius: 8px; /* same rounded corners */
-  padding: 8px 12px; /* slightly larger for banner */
-  color: #004a80; /* same text tone as tree root */
-  font-weight: 500; /* match tree button weight */
+  background: #e6f3ff;
+  border: 1px solid #bcdcff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #004a80;
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   margin: 8px 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* optional subtle lift */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .loading-github-banner {
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
   background: #fff3cd;
   border: 1px solid #ffeeba;
   border-radius: 4px;
+  padding: 0.5rem 0.75rem;
   color: #856404;
   font-weight: 500;
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 8px 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* optional subtle lift */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================================================
+   6. PR DESCRIPTION MODAL
+   Shown when user clicks "Set up PR".
+   ============================================================ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-submit {
+  background: #0070f3;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: none;
+}
+
+.modal-cancel {
+  background: #eee;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: none;
+}
+
+/* ============================================================
+   7. PR PANEL BUTTON
+   The single "Set up PR" button.
+   ============================================================ */
+
+.submit-pr {
+  background: #0070f3;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+/* ============================================================
+   8. GLOBAL BANNER (PR lifecycle + notifications)
+   Appears at the top of the workspace when PR events occur.
+   ============================================================ */
+
+.banner {
+  background: #eaf7ff; /* light blue (matches local workspace) */
+  border-left: 4px solid #0070f3; /* strong blue accent */
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin: 0 0 1rem 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  color: #004a80; /* same tone as folder-local */
+  animation: fadeIn 0.2s ease-out;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.banner button {
+  background: transparent;
+  border: none;
+  color: #004a80;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.banner button:hover {
+  color: #002f52;
+}
+
+/* ============================================================
+   9. MARKDOWN PREVIEW (rf-preview)
+   Unified styling for headings, text, code, tables, images,
+   blockquotes, admonitions, and tabbed content.
+   ============================================================ */
+
+.rf-preview {
+  font-family: system-ui, sans-serif;
+  line-height: 1.65;
+  color: #1a1a1a;
+  padding: 1rem;
+}
+
+/* Headings */
+.rf-preview h1,
+.rf-preview h2,
+.rf-preview h3,
+.rf-preview h4 {
+  font-weight: 600;
+  margin-top: 1.8rem;
+  margin-bottom: 0.8rem;
+}
+
+/* Paragraphs */
+.rf-preview p {
+  margin: 1rem 0;
+}
+
+/* Inline code */
+.rf-preview code {
+  background: #f5f5f5;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+/* Code blocks */
+.rf-preview pre code {
+  display: block;
+  padding: 1rem;
+  background: #f5f5f5;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+/* Tables */
+.rf-preview table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.rf-preview table th,
+.rf-preview table td {
+  border: 1px solid #ddd;
+  padding: 0.5rem 0.75rem;
+}
+
+/* Images */
+.rf-preview img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 1rem 0;
+}
+
+/* Blockquotes */
+.rf-preview blockquote {
+  border-left: 4px solid #ccc;
+  padding-left: 1rem;
+  color: #555;
+  margin: 1rem 0;
+}
+
+/* ============================================================
+   10. ADMONITIONS (Docusaurus-style callouts)
+   ============================================================ */
+
+.rf-preview .admonition {
+  border-left: 6px solid var(--adm-color);
+  background: var(--adm-bg);
+  padding: 1rem;
+  border-radius: 6px;
+  margin: 1.2rem 0;
+}
+
+.rf-preview .admonition-title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--adm-color);
+}
+
+/* NOTE */
+.rf-preview .admonition-note {
+  --adm-color: #2b6cb0;
+  --adm-bg: #ebf4ff;
+}
+
+/* INFO */
+.rf-preview .admonition-info {
+  --adm-color: #4a5568;
+  --adm-bg: #f7fafc;
+}
+
+/* WARNING / CAUTION */
+.rf-preview .admonition-warning,
+.rf-preview .admonition-caution {
+  --adm-color: #d69e2e;
+  --adm-bg: #fffaf0;
+}
+
+/* DANGER */
+.rf-preview .admonition-danger {
+  --adm-color: #c53030;
+  --adm-bg: #fff5f5;
+}
+
+/* TIP */
+.rf-preview .admonition-tip {
+  --adm-color: #2f855a;
+  --adm-bg: #f0fff4;
+}
+
+/* ============================================================
+   11. TABS (Markdown tabbed content)
+   ============================================================ */
+
+.rf-tabs {
+  margin: 1rem 0;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
+.rf-tabs-header {
+  display: flex;
+  background: #1e1e1e;
+  border-bottom: 1px solid #333;
+}
+
+.rf-tab {
+  padding: 6px 12px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: #ccc;
+}
+
+.rf-tab.active {
+  background: #2a2a2a;
+  color: #fff;
+  font-weight: 600;
+}
+
+.rf-tabs-body {
+  padding: 12px;
+}
+
+.rf-tab-panel {
+  animation: fadeIn 0.15s ease;
 }

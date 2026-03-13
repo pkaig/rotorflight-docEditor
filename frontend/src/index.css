@@ -1,3 +1,8 @@
+/* ============================================================
+   1. ROOT THEME + GLOBAL TYPOGRAPHY
+   Global variables, color scheme, and base font settings.
+   ============================================================ */
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -13,14 +18,10 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
+/* ============================================================
+   2. GLOBAL ELEMENT STYLING
+   Applies to all pages and components.
+   ============================================================ */
 
 body {
   margin: 0;
@@ -28,6 +29,16 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+
+a:hover {
+  color: #535bf2;
 }
 
 h1 {
@@ -46,131 +57,40 @@ button {
   cursor: pointer;
   transition: border-color 0.25s;
 }
+
 button:hover {
   border-color: #646cff;
 }
+
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
+
+/* ============================================================
+   3. LIGHT MODE OVERRIDES
+   Applies automatically when system prefers light theme.
+   ============================================================ */
 
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
     background-color: #ffffff;
   }
+
   a:hover {
     color: #747bff;
   }
+
   button {
     background-color: #f9f9f9;
   }
 }
-.rf-preview {
-  font-family: system-ui, sans-serif;
-  line-height: 1.65;
-  color: #1a1a1a;
-  padding: 1rem;
-}
 
-.rf-preview h1,
-.rf-preview h2,
-.rf-preview h3,
-.rf-preview h4 {
-  font-weight: 600;
-  margin-top: 1.8rem;
-  margin-bottom: 0.8rem;
-}
-
-.rf-preview p {
-  margin: 1rem 0;
-}
-
-.rf-preview code {
-  background: #f5f5f5;
-  padding: 2px 4px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-}
-
-.rf-preview pre code {
-  display: block;
-  padding: 1rem;
-  background: #f5f5f5;
-  border-radius: 6px;
-  overflow-x: auto;
-}
-
-.rf-preview table {
-  border-collapse: collapse;
-  margin: 1rem 0;
-}
-
-.rf-preview table th,
-.rf-preview table td {
-  border: 1px solid #ddd;
-  padding: 0.5rem 0.75rem;
-}
-
-.rf-preview img {
-  max-width: 100%;
-  border-radius: 6px;
-  margin: 1rem 0;
-}
-
-.rf-preview blockquote {
-  border-left: 4px solid #ccc;
-  padding-left: 1rem;
-  color: #555;
-  margin: 1rem 0;
-}
-
-/* Admonitions */
-.rf-preview .admonition {
-  border-left: 6px solid #4c8bf5;
-  background: #f0f6ff;
-  padding: 1rem;
-  border-radius: 6px;
-  margin: 1.2rem 0;
-}
-
-.rf-preview .admonition-title {
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-}
-.rf-tabs {
-  margin: 1rem 0;
-  border: 1px solid #333;
-  border-radius: 6px;
-}
-
-.rf-tabs-header {
-  display: flex;
-  background: #1e1e1e;
-  border-bottom: 1px solid #333;
-}
-
-.rf-tab {
-  padding: 6px 12px;
-  cursor: pointer;
-  background: none;
-  border: none;
-  color: #ccc;
-}
-
-.rf-tab.active {
-  background: #2a2a2a;
-  color: #fff;
-  font-weight: 600;
-}
-
-.rf-tabs-body {
-  padding: 12px;
-}
-
-.rf-tab-panel {
-  animation: fadeIn 0.15s ease;
-}
+/* ============================================================
+   4. GLOBAL ANIMATIONS
+   Shared animations used across the app.
+   ============================================================ */
 
 @keyframes fadeIn {
   from {
@@ -181,165 +101,6 @@ button:focus-visible {
   }
 }
 
-/* Base container */
-.admonition {
-  border-left: 4px solid var(--adm-color);
-  background: var(--adm-bg);
-  padding: 0.75rem 1rem;
-  margin: 1.25rem 0;
-  border-radius: 4px;
-}
-
-/* Title bar */
-.admonition-title {
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--adm-color);
-}
-
-/* NOTE — blue */
-.admonition-note {
-  --adm-color: #2b6cb0;
-  --adm-bg: #ebf4ff;
-}
-
-/* INFO — gray */
-.admonition-info {
-  --adm-color: #4a5568;
-  --adm-bg: #f7fafc;
-}
-
-/* CAUTION — yellow */
-.admonition-warning,
-.admonition-caution {
-  --adm-color: #d69e2e;
-  --adm-bg: #fffaf0;
-}
-
-/* Danger */
-.admonition-danger {
-  --adm-color: #c53030;
-  --adm-bg: #fff5f5;
-}
-
-/* Tip */
-.admonition-tip {
-  --adm-color: #2f855a;
-  --adm-bg: #f0fff4;
-}
-
-.commit-panel {
-  background: #f7f7f7;
-  padding: 1rem;
-  border-radius: 6px;
-  margin-top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.commit-panel input,
-.commit-panel textarea {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 0.9rem;
-}
-
-.commit-panel textarea {
-  min-height: 80px;
-  resize: vertical;
-}
-
-.commit-panel .row {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.commit-panel .buttons {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.commit-panel button {
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.commit-panel button:first-child {
-  background: #e2e8f0;
-}
-
-.commit-panel button:last-child {
-  background: #3182ce;
-  color: white;
-}
-
-.commit-panel {
-  background: #f7f7f7;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-/* Inputs */
-.commit-panel input,
-.commit-panel textarea {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  background: white;
-}
-
-.commit-panel textarea {
-  min-height: 70px;
-  resize: vertical;
-}
-
-/* Row layout */
-.commit-panel .row {
-  display: flex;
-  gap: 0.75rem;
-}
-
-/* Buttons */
-.commit-panel .buttons {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.commit-panel button {
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.commit-panel button:first-child {
-  background: #e2e8f0;
-}
-
-.commit-panel button:last-child {
-  background: #3182ce;
-  color: white;
-}
-
-.loading-icon {
-  animation: spin 1s linear infinite;
-  transform-origin: center;
-}
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -347,85 +108,4 @@ button:focus-visible {
   to {
     transform: rotate(360deg);
   }
-}
-
-/* Sidebar container */
-.sidebar {
-  background: #f8f9fa;
-  border-right: 1px solid #ddd;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  font-family: system-ui, sans-serif;
-}
-
-/* New Page button */
-.new-page-btn {
-  margin-bottom: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  color: #24292f;
-  transition:
-    background 0.15s,
-    border-color 0.15s;
-}
-
-.new-page-btn:hover {
-  background: #f3f4f6;
-  border-color: #c2c8cf;
-}
-
-/* Tree list */
-.tree-list {
-  list-style: none;
-  padding-left: 0.5rem;
-  margin: 0;
-}
-
-/* Tree items */
-.tree-item {
-  padding: 0.25rem 0.25rem;
-  border-radius: 4px;
-  cursor: pointer;
-  color: #0366d6;
-  font-size: 0.9rem;
-  transition: background 0.15s;
-}
-
-.tree-item:hover {
-  background: #e9ecef;
-}
-
-/* Directory <summary> styling */
-.tree-dir > summary {
-  cursor: pointer;
-  padding: 0.25rem 0.25rem;
-  border-radius: 4px;
-  font-weight: 600;
-  color: #24292f;
-  transition: background 0.15s;
-}
-
-.tree-dir > summary:hover {
-  background: #e9ecef;
-}
-
-.new-page-draggable {
-  padding: 0.5rem 0.75rem;
-  background: #ffffff;
-  border: 1px dashed #999;
-  border-radius: 6px;
-  margin-bottom: 1rem;
-  cursor: grab;
-  color: #333;
-}
-.new-page-draggable:active {
-  cursor: grabbing;
 }
