@@ -293,55 +293,6 @@ export default function App() {
         </div>
       )}
 
-      {showNewFileModal && (
-        <div className="edit-modal-overlay">
-          <div className="edit-modal-box">
-            <h3>Create new page</h3>
-
-            <p>Enter a file name (without extension):</p>
-
-            <input
-              type="text"
-              value={newFileName}
-              onChange={(e) => setNewFileName(e.target.value)}
-              placeholder="my-new-page"
-              style={{ width: "100%", marginTop: "0.5rem" }}
-            />
-
-            <div className="edit-modal-buttons" style={{ marginTop: "1rem" }}>
-              <button
-                onClick={() => {
-                  const safe = newFileName.trim().replace(/\s+/g, "-");
-                  if (!safe || !newFileFolder) return;
-
-                  const newPath = `${newFileFolder}/${safe}.mdx`;
-
-                  setCurrentDocPath(newPath);
-                  setContent(newDocTemplate);
-
-                  notifyFileCreated("Rotorflight-docs", newPath);
-
-                  setShowNewFileModal(false);
-                  setNewFileFolder(null);
-                  refreshLocalWorkspace();
-                }}
-              >
-                Create
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowNewFileModal(false);
-                  setNewFileFolder(null);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {user && (
         <div
           style={{
@@ -424,10 +375,24 @@ export default function App() {
           <ChangesPanel changes={changes} />
         </div>
 
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            overflow: "hidden",
+            height: "100%", // ← required
+            position: "relative", // ← helps anchor children
+          }}
+        >
           <div
             className="editor-container"
-            style={{ width: `${editorWidth}%` }} // keep dynamic width inline
+            style={{
+              width: `${editorWidth}%`,
+              position: "relative", // ← anchor for modal
+              display: "flex",
+              flexDirection: "column",
+              height: "100%", // ensures overlay fills only this panel
+            }}
           >
             {showEditModal && !isSyncingImages && (
               <div className="edit-modal-overlay">
@@ -497,6 +462,57 @@ export default function App() {
             )}
 
             <h3>Editor</h3>
+            {showNewFileModal && (
+              <div className="edit-modal-overlay">
+                <div className="edit-modal-box">
+                  <h3>Create new page</h3>
+
+                  <p>Enter a file name (without extension):</p>
+
+                  <input
+                    type="text"
+                    value={newFileName}
+                    onChange={(e) => setNewFileName(e.target.value)}
+                    placeholder="my-new-page"
+                    style={{ width: "100%", marginTop: "0.5rem" }}
+                  />
+
+                  <div
+                    className="edit-modal-buttons"
+                    style={{ marginTop: "1rem" }}
+                  >
+                    <button
+                      onClick={() => {
+                        const safe = newFileName.trim().replace(/\s+/g, "-");
+                        if (!safe || !newFileFolder) return;
+
+                        const newPath = `${newFileFolder}/${safe}.mdx`;
+
+                        setCurrentDocPath(newPath);
+                        setContent(newDocTemplate);
+
+                        notifyFileCreated("Rotorflight-docs", newPath);
+
+                        setShowNewFileModal(false);
+                        setNewFileFolder(null);
+                        refreshLocalWorkspace();
+                      }}
+                    >
+                      Create
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowNewFileModal(false);
+                        setNewFileFolder(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <textarea
               value={content}
