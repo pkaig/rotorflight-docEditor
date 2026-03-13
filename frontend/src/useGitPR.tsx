@@ -1,5 +1,3 @@
-// useGitPR.tsx
-
 import { useState, useCallback } from "react";
 
 export type PRStatus =
@@ -22,6 +20,22 @@ interface UseGitPROptions {
   openEditFileModal: (path: string) => void;
 }
 
+/* -------------------------------------------------------
+   Change tracking types
+------------------------------------------------------- */
+type ChangeEntry = {
+  path: string;
+  type: "added" | "modified" | "deleted" | "renamed";
+  from?: string;
+};
+
+type ChangeSet = {
+  added: ChangeEntry[];
+  modified: ChangeEntry[];
+  deleted: ChangeEntry[];
+  renamed: ChangeEntry[];
+};
+
 export function useGitPR({
   refreshGitHubTree,
   clearEditor,
@@ -31,8 +45,26 @@ export function useGitPR({
     type: PRStatus;
     prNumber?: number;
   }>(null);
+
   const [activePR, setActivePR] = useState<number | null>(null);
 
+  /* -------------------------------------------------------
+     Change tracking state
+  ------------------------------------------------------- */
+  const [changes, setChanges] = useState<ChangeSet>({
+    added: [],
+    modified: [],
+    deleted: [],
+    renamed: [],
+  });
+
+  function mergeUnique(list: ChangeEntry[], entry: ChangeEntry) {
+    return list.some((i) => i.path === entry.path) ? list : [...list, entry];
+  }
+
+  /* -------------------------------------------------------
+     Backend response handler
+  ------------------------------------------------------- */
   const handleBackendResponse = useCallback(
     (res: PRResponse) => {
       switch (res.status) {
@@ -50,6 +82,14 @@ export function useGitPR({
           refreshGitHubTree();
           setActivePR(null);
           setBanner({ type: "pr_merged", prNumber: res.prNumber });
+
+          // Reset changes after merge
+          setChanges({
+            added: [],
+            modified: [],
+            deleted: [],
+            renamed: [],
+          });
           break;
 
         case "pr_closed":
@@ -57,6 +97,14 @@ export function useGitPR({
           refreshGitHubTree();
           setActivePR(null);
           setBanner({ type: "pr_closed", prNumber: res.prNumber });
+
+          // Reset changes after close
+          setChanges({
+            added: [],
+            modified: [],
+            deleted: [],
+            renamed: [],
+          });
           break;
 
         case "pr_open":
@@ -70,6 +118,9 @@ export function useGitPR({
     [clearEditor, refreshGitHubTree],
   );
 
+  /* -------------------------------------------------------
+     Submit PR
+  ------------------------------------------------------- */
   const submitPR = useCallback(
     async (slug: string, description: string) => {
       const res = await fetch("/api/docs/submit-pr", {
@@ -85,8 +136,18 @@ export function useGitPR({
     [handleBackendResponse],
   );
 
+  /* -------------------------------------------------------
+     Change tracking + backend notify functions
+  ------------------------------------------------------- */
+
   const notifyFileSaved = useCallback(
     async (slug: string, path: string) => {
+      // Track modification
+      setChanges((prev) => ({
+        ...prev,
+        modified: mergeUnique(prev.modified, { path, type: "modified" }),
+      }));
+
       const res = await fetch("/api/docs/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -101,6 +162,16 @@ export function useGitPR({
 
   const notifyFileRenamed = useCallback(
     async (slug: string, oldPath: string, newPath: string) => {
+      // Track rename
+      setChanges((prev) => ({
+        ...prev,
+        renamed: mergeUnique(prev.renamed, {
+          path: newPath,
+          from: oldPath,
+          type: "renamed",
+        }),
+      }));
+
       const res = await fetch("/api/docs/rename", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -115,6 +186,12 @@ export function useGitPR({
 
   const notifyFileDeleted = useCallback(
     async (slug: string, path: string) => {
+      // Track deletion
+      setChanges((prev) => ({
+        ...prev,
+        deleted: mergeUnique(prev.deleted, { path, type: "deleted" }),
+      }));
+
       const res = await fetch("/api/docs/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -129,6 +206,12 @@ export function useGitPR({
 
   const notifyFileCreated = useCallback(
     async (slug: string, path: string) => {
+      // Track creation
+      setChanges((prev) => ({
+        ...prev,
+        added: mergeUnique(prev.added, { path, type: "added" }),
+      }));
+
       const res = await fetch("/api/docs/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -141,6 +224,9 @@ export function useGitPR({
     [handleBackendResponse],
   );
 
+  /* -------------------------------------------------------
+     Edit file
+  ------------------------------------------------------- */
   const editFile = useCallback(
     (path: string) => {
       openEditFileModal(path);
@@ -148,10 +234,14 @@ export function useGitPR({
     [openEditFileModal],
   );
 
+  /* -------------------------------------------------------
+     Return API
+  ------------------------------------------------------- */
   return {
     banner,
     activePR,
     submitPR,
+    changes,
     notifyFileSaved,
     notifyFileRenamed,
     notifyFileDeleted,

@@ -6,6 +6,8 @@ import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
 import { useAutosave } from "./hooks/useAutosave";
 import { useGitPR } from "./useGitPR";
 import { PRPanel } from "./PRPanel";
+import { ChangesPanel } from "./ChangesPanel";
+
 import {
   MaintenanceModal,
   ForceUpdateModal,
@@ -173,6 +175,23 @@ export default function App() {
     setShowEditModal(true);
   }
 
+  const {
+    banner,
+    activePR,
+    submitPR,
+    changes,
+    notifyFileSaved,
+    notifyFileRenamed,
+    notifyFileDeleted,
+    notifyFileCreated,
+    editFile,
+    clearBanner,
+  } = useGitPR({
+    refreshGitHubTree,
+    clearEditor,
+    openEditFileModal,
+  });
+
   /* Version gate */
   const [editorStatus, setEditorStatus] = useState<null | {
     type: "blocked" | "forceUpdate" | "updateAvailable" | "ok";
@@ -197,6 +216,9 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: clean, content }),
       });
+
+      // Tell the PR system that this file changed
+      notifyFileSaved("Rotorflight-docs", clean);
     },
   );
 
@@ -292,21 +314,6 @@ export default function App() {
   /* -------------------------------------------------------
      Git PR hooks
   ------------------------------------------------------- */
-  const {
-    banner,
-    activePR,
-    submitPR,
-    notifyFileSaved,
-    notifyFileRenamed,
-    notifyFileDeleted,
-    notifyFileCreated,
-    editFile,
-    clearBanner,
-  } = useGitPR({
-    refreshGitHubTree,
-    clearEditor,
-    openEditFileModal,
-  });
 
   /* -------------------------------------------------------
      Load trees
@@ -975,6 +982,7 @@ export default function App() {
             }}
             openEditFileModal={() => setShowEditFileModal(true)}
           />
+          <ChangesPanel changes={changes} />
         </div>
 
         {/* EDITOR + PREVIEW */}
