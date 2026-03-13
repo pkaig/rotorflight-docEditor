@@ -3,10 +3,10 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
-import remarkAdmonitions from "./remarkAdmonitions";
+import remarkAdmonitions from "../remarkAdmonitions";
 import remarkRehype from "remark-rehype";
 import rehypeRaw from "rehype-raw";
-import rehypeImages from "../rehypeImagesPlugin";
+import rehypeImages from "../mdx/rehypeImagesPlugin";
 import rehypeStringify from "rehype-stringify";
 
 async function fetchEditorStatus() {

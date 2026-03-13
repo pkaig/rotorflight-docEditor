@@ -1,7 +1,7 @@
 // PRPanel.tsx
 
 import { useState } from "react";
-import { useGitPR } from "./useGitPR";
+import { useGitPR } from "../hooks/useGitPR";
 
 import { PRDescriptionModal } from "./PRDescriptionModal";
 

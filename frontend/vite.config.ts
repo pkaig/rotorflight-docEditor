@@ -2,9 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import mdx from "@mdx-js/rollup";
 
-import rehypeImages from "./rehypeImagesPlugin";
-import rehypeRewriteMarkdownImages from "./rehypeRewriteMarkdownImages";
-import rehypeImportedImages from "./rehypeRewriteImageImports";
+import rehypeImages from "./src/mdx/rehypeImagesPlugin";
+//import rehypeRewriteMarkdownImages from "./src/mdx/rehypeRewriteImageImports";
+import rehypeImportedImages from "./src/mdx/rehypeRewriteImageImports";
 
 export default defineConfig({
   plugins: [

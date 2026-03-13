@@ -478,3 +478,137 @@
 .rf-tab-panel {
   animation: fadeIn 0.15s ease;
 }
+
+/* ============================================================
+   12. LAYOUT STYLES
+   Flexbox-based layout for sidebar, editor, and preview.
+   ============================================================ */
+
+/* Sidebar */
+.sidebar {
+  width: 300px;
+  border-right: 1px solid #ccc;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Editor + Preview wrapper */
+.main-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Editor container */
+.editor-container {
+  padding: 1rem;
+  border-right: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  min-width: 420px;
+}
+
+/* Preview container */
+.preview-container {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+/* Drag handle */
+.drag-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: #eee;
+}
+
+/* ============================================================
+   13. USER BAR
+   ============================================================ */
+
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #f0f0f0;
+  border-bottom: 1px solid #ccc;
+}
+
+.user-bar img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+/* ============================================================
+   14. SAVING INDICATOR
+   Small text in the editor that appears when changes are being saved.
+   ============================================================ */
+
+.saving-indicator {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+/* ============================================================
+   14. MODAL OVERLAYS
+   Used for both the "Edit this file" prompt and the PR description modal.
+   ============================================================ */
+
+.edit-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.edit-modal-box {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  width: 420px;
+  max-width: 90%;
+}
+
+.edit-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* ============================================================
+   15. LOADING BANNERS
+   ============================================================ */
+
+.loading-local-banner,
+.loading-github-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #fff3cd;
+  border: 1px solid #ffeeba;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.loading-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
