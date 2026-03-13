@@ -106,10 +106,11 @@ export function useDocEditor(login: string | null) {
     const folder = clean.replace(/[^/]+$/, "") + "img";
     setEditorImageFolder(folder);
 
+    await refreshLocalWorkspace();
     loadDoc(data.localPath);
     setCurrentDocPath(data.localPath);
 
-    await refreshLocalWorkspace();
+    //await refreshLocalWorkspace();
 
     setIsSyncingImages(false);
     setShowEditModal(false);
