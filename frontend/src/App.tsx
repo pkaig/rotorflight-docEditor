@@ -91,11 +91,15 @@ export default function App() {
     async (path, content) => {
       const clean = normalizeLocalPath(path);
 
+      console.log("Autosaving", clean);
+
       await fetch(`/api/docs/save?login=${encodeURIComponent(login || "")}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: clean, content }),
       });
+
+      console.log("Saved", clean);
 
       notifyFileSaved("Rotorflight-docs", clean);
     },

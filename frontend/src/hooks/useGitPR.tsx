@@ -142,11 +142,16 @@ export function useGitPR({
 
   const notifyFileSaved = useCallback(
     async (slug: string, path: string) => {
-      // Track modification
       setChanges((prev) => ({
         ...prev,
         modified: mergeUnique(prev.modified, { path, type: "modified" }),
       }));
+
+      console.log(
+        "🔧 [notifyFileSaved] Notifying backend of saved file:",
+        slug,
+        path,
+      );
 
       const res = await fetch("/api/docs/save", {
         method: "POST",

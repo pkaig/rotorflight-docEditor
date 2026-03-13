@@ -342,10 +342,17 @@ router.post("/clone-to-local", async (req, res) => {
     // 1. Fetch MDX file from GitHub
     //
     const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
+
     const result = await githubRequest(
       token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
     );
+
+    // const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
+    // const result = await githubRequest(
+    //   token,
+    //   `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    // );
 
     const content = Buffer.from(result.content, "base64").toString("utf8");
     console.log("Fetched file from GitHub:", filePath);
