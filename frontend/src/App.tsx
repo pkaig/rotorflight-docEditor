@@ -18,7 +18,7 @@ import { useVersionGate } from "./hooks/useVersionGate";
 import { useDocTrees } from "./hooks/useDocTrees";
 import { useDocEditor } from "./hooks/useDocEditor";
 import { useDragResize } from "./hooks/useDragResize";
-import { isLocalPath, normalizeLocalPath } from "./utils/paths";
+import { isLocalPath, normaliseLocalPath } from "./utils/paths";
 
 export default function App() {
   const {
@@ -57,7 +57,6 @@ export default function App() {
   } = useDocEditor(login);
 
   const { editorWidth, startDrag } = useDragResize(50);
-
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const [showNewFileModal, setShowNewFileModal] = useState(false);
@@ -76,32 +75,37 @@ export default function App() {
     notifyFileCreated,
     editFile,
     clearBanner,
+    clearAllChanges,
   } = useGitPR({
     refreshGitHubTree,
     clearEditor,
     openEditFileModal: () => setShowEditModal(true),
+    login,
   });
 
-  const effectivePath = isLocalPath(currentDocPath) ? currentDocPath : "";
+  const effectivePath = currentDocPath || "";
 
   const saving = useAutosave(
     login || "",
     effectivePath,
     content,
     async (path, content) => {
-      const clean = normalizeLocalPath(path);
+      // Convert editor path → workspace-relative path
+      const workspaceRelative = path
+        .replace(/^local-workspace\//, "")
+        .replace(/^Rotorflight-docs\//, "");
 
-      console.log("Autosaving", clean);
+      console.log("Autosaving", workspaceRelative);
 
       await fetch(`/api/docs/save?login=${encodeURIComponent(login || "")}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: clean, content }),
+        body: JSON.stringify({ path: workspaceRelative, content }),
       });
 
-      console.log("Saved", clean);
+      console.log("Saved", workspaceRelative);
 
-      notifyFileSaved("Rotorflight-docs", clean);
+      notifyFileSaved("Rotorflight-docs", workspaceRelative);
     },
   );
 
@@ -172,7 +176,7 @@ export default function App() {
               {userCode}
             </p>
 
-            <p style={{ marginTop: "0.5rem" }}>Waiting for authorization…</p>
+            <p style={{ marginTop: "0.5rem" }}>Waiting for authorisation…</p>
           </div>
         )}
       </div>
@@ -180,12 +184,14 @@ export default function App() {
   }
 
   const onSelect = (path: string) => {
-    const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
+    // Ignore folder clicks (no extension)
+    if (!/\.[a-z0-9]+$/i.test(path)) {
+      return;
+    }
 
+    const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
     if (isImage) {
-      setEditorWidth(0);
-    } else {
-      // via hook: editorWidth is controlled; we just leave it
+      // setEditorWidth(0);
     }
 
     loadDoc(path);
@@ -318,6 +324,7 @@ export default function App() {
       <div style={{ display: "flex", height: "100vh" }}>
         <div className="sidebar">
           <h3>Docs</h3>
+          <button onClick={refreshLocalWorkspace}>Refresh Local</button>
 
           {loadingLocal && (
             <div className="loadingLocalWorkspace">
@@ -343,6 +350,10 @@ export default function App() {
               + New Page (drag into folder)
             </div>
 
+            {console.log(
+              "FRONTEND LOCAL TREE:",
+              JSON.stringify(localTree, null, 2),
+            )}
             {localTree && (
               <Tree
                 nodes={[localTree]}
@@ -372,7 +383,30 @@ export default function App() {
             clearEditor={clearEditor}
             openEditFileModal={() => setShowEditModal(true)}
           />
-          <ChangesPanel changes={changes} />
+          <div className="changes-panel">
+            <button
+              className="clear-all-btn"
+              onClick={async () => {
+                if (!confirm("This will delete ALL local changes. Continue?"))
+                  return;
+
+                await fetch(
+                  `/api/docs/reset-local?login=${encodeURIComponent(login || "")}`,
+                  {
+                    method: "POST",
+                  },
+                );
+
+                refreshLocalWorkspace();
+                refreshGitHubTree();
+
+                clearAllChanges();
+              }}
+            >
+              Clear all changes
+            </button>
+            <ChangesPanel changes={changes} />
+          </div>
         </div>
 
         <div
@@ -491,7 +525,8 @@ export default function App() {
                         setCurrentDocPath(newPath);
                         setContent(newDocTemplate);
 
-                        notifyFileCreated("Rotorflight-docs", newPath);
+                        notifyFileCreated("local-workspace", newPath);
+                        //notifyFileCreated("Rotorflight-docs", newPath);
 
                         setShowNewFileModal(false);
                         setNewFileFolder(null);

@@ -14,7 +14,7 @@ export function PRDescriptionModal({ isOpen, onSubmit, onCancel }) {
 
         <textarea
           className="modal-textarea"
-          placeholder="Describe your changes (optional)"
+          placeholder="Describe your changes"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />

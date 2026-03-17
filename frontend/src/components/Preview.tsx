@@ -54,11 +54,11 @@ function resolveImportPath(currentDocPath, relPath) {
     return acc;
   }, []);
 
-  const normalized = parts.join("/");
-  //  console.log("   normalized:", normalized);
+  const normalised = parts.join("/");
+  //  console.log("   normalised:", normalised);
   //console.log("🔧 [resolveImportPath] END\n");
 
-  return normalized;
+  return normalised;
 }
 
 // ---------------------------------------------------------
@@ -81,15 +81,15 @@ function extractImportMap(content, currentDocPath) {
 
     //console.log("   📥 MDX IMPORT FOUND:", varName, relPath);
 
-    const normalized = resolveImportPath(currentDocPath, relPath);
+    const normalised = resolveImportPath(currentDocPath, relPath);
 
-    const clean = normalized
+    const clean = normalised
       .replace(/^local-workspace\//, "")
       .replace(/^local\//, "");
 
     const url = isLocal
-      ? `/api/images/local?path=${clean}`
-      : `/api/images?path=${normalized}`;
+      ? `/api/docs/images/local?path=${clean}&login=${login}`
+      : `/api/docs/image?path=${normalised}&login=${login}`;
 
     //console.log("      resolved URL:", url);
 
@@ -145,8 +145,8 @@ export default function Preview({ content, currentDocPath }) {
         .replace(/^local\//, "");
 
       const src = currentDocPath.startsWith("local-workspace/")
-        ? `/api/images/local?path=${clean}`
-        : `/api/images?path=${currentDocPath}`;
+        ? `/api/docs/images/local?path=${clean}&login=${login}`
+        : `/api/docs/image?path=${currentDocPath}&login=${login}`;
 
       return `<img src="${src}" style="max-width:100%; height:auto;" />`;
     }

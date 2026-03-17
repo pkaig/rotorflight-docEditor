@@ -132,21 +132,19 @@ router.get("/list", async (req, res) => {
   }
 
   // ---------------------------------------------
-  // Local recursive walker (root = workspaces/<login>/)
+  // Local recursive walker (stable, deterministic)
   // ---------------------------------------------
-  async function walkLocalWorkspace(rootPath: string) {
-    async function walkDir(dir: string) {
+  async function walkLocalWorkspace(rootPath: string, prefix: string) {
+    async function walkDir(dir: string): Promise<TreeNode> {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
-      const relative = path
-        .relative(rootPath, dir)
-        .replace(/\\/g, "/")
-        .replace(/^docs\//, "");
+      const relative = path.relative(rootPath, dir).replace(/\\/g, "/");
+      const nodePath = relative ? `${prefix}/${relative}` : prefix;
 
-      const node = {
+      const node: TreeNode = {
         type: "dir",
         name: path.basename(dir),
-        path: `local-workspace/${relative}`,
+        path: nodePath,
         children: [],
       };
 
@@ -154,7 +152,7 @@ router.get("/list", async (req, res) => {
         const full = path.join(dir, entry.name);
 
         if (entry.isDirectory()) {
-          node.children.push(await walkDir(full));
+          node.children!.push(await walkDir(full));
           continue;
         }
 
@@ -164,19 +162,16 @@ router.get("/list", async (req, res) => {
           const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(entry.name);
 
           if (isDoc || isImage) {
-            const relFile = path
-              .relative(rootPath, full)
-              .replace(/\\/g, "/")
-              .replace(/^docs\//, "");
-
-            node.children.push({
+            const relFile = path.relative(rootPath, full).replace(/\\/g, "/");
+            node.children!.push({
               type: "file",
               name: entry.name,
-              path: `local-workspace/${relFile}`,
+              path: `${prefix}/${relFile}`,
             });
           }
         }
       }
+      console.log("WALKER NODE:", JSON.stringify(node, null, 2));
 
       return node;
     }
@@ -185,20 +180,58 @@ router.get("/list", async (req, res) => {
   }
 
   // ---------------------------------------------
+  // Build local-workspace tree (docs + versioned_docs)
+  // ---------------------------------------------
+  async function buildLocalWorkspace(login: string) {
+    const workspaceRoot = path.join(process.cwd(), "workspaces", login);
+
+    const docsRoot = path.join(workspaceRoot, "docs");
+    const versionedRoot = path.join(workspaceRoot, "versioned_docs");
+
+    // Ensure both folders exist
+    await fs.promises.mkdir(docsRoot, { recursive: true });
+    await fs.promises.mkdir(versionedRoot, { recursive: true });
+
+    const children: TreeNode[] = [];
+
+    try {
+      const docsTree = await walkLocalWorkspace(
+        docsRoot,
+        "local-workspace/docs",
+      );
+      children.push(docsTree);
+      console.log("DOCS TREE:", JSON.stringify(docsTree, null, 2));
+    } catch {
+      console.warn("No local docs folder:", docsRoot);
+    }
+
+    try {
+      const versionedTree = await walkLocalWorkspace(
+        versionedRoot,
+      );
+      children.push(versionedTree);
+      console.log("VERSIONED TREE:", JSON.stringify(versionedTree, null, 2));
+    } catch {
+      console.warn("No local versioned_docs folder:", versionedRoot);
+    }
+
+    return {
+      type: "dir",
+      name: "local-workspace",
+      path: "local-workspace",
+      children,
+    };
+  }
+
+  // ---------------------------------------------
   // EXECUTE
   // ---------------------------------------------
   try {
     const tree = await walk("");
-    const workspaceRoot = path.join(process.cwd(), "workspaces", login);
-
-    let localTree = null;
-    try {
-      localTree = await walkLocalWorkspace(workspaceRoot);
-    } catch {}
 
     const roots = [];
 
-    // Wrap GitHub docs under Rotorflight-docs
+    // GitHub docs
     if (tree) {
       const allowed = ["docs", "versioned_docs"];
 
@@ -210,15 +243,14 @@ router.get("/list", async (req, res) => {
       });
     }
 
-    // Local workspace
+    // Local workspace (single, stable root)
+    const localTree = await buildLocalWorkspace(login);
     if (localTree) {
       roots.push({
-        type: "dir",
-        name: "local-workspace",
-        path: "local-workspace",
-        children: localTree.children,
-      });
+      roots.push(localTree);
     }
+
+    console.log("BACKEND FINAL ROOTS:", JSON.stringify(roots, null, 2));
 
     res.json({ docs: roots });
   } catch (err) {
@@ -272,9 +304,7 @@ router.get("/load", async (req, res) => {
     // LOCAL FILE (new logic)
     //
     if (filePath.startsWith("local-workspace/")) {
-      const localRelative = filePath
-        .replace(/^local-workspace\//, "")
-        .replace(/^docs\//, "");
+      const localRelative = filePath.replace(/^local-workspace\//, "");
 
       const fullPath = path.join(
         process.cwd(),
@@ -348,14 +378,9 @@ router.post("/clone-to-local", async (req, res) => {
       `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
     );
 
-    // const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
-    // const result = await githubRequest(
-    //   token,
-    //   `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_DEFAULT_BRANCH}`,
-    // );
-
     const content = Buffer.from(result.content, "base64").toString("utf8");
     console.log("Fetched file from GitHub:", filePath);
+
     //
     // 2. Write MDX file to workspace
     //
@@ -416,7 +441,6 @@ router.post("/clone-to-local", async (req, res) => {
     //
     return res.json({
       localPath: `local-workspace/${clean}`,
-      //localPath: `local/${clean}`,
     });
   } catch (err) {
     console.error("❌ clone-to-local error:", err);
@@ -536,6 +560,55 @@ router.get("/github-hash", async (req, res) => {
   } catch (err) {
     console.error("❌ Failed to fetch GitHub hash:", err);
     return res.status(500).json({ error: "Failed to fetch GitHub hash" });
+  }
+});
+
+// ---------------------------------------------
+// Reset local workspace (delete all files)
+// ---------------------------------------------
+router.post("/reset-local", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, token } = auth;
+
+  try {
+    // 1. Delete local workspace
+    const workspaceRoot = path.join(process.cwd(), "workspaces", login);
+    await fs.promises.rm(workspaceRoot, { recursive: true, force: true });
+
+    // 2. Delete backend cache
+    const cacheRoot = path.join(process.cwd(), "cache");
+    await fs.promises.rm(cacheRoot, { recursive: true, force: true });
+
+    // 3. Recreate empty workspace root
+    await fs.promises.mkdir(workspaceRoot, { recursive: true });
+
+    // 4. Walk GitHub and build folder-only structure
+    const tree = await githubRequest(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees/${GITHUB_DEFAULT_BRANCH}?recursive=1`,
+    );
+
+    for (const item of tree.tree) {
+      if (item.type !== "tree") continue;
+
+      // Only keep folders under docs/ or versioned_docs/
+      if (
+        !item.path.startsWith("docs/") &&
+        !item.path.startsWith("versioned_docs/")
+      ) {
+        continue;
+      }
+
+      const localPath = path.join(workspaceRoot, item.path);
+      await fs.promises.mkdir(localPath, { recursive: true });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ reset-local error:", err);
+    res.status(500).json({ error: "Failed to reset local workspace" });
   }
 });
 

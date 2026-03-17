@@ -14,6 +14,8 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
     if (!isAuthenticated || !login) return;
 
     async function init() {
+      console.log("INIT CALLED");
+
       const cachedHash = localStorage.getItem(HASH_KEY);
       const cachedTree = localStorage.getItem(TREE_KEY);
 
@@ -82,6 +84,7 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
   }, [isAuthenticated, login]);
 
   async function refreshLocalWorkspace() {
+    console.log("🔄 Refreshing local workspace tree...");
     if (!login) return;
     const res = await fetch(`/api/docs/list?login=${login}`);
     const data = await res.json();
@@ -89,6 +92,7 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
   }
 
   function refreshGitHubTree() {
+    console.log("🔄 Refreshing GitHub tree...");
     if (!login) return;
     fetch(`/api/docs/list?login=${login}`)
       .then((res) => res.json())

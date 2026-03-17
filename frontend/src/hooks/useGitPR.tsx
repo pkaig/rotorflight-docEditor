@@ -18,6 +18,7 @@ interface UseGitPROptions {
   refreshGitHubTree: () => void;
   clearEditor: () => void;
   openEditFileModal: (path: string) => void;
+  login: string;
 }
 
 /* -------------------------------------------------------
@@ -40,6 +41,7 @@ export function useGitPR({
   refreshGitHubTree,
   clearEditor,
   openEditFileModal,
+  login,
 }: UseGitPROptions) {
   const [banner, setBanner] = useState<null | {
     type: PRStatus;
@@ -153,11 +155,14 @@ export function useGitPR({
         path,
       );
 
-      const res = await fetch("/api/docs/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, path }),
-      });
+      const res = await fetch(
+        `/api/docs/save?login=${encodeURIComponent(login)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug, path }),
+        },
+      );
 
       const json: PRResponse = await res.json();
       handleBackendResponse(json);
@@ -240,6 +245,19 @@ export function useGitPR({
   );
 
   /* -------------------------------------------------------
+     Clear all tracked changes (e.g. after PR merge or close)
+  ------------------------------------------------------- */
+
+  function clearAllChanges() {
+    setChanges({
+      added: [],
+      modified: [],
+      deleted: [],
+      renamed: [],
+    });
+  }
+
+  /* -------------------------------------------------------
      Return API
   ------------------------------------------------------- */
   return {
@@ -247,6 +265,7 @@ export function useGitPR({
     activePR,
     submitPR,
     changes,
+    clearAllChanges,
     notifyFileSaved,
     notifyFileRenamed,
     notifyFileDeleted,

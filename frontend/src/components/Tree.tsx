@@ -35,7 +35,7 @@ export function Tree({
   return (
     <ul className="tree-list">
       {safeNodes.map((node) => (
-        <li key={node.path || node.name}>
+        <li key={(node.path || node.name).replace(/\/$/, "")}>
           {node.type === "dir" ? (
             <div className="tree-dir">
               <div
@@ -44,7 +44,10 @@ export function Tree({
                   (node.name === "local-workspace" ? "folder-local" : "") +
                   (node.name === "Rotorflight-docs" ? "folder-docs" : "")
                 }
-                onClick={() => toggleFolder(node.path)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFolder(node.path);
+                }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => node.path && onDropFolder(node.path)}
               >

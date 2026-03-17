@@ -13,6 +13,11 @@ export class AppErrorBoundary extends React.Component<
     return { hasError: true };
   }
 
+  componentDidCatch(error: any, info: any) {
+    console.log("ERROR BOUNDARY CAUGHT:", error);
+    console.log("ERROR INFO:", info);
+  }
+
   render() {
     if (this.state.hasError) {
       return (

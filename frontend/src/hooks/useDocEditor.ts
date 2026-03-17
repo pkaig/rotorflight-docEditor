@@ -1,5 +1,7 @@
+const docEditorDebug = true;
+
 import { useState } from "react";
-import { isLocalPath } from "../utils/paths";
+import { isLocalPath, normaliseLocalPath } from "../utils/paths";
 
 export function useDocEditor(login: string | null) {
   const [content, setContent] = useState("");
@@ -20,50 +22,50 @@ export function useDocEditor(login: string | null) {
   function loadDoc(inputPath: string) {
     const storedLogin = login || localStorage.getItem("rf_login");
 
-    let normalized: string;
-
-    if (inputPath.startsWith("local-workspace/")) {
-      if (inputPath.startsWith("local-workspace/versioned_docs/")) {
-        normalized = inputPath.replace(/^local-workspace\//, "");
-      } else {
-        normalized = inputPath.replace(/^local-workspace\//, "docs/");
-      }
-    } else if (inputPath.startsWith("Rotorflight-docs/")) {
-      normalized = inputPath;
-    } else if (inputPath.startsWith("docs/")) {
-      normalized = "Rotorflight-docs/" + inputPath;
+    // GitHub docs MUST NOT be normalised
+    let canonical: string;
+    if (inputPath.startsWith("Rotorflight-docs/")) {
+      canonical = inputPath;
     } else {
-      console.warn("⚠️ Unknown path format, passing through:", inputPath);
-      normalized = inputPath;
+      canonical = normaliseLocalPath(inputPath);
     }
 
-    if (normalized.startsWith("Rotorflight-docs/")) {
+    const isGitHubSource = canonical.startsWith("Rotorflight-docs/");
+
+    if (isGitHubSource) {
       setShowEditModal(true);
-      setPendingGitHubPath(normalized);
+      setPendingGitHubPath(inputPath);
     } else {
       setShowEditModal(false);
     }
 
-    setCurrentDocPath(normalized);
-
-    if (normalized.startsWith("local-workspace/")) {
-      localStorage.setItem("rf_last_opened_doc", normalized);
+    setCurrentDocPath(canonical);
+    if (docEditorDebug) {
+      console.debug("Loading doc:", { inputPath, canonical, isGitHubSource });
     }
+    //localStorage.setItem("rf_last_opened_doc", canonical);
 
     fetch(
       `http://localhost:4000/api/docs/load?path=${encodeURIComponent(
-        normalized,
+        canonical,
       )}&login=${encodeURIComponent(storedLogin || "")}`,
     )
       .then(async (res) => {
         if (!res.ok) {
-          console.warn("⚠️ loadDoc failed:", normalized, res.status);
+          console.warn("⚠️ loadDoc failed:", canonical, res.status);
 
           if (res.status === 404) {
-            const last = localStorage.getItem("rf_last_opened_doc");
-            if (last === normalized) {
-              localStorage.removeItem("rf_last_opened_doc");
+            if (docEditorDebug) {
+              console.debug("Loading doc 404:", {
+                inputPath,
+                canonical,
+                isGitHubSource,
+              });
             }
+            // const last = localStorage.getItem("rf_last_opened_doc");
+            // if (last === canonical) {
+            //   localStorage.removeItem("rf_last_opened_doc");
+            // }
           }
 
           setContent("");
@@ -89,6 +91,7 @@ export function useDocEditor(login: string | null) {
     refreshLocalWorkspace: () => Promise<void>,
   ) {
     setShowEditModal(false);
+
     const res = await fetch(
       `http://localhost:4000/api/docs/clone-to-local?login=${encodeURIComponent(
         login || "",
@@ -102,15 +105,17 @@ export function useDocEditor(login: string | null) {
 
     const data = await res.json();
 
-    const clean = pendingGitHubPath.replace(/^Rotorflight-docs\//, "");
-    const folder = clean.replace(/[^/]+$/, "") + "img";
+    // Backend returns local-workspace/docs/... already correct
+    const canonical = normaliseLocalPath(data.localPath);
+
+    const relative = canonical.replace(/^local-workspace\//, "");
+    const folder = relative.replace(/[^/]+$/, "") + "img";
     setEditorImageFolder(folder);
 
     await refreshLocalWorkspace();
-    loadDoc(data.localPath);
-    setCurrentDocPath(data.localPath);
 
-    //await refreshLocalWorkspace();
+    loadDoc(canonical);
+    setCurrentDocPath(canonical);
 
     setIsSyncingImages(false);
     setShowEditModal(false);
