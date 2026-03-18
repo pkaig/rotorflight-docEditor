@@ -6,6 +6,9 @@ export function useAutosave(
   content: string,
   saveFn: (cleanPath: string, content: string) => Promise<void> | void,
 ) {
+  if (content === undefined || content === null) return;
+  if (typeof content !== "string") return;
+
   const [saving, setSaving] = useState(false);
   const timeout = useRef<number | null>(null);
 

@@ -352,8 +352,12 @@ export default function App() {
 
             {console.log(
               "FRONTEND LOCAL TREE:",
+              new Date().getMinutes(),
+              ":",
+              new Date().getSeconds(),
               JSON.stringify(localTree, null, 2),
             )}
+
             {localTree && (
               <Tree
                 nodes={[localTree]}
