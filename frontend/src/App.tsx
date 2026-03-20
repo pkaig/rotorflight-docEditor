@@ -360,7 +360,7 @@ export default function App() {
 
             {localTree && (
               <Tree
-                nodes={[localTree]}
+                nodes={localTree}
                 onSelect={onSelect}
                 onDropFolder={onDropFolder}
                 setDraggedItem={setDraggedItem}
