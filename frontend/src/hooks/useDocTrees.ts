@@ -193,19 +193,18 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
   // --- Refresh Local (unchanged, correct) ---
   //
   async function refreshLocalWorkspace() {
-    console.log(
-      "🔄 Refreshing local workspace tree...",
-      new Date().getMinutes(),
-    );
+    // console.log(
+    //   "🔄 Refreshing local workspace tree...",
+    //   new Date().getMinutes(),
+    // );
 
     if (!login) return;
 
-    const res = await fetch(`/api/docs/list?login=${login}`);
+    const res = await fetch(`/api/docs/list-local?login=${login}`);
     const data = await res.json();
 
-    setLocalTree(
-      data.docs.find((x: TreeNode) => x.name === "local-workspace") || null,
-    );
+    setLocalTree(data.docs);
+    return data.docs; // return the new tree
   }
 
   //

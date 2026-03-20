@@ -85,6 +85,20 @@ export default function App() {
 
   const effectivePath = currentDocPath || "";
 
+  function expandFolderChain(fullPath: string) {
+    const parts = fullPath.split("/");
+
+    let accum = "";
+    const updates: Record<string, boolean> = {};
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      accum = accum ? `${accum}/${parts[i]}` : parts[i];
+      updates[accum] = true;
+    }
+
+    setOpenFolders((prev) => ({ ...prev, ...updates }));
+  }
+
   const saving = useAutosave(
     login || "",
     effectivePath,
@@ -275,6 +289,33 @@ export default function App() {
     );
   }
 
+  async function onEditThisFile() {
+    setIsSyncingImages(true);
+
+    // Clone file → refresh local tree → load doc
+    const clonedPath = await handleCloneToLocal(refreshLocalWorkspace);
+
+    // 1. Collapse GitHub tree
+    setOpenFolders((prev) => ({
+      ...prev,
+      "Rotorflight-docs": false,
+    }));
+
+    // 2. Expand local-workspace root
+    setOpenFolders((prev) => ({
+      ...prev,
+      "local-workspace": true,
+    }));
+
+    // 3. Expand all parent folders of the cloned file
+    expandFolderChain(clonedPath);
+
+    // 4. Select the file in the tree
+    setCurrentDocPath(clonedPath);
+
+    setIsSyncingImages(false);
+  }
+
   return (
     <>
       {/* {banner && (
@@ -402,8 +443,7 @@ export default function App() {
                 );
 
                 refreshLocalWorkspace();
-                refreshGitHubTree();
-
+                //                refreshGitHubTree();
                 clearAllChanges();
               }}
             >
@@ -444,14 +484,7 @@ export default function App() {
                   </p>
 
                   <div className="edit-modal-buttons">
-                    <button
-                      onClick={() => {
-                        setIsSyncingImages(true);
-                        handleCloneToLocal(refreshLocalWorkspace);
-                      }}
-                    >
-                      Edit this file
-                    </button>
+                    <button onClick={onEditThisFile}>Edit this file</button>
                   </div>
                 </div>
               </div>

@@ -87,9 +87,7 @@ export function useDocEditor(login: string | null) {
       });
   }
 
-  async function handleCloneToLocal(
-    refreshLocalWorkspace: () => Promise<void>,
-  ) {
+  async function handleCloneToLocal(refreshLocalWorkspace) {
     setShowEditModal(false);
 
     const res = await fetch(
@@ -104,8 +102,6 @@ export function useDocEditor(login: string | null) {
     );
 
     const data = await res.json();
-
-    // Backend returns local-workspace/docs/... already correct
     const canonical = normaliseLocalPath(data.localPath);
 
     const relative = canonical.replace(/^local-workspace\//, "");
@@ -119,7 +115,43 @@ export function useDocEditor(login: string | null) {
 
     setIsSyncingImages(false);
     setShowEditModal(false);
+
+    return canonical;
   }
+
+  // async function handleCloneToLocal(
+  //   refreshLocalWorkspace: () => Promise<void>,
+  // ) {
+  //   setShowEditModal(false);
+
+  //   const res = await fetch(
+  //     `http://localhost:4000/api/docs/clone-to-local?login=${encodeURIComponent(
+  //       login || "",
+  //     )}`,
+  //     {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({ path: pendingGitHubPath }),
+  //     },
+  //   );
+
+  //   const data = await res.json();
+
+  //   // Backend returns local-workspace/docs/... already correct
+  //   const canonical = normaliseLocalPath(data.localPath);
+
+  //   const relative = canonical.replace(/^local-workspace\//, "");
+  //   const folder = relative.replace(/[^/]+$/, "") + "img";
+  //   setEditorImageFolder(folder);
+
+  //   await refreshLocalWorkspace();
+
+  //   loadDoc(canonical);
+  //   setCurrentDocPath(canonical);
+
+  //   setIsSyncingImages(false);
+  //   setShowEditModal(false);
+  // }
 
   function isCurrentLocal() {
     return isLocalPath(currentDocPath);
