@@ -139,9 +139,9 @@ async function walkLocalWorkspace(rootPath: string, prefix: string) {
   async function walkDir(dir: string): Promise<TreeNode> {
     try {
       // --- Safe directory read with logging ---
-      console.time("READ ROOT");
+      //console.time("READ ROOT");
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-      console.timeEnd("READ ROOT");
+      // console.timeEnd("READ ROOT");
 
       const relative = path.relative(rootPath, dir).replace(/\\/g, "/");
       const nodePath = relative ? `${prefix}/${relative}` : prefix;

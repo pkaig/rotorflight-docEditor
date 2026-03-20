@@ -1,4 +1,4 @@
-const docEditorDebug = true;
+const docEditorDebug = false;
 
 import { useState } from "react";
 import { isLocalPath, normaliseLocalPath } from "../utils/paths";

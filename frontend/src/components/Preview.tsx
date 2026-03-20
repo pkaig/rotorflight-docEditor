@@ -135,23 +135,27 @@ function rewriteJSXInRawMDX(raw, importMap) {
 // ---------------------------------------------------------
 // Preview Component
 // ---------------------------------------------------------
+//
 export default function Preview({ content, currentDocPath }) {
+  const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath);
+
+  // IMAGE MODE — return React element directly
+  if (isImage) {
+    const url = `/api/docs/images/local?path=${encodeURIComponent(currentDocPath)}`;
+    return (
+      <div className="markdown-body">
+        <img
+          src={url}
+          alt={currentDocPath}
+          style={{ maxWidth: "100%", height: "auto", display: "block" }}
+        />
+      </div>
+    );
+  }
+
+  // MARKDOWN MODE — return HTML string
   const html = useMemo(() => {
     if (!content) return "";
-    // If the selected file is an image, render it directly
-    if (/\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath)) {
-      const clean = currentDocPath
-        .replace(/^local-workspace\//, "")
-        .replace(/^local\//, "");
-
-      const src = currentDocPath.startsWith("local-workspace/")
-        ? `/api/docs/images/local?path=${clean}&login=${login}`
-        : `/api/docs/image?path=${currentDocPath}&login=${login}`;
-
-      return `<img src="${src}" style="max-width:100%; height:auto;" />`;
-    }
-
-    //console.log("🟦 [Preview] Rendering:", currentDocPath);
 
     try {
       const importMap = extractImportMap(content, currentDocPath);
@@ -169,11 +173,7 @@ export default function Preview({ content, currentDocPath }) {
         .use(rehypeStringify)
         .processSync(rewrittenContent);
 
-      const finalHTML = String(file);
-
-      //console.log("🟩 [Preview] Final HTML length:", finalHTML.length, "\n");
-
-      return finalHTML;
+      return String(file);
     } catch (err) {
       console.error("❌ [Preview] Markdown render error:", err);
       return content;

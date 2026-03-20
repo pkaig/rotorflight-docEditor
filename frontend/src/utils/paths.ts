@@ -1,4 +1,4 @@
-const pathDebug = true;
+const pathDebug = false;
 
 export function isLocalPath(path: string) {
   if (pathDebug) console.log("isLocalPath?", path);

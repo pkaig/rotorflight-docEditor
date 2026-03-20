@@ -104,20 +104,27 @@ export default function App() {
     effectivePath,
     content,
     async (path, content) => {
-      // Convert editor path → workspace-relative path
       const workspaceRelative = path
         .replace(/^local-workspace\//, "")
         .replace(/^Rotorflight-docs\//, "");
 
-      console.log("Autosaving", workspaceRelative);
+      // Fetch the current on-disk content
+      const res = await fetch(
+        `/api/docs/load?path=${encodeURIComponent(path)}&login=${encodeURIComponent(login || "")}`,
+      );
+      const data = await res.json();
+      const existing = data?.content ?? "";
+
+      // Only save + notify if content actually changed
+      if (existing === content) {
+        return; // No-op: do NOT notifyFileSaved
+      }
 
       await fetch(`/api/docs/save?login=${encodeURIComponent(login || "")}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: workspaceRelative, content }),
       });
-
-      console.log("Saved", workspaceRelative);
 
       notifyFileSaved("Rotorflight-docs", workspaceRelative);
     },
@@ -205,7 +212,11 @@ export default function App() {
 
     const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
     if (isImage) {
-      // setEditorWidth(0);
+      console.log("Selected image:", path);
+      // Don’t load into editor
+      setCurrentDocPath(path);
+      setContent(""); // clear editor
+      return;
     }
 
     loadDoc(path);
@@ -391,13 +402,13 @@ export default function App() {
               + New Page (drag into folder)
             </div>
 
-            {console.log(
+            {/* {console.log(
               "FRONTEND LOCAL TREE:",
               new Date().getMinutes(),
               ":",
               new Date().getSeconds(),
               JSON.stringify(localTree, null, 2),
-            )}
+            )} */}
 
             {localTree && (
               <Tree
