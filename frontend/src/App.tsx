@@ -54,6 +54,8 @@ export default function App() {
     clearEditor,
     loadDoc,
     handleCloneToLocal,
+    suppressNextAutosave,
+    setSuppressNextAutosave,
   } = useDocEditor(login);
 
   const { editorWidth, startDrag } = useDragResize(50);
@@ -64,6 +66,10 @@ export default function App() {
   const [newFileName, setNewFileName] = useState("");
   const [errorLine, setErrorLine] = useState<number | null>(null);
 
+  const [selectedChanges, setSelectedChanges] = useState<
+    Record<string, boolean>
+  >({});
+
   const {
     banner,
     activePR,
@@ -71,7 +77,7 @@ export default function App() {
     changes,
     notifyFileSaved,
     notifyFileRenamed,
-    notifyFileDeleted,
+    //notifyFileDeleted,
     notifyFileCreated,
     editFile,
     clearBanner,
@@ -104,28 +110,32 @@ export default function App() {
     effectivePath,
     content,
     async (path, content) => {
-      const workspaceRelative = path
-        .replace(/^local-workspace\//, "")
-        .replace(/^Rotorflight-docs\//, "");
+      // Skip autosave after clone
+      if (suppressNextAutosave) {
+        setSuppressNextAutosave(false);
+        return;
+      }
 
-      // Fetch the current on-disk content
+      // 🔥 NEW: Never autosave GitHub files
+      if (path.startsWith("Rotorflight-docs/")) {
+        return;
+      }
+
       const res = await fetch(
         `/api/docs/load?path=${encodeURIComponent(path)}&login=${encodeURIComponent(login || "")}`,
       );
       const data = await res.json();
       const existing = data?.content ?? "";
 
-      // Only save + notify if content actually changed
-      if (existing === content) {
-        return; // No-op: do NOT notifyFileSaved
-      }
+      if (existing === content) return;
 
       await fetch(`/api/docs/save?login=${encodeURIComponent(login || "")}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: workspaceRelative, content }),
+        body: JSON.stringify({ path, content }),
       });
 
+      const workspaceRelative = path.replace(/^local-workspace\//, "");
       notifyFileSaved("Rotorflight-docs", workspaceRelative);
     },
   );
@@ -300,6 +310,21 @@ export default function App() {
     );
   }
 
+  async function clearSelectedChanges(paths: string[]) {
+    for (const p of paths) {
+      await fetch(`/api/docs/restore-file?login=${login}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: p }),
+      });
+
+      //SnotifyFileDeleted("Rotorflight-docs", p);
+    }
+
+    refreshLocalWorkspace();
+    setSelectedChanges({});
+  }
+
   async function onEditThisFile() {
     setIsSyncingImages(true);
 
@@ -390,7 +415,7 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div className="docs-panel">
             <div
               draggable
               onDragStart={(e) => {
@@ -433,34 +458,78 @@ export default function App() {
             )}
           </div>
 
-          <PRPanel
-            slug={currentDocPath}
-            refreshGitHubTree={refreshGitHubTree}
-            clearEditor={clearEditor}
-            openEditFileModal={() => setShowEditModal(true)}
-          />
           <div className="changes-panel">
-            <button
-              className="clear-all-btn"
-              onClick={async () => {
-                if (!confirm("This will delete ALL local changes. Continue?"))
-                  return;
+            <div className="changes-actions">
+              <button
+                className="clear-selected-btn"
+                onClick={async (e) => {
+                  e.stopPropagation();
 
-                await fetch(
-                  `/api/docs/reset-local?login=${encodeURIComponent(login || "")}`,
-                  {
-                    method: "POST",
-                  },
-                );
+                  const selected = Object.keys(selectedChanges).filter(
+                    (k) => selectedChanges[k],
+                  );
+                  if (selected.length === 0) return;
 
-                refreshLocalWorkspace();
-                //                refreshGitHubTree();
-                clearAllChanges();
-              }}
-            >
-              Clear all changes
-            </button>
-            <ChangesPanel changes={changes} />
+                  if (
+                    !confirm(
+                      `Restore ${selected.length} file(s) from Rotorflight-docs?`,
+                    )
+                  )
+                    return;
+
+                  // Restore each file from GitHub
+                  for (const path of selected) {
+                    fetch(`/api/docs/restore-file?login=${login}`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ path }),
+                    });
+                  }
+
+                  // Refresh local workspace so UI updates
+                  await refreshLocalWorkspace();
+
+                  // Remove the change entries from UI state
+                  clearSelectedChanges(selected);
+                }}
+              >
+                Clear selected
+              </button>
+
+              <button
+                className="clear-all-btn"
+                onClick={async () => {
+                  if (!confirm("This will delete ALL local changes. Continue?"))
+                    return;
+
+                  await fetch(
+                    `/api/docs/reset-local?login=${encodeURIComponent(login || "")}`,
+                    {
+                      method: "POST",
+                    },
+                  );
+
+                  refreshLocalWorkspace();
+                  //                refreshGitHubTree();
+                  clearAllChanges();
+                }}
+              >
+                Clear all
+              </button>
+            </div>
+            <div className="changes-list-container">
+              <ChangesPanel
+                changes={changes}
+                selectedChanges={selectedChanges}
+                setSelectedChanges={setSelectedChanges}
+              />
+            </div>
+            <PRPanel
+              slug={currentDocPath}
+              refreshGitHubTree={refreshGitHubTree}
+              clearEditor={clearEditor}
+              openEditFileModal={() => setShowEditModal(true)}
+            />
           </div>
         </div>
 

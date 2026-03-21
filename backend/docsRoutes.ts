@@ -461,6 +461,46 @@ router.post("/clone-to-local", async (req, res) => {
 });
 
 // ---------------------------------------------
+// RESTORE A SINGLE FILE FROM GITHUB TO LOCAL
+// ---------------------------------------------
+router.post("/restore-file", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { token, login } = auth;
+  const { path: filePath } = req.body;
+
+  if (!filePath) {
+    return res.status(400).json({ error: "Missing file path" });
+  }
+
+  try {
+    // Strip Rotorflight-docs/ prefix if present
+    const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
+
+    // Fetch file content from GitHub
+    const result = await githubRequest(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
+    );
+
+    const content = Buffer.from(result.content, "base64").toString("utf8");
+
+    // Write to local workspace
+    const workspaceRoot = path.join(process.cwd(), "workspaces", login);
+    const localPath = path.join(workspaceRoot, githubPath);
+
+    await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+    await fs.promises.writeFile(localPath, content, "utf8");
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ restore-file error:", err);
+    return res.status(500).json({ error: "Failed to restore file" });
+  }
+});
+
+// ---------------------------------------------
 // SERVE IMAGES
 // ---------------------------------------------
 router.get("/image", async (req, res) => {
@@ -523,7 +563,7 @@ router.get("/images/local", async (req, res) => {
 });
 
 // ---------------------------------------------
-// SAVE DOCUMENT LOCALLY
+// SAVE DOCUMENT LOCALLY (content-aware)
 // ---------------------------------------------
 router.post("/save", async (req, res) => {
   console.log(
@@ -540,6 +580,10 @@ router.post("/save", async (req, res) => {
   const { login } = auth;
   const { path: filePath, content } = req.body;
 
+  if (!filePath.startsWith("local-workspace/")) {
+    return res.status(400).json({ error: "Invalid save path" });
+  }
+
   if (!filePath) {
     return res.status(400).json({ error: "Missing file path" });
   }
@@ -551,6 +595,21 @@ router.post("/save", async (req, res) => {
     const fullPath = path.join(process.cwd(), "workspaces", login, filePath);
 
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+
+    // Read existing content if present
+    let existing = null;
+    try {
+      existing = await fs.promises.readFile(fullPath, "utf8");
+    } catch {
+      // File does not exist yet — safe to write
+    }
+
+    // If content is identical, do NOT write → prevents false "modified" changes
+    if (existing === content) {
+      return res.json({ ok: true, unchanged: true });
+    }
+
+    // Only write when content actually changed
     await fs.promises.writeFile(fullPath, content, "utf8");
 
     res.json({ ok: true });

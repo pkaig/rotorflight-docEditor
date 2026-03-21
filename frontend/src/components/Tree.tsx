@@ -32,12 +32,12 @@ export function Tree({
     setOpenFolders((prev) => ({ ...prev, [path]: !prev[path] }));
   }
 
-  console.log("NODES RECEIVED BY TREE:", nodes);
+  // console.log("NODES RECEIVED BY TREE:", nodes);
 
   return (
     <ul className="tree-list">
       {safeNodes.map((node, index) => {
-        console.log("TREE NODE", index, node);
+        // console.log("TREE NODE", index, node);
         if (!node || typeof node !== "object") return null;
 
         // --- SAFETY: ensure key is always a string ---
