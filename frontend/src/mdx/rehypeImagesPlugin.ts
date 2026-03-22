@@ -29,7 +29,6 @@ export default function rehypeImages(currentDocPath: string) {
 
       if (isLocal) {
         // LOCAL WORKSPACE
-        // Strip "local-workspace/" prefix → backend expects "docs/.../img/foo.png"
         const clean = resolved.replace(/^local-workspace\//, "");
 
         props.src = `/api/docs/images/local?path=${encodeURIComponent(

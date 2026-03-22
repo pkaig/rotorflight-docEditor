@@ -135,8 +135,9 @@ export default function App() {
         body: JSON.stringify({ path, content }),
       });
 
-      const workspaceRelative = path.replace(/^local-workspace\//, "");
-      notifyFileSaved("Rotorflight-docs", workspaceRelative);
+      // const workspaceRelative = path.replace(/^local-workspace\//, "");
+      // notifyFileSaved("local-workspace", workspaceRelative);
+      notifyFileSaved("local-workspace", path);
     },
   );
 

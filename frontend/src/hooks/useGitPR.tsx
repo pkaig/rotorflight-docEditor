@@ -141,31 +141,22 @@ export function useGitPR({
   /* -------------------------------------------------------
      Change tracking + backend notify functions
   ------------------------------------------------------- */
-
   const notifyFileSaved = useCallback(
     async (slug: string, path: string) => {
+      console.log("🔧 [notifyFileSaved] File saved:", slug, path);
+
+      // Only track local-workspace changes
+      if (slug !== "local-workspace") {
+        return;
+      }
+
       setChanges((prev) => ({
         ...prev,
         modified: mergeUnique(prev.modified, { path, type: "modified" }),
       }));
 
-      console.log(
-        "🔧 [notifyFileSaved] Notifying backend of saved file:",
-        slug,
-        path,
-      );
-
-      const res = await fetch(
-        `/api/docs/save?login=${encodeURIComponent(login)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug, path }),
-        },
-      );
-
-      const json: PRResponse = await res.json();
-      handleBackendResponse(json);
+      // PR tracking does NOT save files.
+      // Autosave handles saving.
     },
     [handleBackendResponse],
   );

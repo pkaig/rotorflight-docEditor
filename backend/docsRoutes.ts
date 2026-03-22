@@ -133,81 +133,44 @@ function resolveDocsPath(docPath, relPath) {
 }
 
 // ---------------------------------------------
-// Local recursive walker (stable, deterministic)
+// Local recursive walker (flat list for diffing)
 // ---------------------------------------------
-async function walkLocalWorkspace(rootPath: string, prefix: string) {
-  async function walkDir(dir: string): Promise<TreeNode> {
+async function walkLocalTree(rootPath: string): Promise<string[]> {
+  async function walk(dir: string, base: string): Promise<string[]> {
+    let results: string[] = [];
+
+    let entries: fs.Dirent[];
     try {
-      // --- Safe directory read with logging ---
-      //console.time("READ ROOT");
-      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-      // console.timeEnd("READ ROOT");
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch (err) {
+      console.error("❌ walkLocalTree failed:", dir, err);
+      return results;
+    }
 
-      const relative = path.relative(rootPath, dir).replace(/\\/g, "/");
-      const nodePath = relative ? `${prefix}/${relative}` : prefix;
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      const rel = path.join(base, entry.name).replace(/\\/g, "/");
 
-      const node: TreeNode = {
-        type: "dir",
-        name: path.basename(dir),
-        path: nodePath,
-        children: [],
-      };
-
-      for (const entry of entries) {
-        const full = path.join(dir, entry.name);
-
-        if (entry.isDirectory()) {
-          const child = await walkDir(full);
-          if (child && typeof child === "object") {
-            node.children!.push(child);
-          }
-          continue;
-        }
-
-        if (entry.isFile()) {
-          const isDoc =
-            entry.name.endsWith(".md") || entry.name.endsWith(".mdx");
-          const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(entry.name);
-
-          if (isDoc || isImage) {
-            const relFile = path.relative(rootPath, full).replace(/\\/g, "/");
-            node.children!.push({
-              type: "file",
-              name: entry.name,
-              path: `${prefix}/${relFile}`,
-            });
-          }
-        }
+      if (entry.isDirectory()) {
+        const sub = await walk(full, rel);
+        results.push(...sub);
+        continue;
       }
 
-      return node;
-    } catch (err) {
-      console.error("❌ walkDir failed:", dir, err);
+      if (entry.isFile()) {
+        const isDoc = entry.name.endsWith(".md") || entry.name.endsWith(".mdx");
+        const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(entry.name);
 
-      const relative = path.relative(rootPath, dir).replace(/\\/g, "/");
-      const nodePath = relative ? `${prefix}/${relative}` : prefix;
-
-      return {
-        type: "dir",
-        name: path.basename(dir),
-        path: nodePath,
-        children: [],
-        error: true,
-      };
+        if (isDoc || isImage) {
+          results.push(rel);
+        }
+      }
     }
+
+    return results;
   }
 
-  // --- CRITICAL FIX: ensure root never returns undefined ---
-  const rootNode = await walkDir(rootPath);
-  return (
-    rootNode ?? {
-      type: "dir",
-      name: path.basename(rootPath),
-      path: prefix,
-      children: [],
-      error: true,
-    }
-  );
+  return walk(rootPath, "");
 }
 
 // ---------------------------------------------
@@ -553,7 +516,8 @@ router.get("/images/local", async (req, res) => {
 
   imgPath = imgPath.replace(/\\/g, "/");
 
-  const fullPath = path.join(process.cwd(), "workspaces", login, imgPath);
+  const cleanImg = imgPath.replace(/^local-workspace\//, "");
+  const fullPath = path.join(process.cwd(), "workspaces", login, cleanImg);
 
   try {
     return res.sendFile(fullPath);
@@ -592,7 +556,11 @@ router.post("/save", async (req, res) => {
   }
 
   try {
-    const fullPath = path.join(process.cwd(), "workspaces", login, filePath);
+    // Strip the virtual prefix
+    const cleanPath = filePath.replace(/^local-workspace\//, "");
+
+    // Write to the real workspace folder
+    const fullPath = path.join(process.cwd(), "workspaces", login, cleanPath);
 
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
 
