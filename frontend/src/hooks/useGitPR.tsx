@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 export type PRStatus =
   | "no_pr"
@@ -51,7 +51,7 @@ export function useGitPR({
   const [activePR, setActivePR] = useState<number | null>(null);
 
   /* -------------------------------------------------------
-     Change tracking state
+     Mirror-based change tracking
   ------------------------------------------------------- */
   const [changes, setChanges] = useState<ChangeSet>({
     added: [],
@@ -60,9 +60,43 @@ export function useGitPR({
     renamed: [],
   });
 
-  function mergeUnique(list: ChangeEntry[], entry: ChangeEntry) {
-    return list.some((i) => i.path === entry.path) ? list : [...list, entry];
-  }
+  const loadChangesFromMirror = useCallback(async () => {
+    if (!login) return;
+
+    try {
+      const response = await fetch(
+        `/api/docs/scan-local-changes?login=${login}`,
+        {
+          credentials: "include",
+        },
+      );
+
+      const data = await response.json();
+
+      setChanges({
+        added: data.added ?? [],
+        modified: data.modified ?? [],
+        deleted: data.deleted ?? [],
+        renamed: data.renamed ?? [],
+      });
+    } catch (err) {
+      console.error("❌ Failed to load mirror changes:", err);
+
+      setChanges({
+        added: [],
+        modified: [],
+        deleted: [],
+        renamed: [],
+      });
+    }
+  }, [login]);
+
+  // Load changes on mount / login change
+  useEffect(() => {
+    if (login) {
+      loadChangesFromMirror();
+    }
+  }, [login]);
 
   /* -------------------------------------------------------
      Backend response handler
@@ -85,13 +119,8 @@ export function useGitPR({
           setActivePR(null);
           setBanner({ type: "pr_merged", prNumber: res.prNumber });
 
-          // Reset changes after merge
-          setChanges({
-            added: [],
-            modified: [],
-            deleted: [],
-            renamed: [],
-          });
+          // After merge, local workspace is reset externally.
+          loadChangesFromMirror();
           break;
 
         case "pr_closed":
@@ -100,13 +129,7 @@ export function useGitPR({
           setActivePR(null);
           setBanner({ type: "pr_closed", prNumber: res.prNumber });
 
-          // Reset changes after close
-          setChanges({
-            added: [],
-            modified: [],
-            deleted: [],
-            renamed: [],
-          });
+          loadChangesFromMirror();
           break;
 
         case "pr_open":
@@ -117,7 +140,7 @@ export function useGitPR({
           break;
       }
     },
-    [clearEditor, refreshGitHubTree],
+    [clearEditor, refreshGitHubTree, loadChangesFromMirror],
   );
 
   /* -------------------------------------------------------
@@ -139,90 +162,53 @@ export function useGitPR({
   );
 
   /* -------------------------------------------------------
-     Change tracking + backend notify functions
+     File operation notifications (mirror-based)
+     These no longer mutate state — they trigger a rescan.
   ------------------------------------------------------- */
   const notifyFileSaved = useCallback(
-    async (slug: string, path: string) => {
-      console.log("🔧 [notifyFileSaved] File saved:", slug, path);
-
-      // Only track local-workspace changes
-      if (slug !== "local-workspace") {
-        return;
-      }
-
-      setChanges((prev) => ({
-        ...prev,
-        modified: mergeUnique(prev.modified, { path, type: "modified" }),
-      }));
-
-      // PR tracking does NOT save files.
-      // Autosave handles saving.
+    async (_slug: string, _path: string) => {
+      await loadChangesFromMirror();
     },
-    [handleBackendResponse],
+    [loadChangesFromMirror],
   );
 
   const notifyFileRenamed = useCallback(
     async (slug: string, oldPath: string, newPath: string) => {
-      // Track rename
-      setChanges((prev) => ({
-        ...prev,
-        renamed: mergeUnique(prev.renamed, {
-          path: newPath,
-          from: oldPath,
-          type: "renamed",
-        }),
-      }));
-
-      const res = await fetch("/api/docs/rename", {
+      await fetch("/api/docs/rename", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug, oldPath, newPath }),
       });
 
-      const json: PRResponse = await res.json();
-      handleBackendResponse(json);
+      await loadChangesFromMirror();
     },
-    [handleBackendResponse],
+    [loadChangesFromMirror],
   );
 
   const notifyFileDeleted = useCallback(
     async (slug: string, path: string) => {
-      // Track deletion
-      setChanges((prev) => ({
-        ...prev,
-        deleted: mergeUnique(prev.deleted, { path, type: "deleted" }),
-      }));
-
-      const res = await fetch("/api/docs/delete", {
+      await fetch("/api/docs/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug, path }),
       });
 
-      const json: PRResponse = await res.json();
-      handleBackendResponse(json);
+      await loadChangesFromMirror();
     },
-    [handleBackendResponse],
+    [loadChangesFromMirror],
   );
 
   const notifyFileCreated = useCallback(
     async (slug: string, path: string) => {
-      // Track creation
-      setChanges((prev) => ({
-        ...prev,
-        added: mergeUnique(prev.added, { path, type: "added" }),
-      }));
-
-      const res = await fetch("/api/docs/create", {
+      await fetch("/api/docs/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug, path }),
       });
 
-      const json: PRResponse = await res.json();
-      handleBackendResponse(json);
+      await loadChangesFromMirror();
     },
-    [handleBackendResponse],
+    [loadChangesFromMirror],
   );
 
   /* -------------------------------------------------------
@@ -236,19 +222,6 @@ export function useGitPR({
   );
 
   /* -------------------------------------------------------
-     Clear all tracked changes (e.g. after PR merge or close)
-  ------------------------------------------------------- */
-
-  function clearAllChanges() {
-    setChanges({
-      added: [],
-      modified: [],
-      deleted: [],
-      renamed: [],
-    });
-  }
-
-  /* -------------------------------------------------------
      Return API
   ------------------------------------------------------- */
   return {
@@ -256,7 +229,7 @@ export function useGitPR({
     activePR,
     submitPR,
     changes,
-    clearAllChanges,
+    loadChangesFromMirror,
     notifyFileSaved,
     notifyFileRenamed,
     notifyFileDeleted,
