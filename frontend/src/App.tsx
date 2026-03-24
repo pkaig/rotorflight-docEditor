@@ -18,9 +18,20 @@ import { useVersionGate } from "./hooks/useVersionGate";
 import { useDocTrees } from "./hooks/useDocTrees";
 import { useDocEditor } from "./hooks/useDocEditor";
 import { useDragResize } from "./hooks/useDragResize";
+import { WorkspaceSelector } from "./components/WorkspaceSelector";
+import { useWorkspaces } from "./hooks/useWorkspaces";
+
 import { isLocalPath, normaliseLocalPath } from "./utils/paths";
 
+/* -------------------------------------------------------
+   ROOT APPLICATION COMPONENT
+   Auth, workspace, trees, editor, preview, PR, autosave.
+------------------------------------------------------- */
+
 export default function App() {
+  /* -------------------------------------------------------
+     AUTHENTICATION
+  ------------------------------------------------------- */
   const {
     user,
     login,
@@ -31,17 +42,37 @@ export default function App() {
     startGitHubLogin,
   } = useAuth();
 
+  /* -------------------------------------------------------
+     WORKSPACE SELECTION
+     Must exist before hooks that depend on it.
+  ------------------------------------------------------- */
+  const [workspace, setWorkspace] = useState<string | null>(null);
+
+  /* -------------------------------------------------------
+   WORKSPACE LIST (NEW)
+  ------------------------------------------------------- */
+  const { workspaces, loading: loadingWorkspaces } = useWorkspaces(login);
+
+  /* -------------------------------------------------------
+     VERSION GATE (maintenance / updates)
+  ------------------------------------------------------- */
   const { editorStatus, setEditorStatus } = useVersionGate();
 
+  /* -------------------------------------------------------
+     DOCUMENT TREES (local + GitHub)
+  ------------------------------------------------------- */
   const {
-    localTree,
+    localTrees,
     githubTree,
     loadingLocal,
     loadingGithub,
     refreshLocalWorkspace,
     refreshGitHubTree,
-  } = useDocTrees(login, isAuthenticated);
+  } = useDocTrees(login, workspaces, isAuthenticated);
 
+  /* -------------------------------------------------------
+     EDITOR STATE + FILE OPERATIONS
+  ------------------------------------------------------- */
   const {
     content,
     setContent,
@@ -56,8 +87,11 @@ export default function App() {
     handleCloneToLocal,
     suppressNextAutosave,
     setSuppressNextAutosave,
-  } = useDocEditor(login);
+  } = useDocEditor(login, workspace);
 
+  /* -------------------------------------------------------
+     UI STATE (layout, folders, new file modal, errors)
+  ------------------------------------------------------- */
   const { editorWidth, startDrag } = useDragResize(50);
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
@@ -66,6 +100,9 @@ export default function App() {
   const [newFileName, setNewFileName] = useState("");
   const [errorLine, setErrorLine] = useState<number | null>(null);
 
+  /* -------------------------------------------------------
+     CHANGE TRACKING + PR FLOW
+  ------------------------------------------------------- */
   const [selectedChanges, setSelectedChanges] = useState<
     Record<string, boolean>
   >({});
@@ -77,7 +114,6 @@ export default function App() {
     changes,
     notifyFileSaved,
     notifyFileRenamed,
-    //notifyFileDeleted,
     notifyFileCreated,
     editFile,
     clearBanner,
@@ -86,14 +122,20 @@ export default function App() {
     refreshGitHubTree,
     clearEditor,
     openEditFileModal: () => setShowEditModal(true),
-    login,
+    login: login || "",
+    workspace,
   });
 
+  /* -------------------------------------------------------
+     EFFECTIVE PATH
+  ------------------------------------------------------- */
   const effectivePath = currentDocPath || "";
 
+  /* -------------------------------------------------------
+     FOLDER EXPANSION UTILITY
+  ------------------------------------------------------- */
   function expandFolderChain(fullPath: string) {
     const parts = fullPath.split("/");
-
     let accum = "";
     const updates: Record<string, boolean> = {};
 
@@ -105,42 +147,51 @@ export default function App() {
     setOpenFolders((prev) => ({ ...prev, ...updates }));
   }
 
+  /* -------------------------------------------------------
+     AUTOSAVE (debounced)
+  ------------------------------------------------------- */
   const saving = useAutosave(
-    login || "",
+    login,
+    workspace,
     effectivePath,
     content,
+    suppressNextAutosave,
+    setSuppressNextAutosave,
     async (path, content) => {
-      // Skip autosave after clone
-      if (suppressNextAutosave) {
-        setSuppressNextAutosave(false);
-        return;
-      }
-
-      // 🔥 NEW: Never autosave GitHub files
-      if (path.startsWith("Rotorflight-docs/")) {
-        return;
-      }
+      // Never autosave GitHub files
+      if (path.startsWith("Rotorflight-docs/")) return;
+      if (!login || !workspace) return;
 
       const res = await fetch(
-        `/api/docs/load?path=${encodeURIComponent(path)}&login=${encodeURIComponent(login || "")}`,
+        `/api/docs/load?path=${encodeURIComponent(
+          path,
+        )}&login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(workspace)}`,
       );
       const data = await res.json();
       const existing = data?.content ?? "";
 
       if (existing === content) return;
 
-      await fetch(`/api/docs/save?login=${encodeURIComponent(login || "")}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path, content }),
-      });
+      await fetch(
+        `/api/docs/save?login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, content }),
+        },
+      );
 
-      // const workspaceRelative = path.replace(/^local-workspace\//, "");
-      // notifyFileSaved("local-workspace", workspaceRelative);
       notifyFileSaved("local-workspace", path);
     },
   );
 
+  /* -------------------------------------------------------
+     VERSION GATE UI
+  ------------------------------------------------------- */
   if (!editorStatus) return null;
 
   if (editorStatus.type === "blocked") {
@@ -164,6 +215,9 @@ export default function App() {
     );
   }
 
+  /* -------------------------------------------------------
+     AUTHENTICATION UI
+  ------------------------------------------------------- */
   if (!isAuthenticated) {
     return (
       <div style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
@@ -215,27 +269,48 @@ export default function App() {
     );
   }
 
-  const onSelect = (path: string) => {
-    // Ignore folder clicks (no extension)
-    if (!/\.[a-z0-9]+$/i.test(path)) {
-      return;
+  /* -------------------------------------------------------
+     WORKSPACE GATING (currently disabled)
+  ------------------------------------------------------- */
+  // if (!workspace) {
+  //   return (
+  //     <WorkspaceSelector
+  //       login={login || ""}
+  //       onSelect={(ws) => {
+  //         setWorkspace(ws);
+  //         localStorage.setItem("rf_workspace", ws);
+  //       }}
+  //     />
+  //   );
+  // }
+
+  /* -------------------------------------------------------
+     FILE SELECTION HANDLER (multi-workspace)
+  ------------------------------------------------------- */
+  const onSelect = (ws: string, path: string) => {
+    // keep editor bound to the workspace of the selected file
+    if (workspace !== ws) {
+      setWorkspace(ws);
+      localStorage.setItem("rf_workspace", ws);
     }
+
+    // Ignore folder clicks (no extension)
+    if (!/\.[a-z0-9]+$/i.test(path)) return;
 
     const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
     if (isImage) {
-      console.log("Selected image:", path);
-      // Don’t load into editor
       setCurrentDocPath(path);
-      setContent(""); // clear editor
+      setContent("");
       return;
     }
 
     loadDoc(path);
   };
 
-  function onDropFolder(targetFolderPath: string) {
+  function onDropFolder(ws: string, targetFolderPath: string) {
     if (!draggedItem) return;
 
+    // New page creation
     if (draggedItem === "__NEW_PAGE__") {
       setNewFileFolder(targetFolderPath);
       setNewFileName("");
@@ -244,21 +319,25 @@ export default function App() {
       return;
     }
 
+    // Moving an existing file
     const filename = draggedItem.split("/").pop();
     const newPath = `${targetFolderPath}/${filename}`;
 
-    fetch("http://localhost:4000/api/docs/rename", {
+    fetch(`/api/docs/rename?login=${login}&workspace=${ws}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ oldPath: draggedItem, newPath }),
     }).then(() => {
       notifyFileRenamed("Rotorflight-docs", draggedItem, newPath);
-      refreshLocalWorkspace();
+      refreshLocalWorkspace(ws);
     });
 
     setDraggedItem(null);
   }
 
+  /* -------------------------------------------------------
+     LOADING BANNERS
+  ------------------------------------------------------- */
   function LoadingLocalBanner({ message }: { message: string }) {
     return (
       <div className="loading-local-banner">
@@ -311,58 +390,52 @@ export default function App() {
     );
   }
 
-  async function clearSelectedChanges(paths: string[]) {
-    for (const p of paths) {
-      await fetch(`/api/docs/restore-file?login=${login}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: p }),
-      });
+  /* -------------------------------------------------------
+   CLEAR SELECTED CHANGES (multi-workspace)
+  ------------------------------------------------------- */
+  async function clearSelectedChanges(ws: string, paths: string[]) {
+    if (!login) return;
 
-      //SnotifyFileDeleted("Rotorflight-docs", p);
+    for (const p of paths) {
+      await fetch(
+        `/api/docs/restore-file?login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(ws)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: p }),
+        },
+      );
     }
 
-    refreshLocalWorkspace();
+    await refreshLocalWorkspace(ws);
     setSelectedChanges({});
   }
 
+  /* -------------------------------------------------------
+     EDIT GITHUB FILE (clone → sync images → open)
+  ------------------------------------------------------- */
   async function onEditThisFile() {
     setIsSyncingImages(true);
 
-    // Clone file → refresh local tree → load doc
     const clonedPath = await handleCloneToLocal(refreshLocalWorkspace);
 
-    // 1. Collapse GitHub tree
-    setOpenFolders((prev) => ({
-      ...prev,
-      "Rotorflight-docs": false,
-    }));
+    setOpenFolders((prev) => ({ ...prev, "Rotorflight-docs": false }));
+    setOpenFolders((prev) => ({ ...prev, "local-workspace": true }));
 
-    // 2. Expand local-workspace root
-    setOpenFolders((prev) => ({
-      ...prev,
-      "local-workspace": true,
-    }));
-
-    // 3. Expand all parent folders of the cloned file
     expandFolderChain(clonedPath);
-
-    // 4. Select the file in the tree
     setCurrentDocPath(clonedPath);
 
     setIsSyncingImages(false);
   }
 
+  /* -------------------------------------------------------
+     MAIN UI
+  ------------------------------------------------------- */
   return (
     <>
-      {/* {banner && (
-        <Banner
-          type={banner.type}
-          prNumber={banner.prNumber}
-          onClose={clearBanner}
-        />
-      )} */}
-
+      {/* AUTOSAVE INDICATOR */}
       {saving && (
         <div
           style={{
@@ -377,6 +450,7 @@ export default function App() {
         </div>
       )}
 
+      {/* USER HEADER */}
       {user && (
         <div
           style={{
@@ -399,10 +473,69 @@ export default function App() {
         </div>
       )}
 
+      {/* LAYOUT: SIDEBAR + EDITOR + PREVIEW */}
       <div style={{ display: "flex", height: "100vh" }}>
+        {/* SIDEBAR */}
         <div className="sidebar">
           <h3>Docs</h3>
-          <button onClick={refreshLocalWorkspace}>Refresh Local</button>
+          <button
+            onClick={() => {
+              if (workspace) {
+                refreshLocalWorkspace(workspace);
+              }
+            }}
+          >
+            Refresh Local
+          </button>
+
+          {/* -------------------------------------------------------
+           WORKSPACE CONTROLS
+          ------------------------------------------------------- */}
+          <div className="workspace-controls">
+            <button
+              className="add-workspace-btn"
+              onClick={() => {
+                setWorkspace(null); // Re-open WorkspaceSelector
+              }}
+            >
+              + Add Workspace
+            </button>
+
+            <div className="workspace-current-label">
+              Current workspace: <strong>{workspace}</strong>
+            </div>
+          </div>
+
+          {/* -------------------------------------------------------
+          WORKSPACE TREES
+          ------------------------------------------------------- */}
+          {workspaces.map((ws) => (
+            <div key={ws} className="workspace-block">
+              <div className="workspace-title">{ws}</div>
+
+              {/* LOCAL TREE FOR THIS WORKSPACE */}
+              <Tree
+                nodes={localTrees[ws] || []}
+                onSelect={(path) => onSelect(ws, path)}
+                onDropFolder={(folder) => onDropFolder(ws, folder)}
+                setDraggedItem={setDraggedItem}
+                openFolders={openFolders}
+                setOpenFolders={setOpenFolders}
+              />
+
+              {/* GLOBAL GITHUB TREE (same for all workspaces) */}
+              {githubTree && (
+                <Tree
+                  nodes={[githubTree]}
+                  onSelect={(path) => onSelect(ws, path)}
+                  onDropFolder={(folder) => onDropFolder(ws, folder)}
+                  setDraggedItem={setDraggedItem}
+                  openFolders={openFolders}
+                  setOpenFolders={setOpenFolders}
+                />
+              )}
+            </div>
+          ))}
 
           {loadingLocal && (
             <div className="loadingLocalWorkspace">
@@ -416,49 +549,7 @@ export default function App() {
             </div>
           )}
 
-          <div className="docs-panel">
-            <div
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData("text/plain", "__NEW_PAGE__");
-                setDraggedItem("__NEW_PAGE__");
-              }}
-              className="new-page-draggable new-page-btn"
-            >
-              + New Page (drag into folder)
-            </div>
-
-            {/* {console.log(
-              "FRONTEND LOCAL TREE:",
-              new Date().getMinutes(),
-              ":",
-              new Date().getSeconds(),
-              JSON.stringify(localTree, null, 2),
-            )} */}
-
-            {localTree && (
-              <Tree
-                nodes={localTree}
-                onSelect={onSelect}
-                onDropFolder={onDropFolder}
-                setDraggedItem={setDraggedItem}
-                openFolders={openFolders}
-                setOpenFolders={setOpenFolders}
-              />
-            )}
-
-            {githubTree && (
-              <Tree
-                nodes={[githubTree]}
-                onSelect={onSelect}
-                onDropFolder={onDropFolder}
-                setDraggedItem={setDraggedItem}
-                openFolders={openFolders}
-                setOpenFolders={setOpenFolders}
-              />
-            )}
-          </div>
-
+          {/* CHANGES + PR PANEL */}
           <div className="changes-panel">
             <div className="changes-actions">
               <button
@@ -478,20 +569,26 @@ export default function App() {
                   )
                     return;
 
-                  // Restore each file from GitHub
+                  // Extract workspace from the first selected path
+                  const wsMatch = selected[0].match(
+                    /^local-workspace\/([^/]+)\//,
+                  );
+                  const ws = wsMatch ? wsMatch[1] : null;
+                  if (!ws) return;
+
                   for (const path of selected) {
-                    fetch(`/api/docs/restore-file?login=${login}`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ path }),
-                    });
+                    await fetch(
+                      `/api/docs/restore-file?login=${login}&workspace=${ws}`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ path }),
+                      },
+                    );
                   }
 
-                  // Refresh local workspace so UI updates
-                  await refreshLocalWorkspace();
-
-                  // Remove the change entries from UI state
-                  clearSelectedChanges(selected);
+                  await refreshLocalWorkspace(ws);
+                  await clearSelectedChanges(ws, selected);
                 }}
               >
                 Clear selected
@@ -503,21 +600,28 @@ export default function App() {
                   if (!confirm("This will delete ALL local changes. Continue?"))
                     return;
 
+                  const first = Object.keys(changes)[0];
+                  const wsMatch = first?.match(/^local-workspace\/([^/]+)\//);
+                  const ws = wsMatch ? wsMatch[1] : null;
+                  if (!ws) return;
+
                   await fetch(
-                    `/api/docs/reset-local?login=${encodeURIComponent(login || "")}`,
+                    `/api/docs/reset-local?login=${encodeURIComponent(
+                      login || "",
+                    )}&workspace=${ws}`,
                     {
                       method: "POST",
                     },
                   );
 
-                  refreshLocalWorkspace();
-                  //                refreshGitHubTree();
+                  await refreshLocalWorkspace(ws);
                   clearAllChanges();
                 }}
               >
                 Clear all
               </button>
             </div>
+
             <div className="changes-list-container">
               <ChangesPanel
                 changes={changes}
@@ -525,6 +629,7 @@ export default function App() {
                 setSelectedChanges={setSelectedChanges}
               />
             </div>
+
             <PRPanel
               slug={currentDocPath}
               refreshGitHubTree={refreshGitHubTree}
@@ -534,43 +639,48 @@ export default function App() {
           </div>
         </div>
 
+        {/* EDITOR + PREVIEW PANEL */}
         <div
           style={{
             flex: 1,
             display: "flex",
             overflow: "hidden",
-            height: "100%", // ← required
-            position: "relative", // ← helps anchor children
+            height: "100vh",
           }}
         >
+          {/* EDITOR PANEL */}
           <div
             className="editor-container"
             style={{
               width: `${editorWidth}%`,
-              position: "relative", // ← anchor for modal
+              position: "relative",
               display: "flex",
               flexDirection: "column",
-              height: "100%", // ensures overlay fills only this panel
+              height: "100%",
             }}
           >
+            {/* EDIT MODAL */}
             {showEditModal && !isSyncingImages && (
               <div className="edit-modal-overlay">
                 <div className="edit-modal-box">
                   <h3>Edit this file?</h3>
                   <p>
                     This file is from GitHub. A local copy will be created and
-                    its
-                    <code> img/ </code> folder will be synced so you can edit
+                    its <code>img/</code> folder will be synced so you can edit
                     safely.
                   </p>
 
                   <div className="edit-modal-buttons">
                     <button onClick={onEditThisFile}>Edit this file</button>
+                    <button onClick={() => setShowEditModal(false)}>
+                      Cancel
+                    </button>
                   </div>
                 </div>
               </div>
             )}
 
+            {/* IMAGE SYNC OVERLAY */}
             {isSyncingImages && (
               <div className="edit-modal-overlay">
                 <div className="edit-modal-box">
@@ -613,7 +723,7 @@ export default function App() {
               </div>
             )}
 
-            <h3>Editor</h3>
+            {/* NEW FILE MODAL */}
             {showNewFileModal && (
               <div className="edit-modal-overlay">
                 <div className="edit-modal-box">
@@ -634,9 +744,15 @@ export default function App() {
                     style={{ marginTop: "1rem" }}
                   >
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const safe = newFileName.trim().replace(/\s+/g, "-");
                         if (!safe || !newFileFolder) return;
+
+                        const wsMatch = newFileFolder.match(
+                          /^local-workspace\/([^/]+)\//,
+                        );
+                        const ws = wsMatch ? wsMatch[1] : null;
+                        if (!ws) return;
 
                         const newPath = `${newFileFolder}/${safe}.mdx`;
 
@@ -644,11 +760,9 @@ export default function App() {
                         setContent(newDocTemplate);
 
                         notifyFileCreated("local-workspace", newPath);
-                        //notifyFileCreated("Rotorflight-docs", newPath);
-
                         setShowNewFileModal(false);
                         setNewFileFolder(null);
-                        refreshLocalWorkspace();
+                        await refreshLocalWorkspace(ws);
                       }}
                     >
                       Create
@@ -667,6 +781,8 @@ export default function App() {
               </div>
             )}
 
+            {/* EDITOR TEXTAREA */}
+            <h3>Editor</h3>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -693,8 +809,10 @@ export default function App() {
             />
           </div>
 
+          {/* DRAG HANDLE */}
           <div onMouseDown={startDrag} className="drag-handle" />
 
+          {/* PREVIEW PANEL */}
           <div
             style={{
               flex: 1,

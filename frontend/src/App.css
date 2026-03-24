@@ -682,3 +682,69 @@
     transform: rotate(360deg);
   }
 }
+
+/* -------------------------------------------------------
+   Workspace Controls
+------------------------------------------------------- */
+
+.workspace-controls {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #ccc;
+}
+
+.add-workspace-btn {
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 6px;
+  background: #e0f0ff;
+  border: 1px solid #99caff;
+  text-align: left;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.add-workspace-btn:hover {
+  background: #d4e9ff;
+}
+
+.workspace-current-label {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin-top: 0.25rem;
+}
+
+/* -------------------------------------------------------
+   Workspace List
+------------------------------------------------------- */
+
+.workspace-list {
+  margin-bottom: 1rem;
+}
+
+.workspace-item {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 0.25rem;
+  background: #f7f7f7;
+  border: 1px solid #ddd;
+  transition: background 0.15s ease;
+}
+
+.workspace-item:hover {
+  background: #eaeaea;
+}
+
+.workspace-item-active {
+  background: #d9ecff;
+  border-color: #8bc2ff;
+  font-weight: 600;
+}
+
+.workspace-loading {
+  font-size: 0.85rem;
+  opacity: 0.6;
+  padding: 0.25rem 0;
+}

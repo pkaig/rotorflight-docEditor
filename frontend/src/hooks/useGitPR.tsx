@@ -19,6 +19,7 @@ interface UseGitPROptions {
   clearEditor: () => void;
   openEditFileModal: (path: string) => void;
   login: string;
+  workspace: string | null;
 }
 
 /* -------------------------------------------------------
@@ -42,6 +43,7 @@ export function useGitPR({
   clearEditor,
   openEditFileModal,
   login,
+  workspace,
 }: UseGitPROptions) {
   const [banner, setBanner] = useState<null | {
     type: PRStatus;
@@ -61,14 +63,14 @@ export function useGitPR({
   });
 
   const loadChangesFromMirror = useCallback(async () => {
-    if (!login) return;
+    if (!login || !workspace) return;
 
     try {
       const response = await fetch(
-        `/api/docs/scan-local-changes?login=${login}`,
-        {
-          credentials: "include",
-        },
+        `/api/docs/scan-local-changes?login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(workspace)}`,
+        { credentials: "include" },
       );
 
       const data = await response.json();
@@ -89,14 +91,14 @@ export function useGitPR({
         renamed: [],
       });
     }
-  }, [login]);
+  }, [login, workspace]);
 
-  // Load changes on mount / login change
+  // Load changes on mount / login / workspace change
   useEffect(() => {
-    if (login) {
+    if (login && workspace) {
       loadChangesFromMirror();
     }
-  }, [login]);
+  }, [login, workspace, loadChangesFromMirror]);
 
   /* -------------------------------------------------------
      Backend response handler
@@ -118,8 +120,6 @@ export function useGitPR({
           refreshGitHubTree();
           setActivePR(null);
           setBanner({ type: "pr_merged", prNumber: res.prNumber });
-
-          // After merge, local workspace is reset externally.
           loadChangesFromMirror();
           break;
 
@@ -128,7 +128,6 @@ export function useGitPR({
           refreshGitHubTree();
           setActivePR(null);
           setBanner({ type: "pr_closed", prNumber: res.prNumber });
-
           loadChangesFromMirror();
           break;
 
@@ -148,67 +147,92 @@ export function useGitPR({
   ------------------------------------------------------- */
   const submitPR = useCallback(
     async (slug: string, description: string) => {
-      const res = await fetch("/api/docs/submit-pr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, description }),
-      });
+      if (!login || !workspace) return;
+
+      const res = await fetch(
+        `/api/docs/submit-pr?login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug, description }),
+        },
+      );
 
       const json: PRResponse = await res.json();
       handleBackendResponse(json);
       return json;
     },
-    [handleBackendResponse],
+    [login, workspace, handleBackendResponse],
   );
 
   /* -------------------------------------------------------
      File operation notifications (mirror-based)
-     These no longer mutate state — they trigger a rescan.
+     These trigger a rescan.
   ------------------------------------------------------- */
-  const notifyFileSaved = useCallback(
-    async (_slug: string, _path: string) => {
-      await loadChangesFromMirror();
-    },
-    [loadChangesFromMirror],
-  );
+  const notifyFileSaved = useCallback(async () => {
+    await loadChangesFromMirror();
+  }, [loadChangesFromMirror]);
 
   const notifyFileRenamed = useCallback(
-    async (slug: string, oldPath: string, newPath: string) => {
-      await fetch("/api/docs/rename", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, oldPath, newPath }),
-      });
+    async (_slug: string, oldPath: string, newPath: string) => {
+      if (!login || !workspace) return;
+
+      await fetch(
+        `/api/docs/rename?login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ oldPath, newPath }),
+        },
+      );
 
       await loadChangesFromMirror();
     },
-    [loadChangesFromMirror],
+    [login, workspace, loadChangesFromMirror],
   );
 
   const notifyFileDeleted = useCallback(
-    async (slug: string, path: string) => {
-      await fetch("/api/docs/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, path }),
-      });
+    async (_slug: string, path: string) => {
+      if (!login || !workspace) return;
+
+      await fetch(
+        `/api/docs/delete?login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        },
+      );
 
       await loadChangesFromMirror();
     },
-    [loadChangesFromMirror],
+    [login, workspace, loadChangesFromMirror],
   );
 
   const notifyFileCreated = useCallback(
-    async (slug: string, path: string) => {
-      await fetch("/api/docs/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, path }),
-      });
+    async (_slug: string, path: string) => {
+      if (!login || !workspace) return;
+
+      await fetch(
+        `/api/docs/create?login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        },
+      );
 
       await loadChangesFromMirror();
     },
-    [loadChangesFromMirror],
+    [login, workspace, loadChangesFromMirror],
   );
 
   /* -------------------------------------------------------

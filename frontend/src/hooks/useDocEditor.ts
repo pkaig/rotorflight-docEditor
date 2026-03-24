@@ -3,14 +3,14 @@ const docEditorDebug = false;
 import { useState } from "react";
 import { isLocalPath, normaliseLocalPath } from "../utils/paths";
 
-export function useDocEditor(login: string | null) {
+export function useDocEditor(login: string | null, workspace: string | null) {
   const [content, setContent] = useState("");
   const [currentDocPath, setCurrentDocPath] = useState("");
   const [showEditModal, setShowEditModal] = useState(false);
   const [pendingGitHubPath, setPendingGitHubPath] = useState("");
   const [isSyncingImages, setIsSyncingImages] = useState(false);
 
-  // 🔥 Autosave suppression lives here
+  // Autosave suppression
   const [suppressNextAutosave, setSuppressNextAutosave] = useState(false);
 
   const [editorImageFolder, setEditorImageFolder] = useState<string | null>(
@@ -23,14 +23,29 @@ export function useDocEditor(login: string | null) {
     setShowEditModal(false);
   }
 
+  //
+  // LOAD DOCUMENT
+  //
   function loadDoc(inputPath: string) {
+    if (!login || !workspace) return;
+
     const storedLogin = login || localStorage.getItem("rf_login");
 
     let canonical: string;
+
+    // GitHub files
     if (inputPath.startsWith("Rotorflight-docs/")) {
       canonical = inputPath;
-    } else {
-      canonical = normaliseLocalPath(inputPath);
+    }
+
+    // Local workspace files
+    else if (inputPath.startsWith("local-workspace/")) {
+      canonical = inputPath;
+    }
+
+    // Bare paths like "docs/index.md"
+    else {
+      canonical = `local-workspace/${workspace}/${inputPath}`;
     }
 
     const isGitHubSource = canonical.startsWith("Rotorflight-docs/");
@@ -45,9 +60,11 @@ export function useDocEditor(login: string | null) {
     setCurrentDocPath(canonical);
 
     fetch(
-      `http://localhost:4000/api/docs/load?path=${encodeURIComponent(
+      `/api/docs/load?path=${encodeURIComponent(
         canonical,
-      )}&login=${encodeURIComponent(storedLogin || "")}`,
+      )}&login=${encodeURIComponent(storedLogin || "")}&workspace=${encodeURIComponent(
+        workspace,
+      )}`,
     )
       .then(async (res) => {
         if (!res.ok) {
@@ -69,16 +86,20 @@ export function useDocEditor(login: string | null) {
       });
   }
 
-  // 🔥 FIX: accept refreshLocalWorkspace as a parameter
+  //
+  // CLONE GITHUB FILE → LOCAL WORKSPACE
+  //
   async function handleCloneToLocal(
     refreshLocalWorkspace: () => Promise<void>,
   ) {
+    if (!login || !workspace) return;
+
     setShowEditModal(false);
 
     const res = await fetch(
-      `http://localhost:4000/api/docs/clone-to-local?login=${encodeURIComponent(
-        login || "",
-      )}`,
+      `/api/docs/clone-to-local?login=${encodeURIComponent(
+        login,
+      )}&workspace=${encodeURIComponent(workspace)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -93,10 +114,10 @@ export function useDocEditor(login: string | null) {
     const folder = relative.replace(/[^/]+$/, "") + "img";
     setEditorImageFolder(folder);
 
-    // 🔥 Skip autosave for the next load
+    // Skip autosave for the next load
     setSuppressNextAutosave(true);
 
-    await refreshLocalWorkspace();
+    await refreshLocalWorkspace(workspace);
 
     loadDoc(canonical);
     setCurrentDocPath(canonical);
@@ -127,7 +148,6 @@ export function useDocEditor(login: string | null) {
     handleCloneToLocal,
     isCurrentLocal,
 
-    // 🔥 MUST be returned so App.tsx can use them
     suppressNextAutosave,
     setSuppressNextAutosave,
   };

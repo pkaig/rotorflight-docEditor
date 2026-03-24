@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from "react";
 
 export function useAutosave(
   login: string | null,
+  workspace: string | null,
   filePath: string,
   content: string,
+  suppressNextAutosave: boolean,
+  setSuppressNextAutosave: (v: boolean) => void,
   saveFn: (cleanPath: string, content: string) => Promise<void> | void,
 ) {
+  // Ignore invalid content
   if (content === undefined || content === null) return;
   if (typeof content !== "string") return;
 
@@ -13,7 +17,16 @@ export function useAutosave(
   const timeout = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!login || !filePath) return;
+    if (!login || !workspace || !filePath) return;
+
+    // Never autosave GitHub files
+    if (filePath.startsWith("Rotorflight-docs/")) return;
+
+    // Skip autosave once after clone
+    if (suppressNextAutosave) {
+      setSuppressNextAutosave(false);
+      return;
+    }
 
     if (timeout.current) clearTimeout(timeout.current);
 
@@ -29,7 +42,15 @@ export function useAutosave(
     return () => {
       if (timeout.current) clearTimeout(timeout.current);
     };
-  }, [content, login, filePath]);
+  }, [
+    login,
+    workspace,
+    filePath,
+    content,
+    suppressNextAutosave,
+    setSuppressNextAutosave,
+    saveFn,
+  ]);
 
   return saving;
 }

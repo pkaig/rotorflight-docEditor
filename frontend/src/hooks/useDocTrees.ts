@@ -4,33 +4,69 @@ import type { TreeNode } from "../components/Tree";
 const HASH_KEY = "rf_github_hash";
 const TREE_KEY = "rf_github_tree";
 
-export function useDocTrees(login: string | null, isAuthenticated: boolean) {
-  const [localTree, setLocalTree] = useState<TreeNode | null>(null);
+export function useDocTrees(
+  login: string | null,
+  workspaces: string[],
+  isAuthenticated: boolean,
+) {
+  const [localTrees, setLocalTrees] = useState<Record<string, TreeNode[]>>({});
   const [githubTree, setGithubTree] = useState<TreeNode | null>(null);
+
   const [loadingLocal, setLoadingLocal] = useState(true);
   const [loadingGithub, setLoadingGithub] = useState(true);
 
+  /* -------------------------------------------------------
+     Helper: flatten local workspace tree
+     Extracts only: docs + versioned_docs
+  ------------------------------------------------------- */
+  function flattenLocalTree(docs: TreeNode[] | null, ws: string): TreeNode[] {
+    if (!docs) return [];
+
+    // Find workspace root
+    const root = docs.find((n) => n.name === ws);
+    if (!root) return [];
+
+    // Find Rotorflight-docs wrapper
+    const rf = root.children?.find((n) => n.name === "Rotorflight-docs");
+    if (!rf) return [];
+
+    // Return only docs + versioned_docs
+    return rf.children || [];
+  }
+
+  /* -------------------------------------------------------
+     INITIAL LOAD
+  ------------------------------------------------------- */
   useEffect(() => {
-    if (!isAuthenticated || !login || login.trim() === "") return;
+    if (!isAuthenticated || !login) return;
 
-    console.log(
-      "INIT CALLED",
-      new Date().getMinutes(),
-      ":",
-      new Date().getSeconds(),
-    );
+    if (workspaces.length === 0) {
+      setLocalTrees({});
+      setGithubTree(null);
+      setLoadingLocal(false);
+      setLoadingGithub(false);
+      return;
+    }
 
-    //
-    // --- GITHUB TREE (independent) ---
-    //
+    const primaryWorkspace = workspaces[0];
+
+    setLoadingLocal(true);
+    setLoadingGithub(true);
+
+    /* -------------------------------------------------------
+       LOAD GITHUB TREE
+    ------------------------------------------------------- */
     async function loadGithub() {
       try {
         const cachedHash = localStorage.getItem(HASH_KEY);
         const cachedTree = localStorage.getItem(TREE_KEY);
 
         const hashRes = await fetch(
-          `/api/docs/github-hash?login=${encodeURIComponent(login)}`,
+          `/api/docs/github-hash?login=${encodeURIComponent(
+            login,
+          )}&workspace=${encodeURIComponent(primaryWorkspace)}`,
         );
+
         if (!hashRes.ok) {
           console.warn("⚠️ Failed to fetch GitHub hash");
           setLoadingGithub(false);
@@ -39,7 +75,6 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
 
         const { hash: currentHash } = await hashRes.json();
 
-        // Use cached GitHub tree if hash matches
         if (cachedHash && cachedHash === currentHash && cachedTree) {
           const parsed = JSON.parse(cachedTree);
           const githubRoot = parsed.find(
@@ -51,10 +86,12 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
           return;
         }
 
-        // Fetch fresh GitHub tree ONLY
         const ghRes = await fetch(
-          `/api/docs/list-github?login=${encodeURIComponent(login)}`,
+          `/api/docs/list-github?login=${encodeURIComponent(
+            login,
+          )}&workspace=${encodeURIComponent(primaryWorkspace)}`,
         );
+
         if (!ghRes.ok) {
           console.warn("⚠️ Failed to fetch GitHub tree");
           setLoadingGithub(false);
@@ -63,13 +100,13 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
 
         const { docs } = await ghRes.json();
 
-        // Cache only GitHub portion
         localStorage.setItem(TREE_KEY, JSON.stringify(docs));
         localStorage.setItem(HASH_KEY, currentHash);
 
         const githubRoot = docs.find(
           (n: TreeNode) => n.name === "Rotorflight-docs",
         );
+
         setGithubTree(githubRoot || null);
         setLoadingGithub(false);
       } catch (err) {
@@ -78,60 +115,77 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
       }
     }
 
-    //
-    // --- LOCAL TREE (independent, always live) ---
-    //
-    async function loadLocal() {
-      try {
-        const localRes = await fetch(
-          `/api/docs/list-local?login=${encodeURIComponent(login)}`,
-        );
-        if (!localRes.ok) {
-          console.warn("⚠️ Failed to fetch local workspace");
-          setLoadingLocal(false);
-          return;
-        }
+    /* -------------------------------------------------------
+       LOAD LOCAL TREES FOR ALL WORKSPACES
+    ------------------------------------------------------- */
+    async function loadAllLocal() {
+      const results: Record<string, TreeNode[]> = {};
 
-        const { docs } = await localRes.json();
-        setLocalTree(docs || null);
-        setLoadingLocal(false);
-      } catch (err) {
-        console.error("Local load failed", err);
-        setLoadingLocal(false);
+      for (const ws of workspaces) {
+        try {
+          const res = await fetch(
+            `/api/docs/list-local?login=${encodeURIComponent(
+              login,
+            )}&workspace=${encodeURIComponent(ws)}`,
+          );
+
+          if (!res.ok) {
+            console.warn(`⚠️ Failed to fetch local workspace: ${ws}`);
+            continue;
+          }
+
+          const { docs } = await res.json();
+
+          // Flatten
+          results[ws] = flattenLocalTree(docs, ws);
+        } catch (err) {
+          console.error("Local load failed", err);
+        }
       }
+
+      setLocalTrees(results);
+      setLoadingLocal(false);
     }
 
-    // Run both in parallel
     loadGithub();
-    loadLocal();
-  }, [isAuthenticated, login]);
+    loadAllLocal();
+  }, [isAuthenticated, login, workspaces]);
 
-  //
-  // --- Refresh Local (unchanged, correct) ---
-  //
-  async function refreshLocalWorkspace() {
-    // console.log(
-    //   "🔄 Refreshing local workspace tree...",
-    //   new Date().getMinutes(),
-    // );
-
+  /* -------------------------------------------------------
+     REFRESH LOCAL FOR A SINGLE WORKSPACE
+  ------------------------------------------------------- */
+  async function refreshLocalWorkspace(ws: string) {
     if (!login) return;
 
-    const res = await fetch(`/api/docs/list-local?login=${login}`);
+    const res = await fetch(
+      `/api/docs/list-local?login=${encodeURIComponent(
+        login,
+      )}&workspace=${encodeURIComponent(ws)}`,
+    );
+
     const data = await res.json();
 
-    setLocalTree(data.docs);
-    return data.docs; // return the new tree
+    const flattened = flattenLocalTree(data.docs, ws);
+
+    setLocalTrees((prev) => ({
+      ...prev,
+      [ws]: flattened,
+    }));
+
+    return flattened;
   }
 
-  //
-  // --- Refresh GitHub (unchanged) ---
-  //
-  function refreshGitHubTree() {
-    console.log("🔄 Refreshing GitHub tree...");
+  /* -------------------------------------------------------
+     REFRESH GITHUB TREE
+  ------------------------------------------------------- */
+  function refreshGitHubTree(ws: string) {
     if (!login) return;
 
-    fetch(`/api/docs/list?login=${login}`)
+    fetch(
+      `/api/docs/list-github?login=${encodeURIComponent(
+        login,
+      )}&workspace=${encodeURIComponent(ws)}`,
+    )
       .then((res) => res.json())
       .then((data) => {
         setGithubTree(
@@ -142,7 +196,7 @@ export function useDocTrees(login: string | null, isAuthenticated: boolean) {
   }
 
   return {
-    localTree,
+    localTrees,
     githubTree,
     loadingLocal,
     loadingGithub,
