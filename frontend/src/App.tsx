@@ -520,12 +520,21 @@ export default function App() {
             const children = raw[0]?.children || [];
             console.log("LOCAL TREE CHILDREN", ws, children);
 
+            // const nodes: TreeNode[] = [
+            //   {
+            //     name: ws,
+            //     type: "dir",
+            //     path: `local-workspace/${ws}`,
+            //     children,
+            //     isWorkspaceRoot: true,
+            //   },
+            // ];
+            const backendRoot = raw[0];
+
             const nodes: TreeNode[] = [
               {
-                name: ws,
-                type: "dir",
-                path: `local-workspace/${ws}`,
-                children,
+                ...backendRoot,
+                isWorkspaceRoot: true,
               },
             ];
 

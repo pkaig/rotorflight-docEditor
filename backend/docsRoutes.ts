@@ -298,6 +298,7 @@ async function buildLocalWorkspace(login: string, workspace: string) {
     name: workspace,
     path: `local-workspace/${workspace}`,
     children,
+    isWorkspaceRoot: true,
   } as any;
 }
 

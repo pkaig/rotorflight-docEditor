@@ -716,7 +716,7 @@
 }
 
 /* -------------------------------------------------------
-   Workspace List
+   Workspace List (Rotorflight Configurator Style)
 ------------------------------------------------------- */
 
 .workspace-list {
@@ -724,27 +724,109 @@
 }
 
 .workspace-item {
-  padding: 0.4rem 0.6rem;
+  padding: 0.45rem 0.65rem;
   border-radius: 4px;
   cursor: pointer;
-  margin-bottom: 0.25rem;
-  background: #f7f7f7;
-  border: 1px solid #ddd;
-  transition: background 0.15s ease;
+  margin-bottom: 0.35rem;
+  background: #2a2d32; /* RF dark panel */
+  border: 1px solid #3a3d42; /* RF darker border */
+  color: #e6e6e6;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .workspace-item:hover {
-  background: #eaeaea;
+  background: #32363c; /* hover lift */
+  border-color: #4a4e54;
 }
 
 .workspace-item-active {
-  background: #d9ecff;
-  border-color: #8bc2ff;
+  background: #1f4f7a; /* RF blue highlight */
+  border-color: #2f6fa5;
   font-weight: 600;
+  color: #ffffff;
 }
 
 .workspace-loading {
   font-size: 0.85rem;
   opacity: 0.6;
   padding: 0.25rem 0;
+}
+
+/* Add spacing between workspace blocks */
+.workspace-block {
+  margin-bottom: 0.75rem;
+}
+
+/* -------------------------------------------------------
+   Tree View (Rotorflight Configurator Style)
+------------------------------------------------------- */
+
+/* Remove bullets + reset browser indent */
+.tree-list,
+.tree-list li {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Root UL: flush-left */
+.tree-list {
+  padding-left: 0;
+}
+
+/* Nested ULs: indent children */
+.tree-list .tree-list {
+  padding-left: 18px; /* RF spacing */
+}
+
+/* Base node layout */
+.tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  color: #dcdcdc; /* RF light text */
+  font-size: 0.92rem;
+}
+
+/* Hollow dot for folders */
+.tree-node.folder::before {
+  content: "○";
+  font-size: 12px;
+  color: #9aa0a6; /* RF grey */
+  width: 12px;
+  display: inline-block;
+}
+
+/* Solid dot for files */
+.tree-node.file::before {
+  content: "●";
+  font-size: 10px;
+  color: #9aa0a6;
+  width: 12px;
+  display: inline-block;
+}
+
+/* Workspace roots: no dot, RF highlight */
+.tree-node.workspace-root::before {
+  content: "";
+  width: 12px;
+  display: inline-block;
+}
+
+.tree-node.workspace-root {
+  margin-left: 0;
+  font-weight: 600;
+  background: #1f4f7a; /* RF blue */
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #ffffff;
+  border: 1px solid #2f6fa5; /* RF blue border */
+  margin-bottom: 4px; /* small gap below root */
 }

@@ -5,6 +5,7 @@ export type TreeNode = {
   path: string;
   type: "file" | "dir";
   children?: TreeNode[];
+  isWorkspaceRoot?: boolean;
 };
 
 interface TreeProps {
@@ -42,6 +43,7 @@ export function Tree({
 
         // --- SAFETY: ensure key is always a string ---
         const key = (node.path ?? node.name).replace(/\/$/, "");
+        console.log("NODE", node.name, node.isWorkspaceRoot);
 
         return (
           <li key={key}>
@@ -49,9 +51,9 @@ export function Tree({
               <div className="tree-dir">
                 <div
                   className={
-                    "tree-folder folder-root " +
-                    (node.name === "local-workspace" ? "folder-local" : "") +
-                    (node.name === "Rotorflight-docs" ? "folder-docs" : "")
+                    "tree-node " +
+                    (node.type === "dir" ? "folder" : "file") +
+                    (node.isWorkspaceRoot ? " workspace-root" : "")
                   }
                   onClick={(e) => {
                     e.stopPropagation();
@@ -76,7 +78,7 @@ export function Tree({
               </div>
             ) : (
               <button
-                className="tree-item"
+                className="tree-node file"
                 draggable
                 onDragStart={() => node.path && setDraggedItem(node.path)}
                 onClick={() => node.path && onSelect(node.path)}
