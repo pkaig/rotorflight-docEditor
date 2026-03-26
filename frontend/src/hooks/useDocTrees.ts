@@ -16,25 +16,6 @@ export function useDocTrees(
   const [loadingGithub, setLoadingGithub] = useState(true);
 
   /* -------------------------------------------------------
-     Helper: flatten local workspace tree
-     Extracts only: docs + versioned_docs
-  ------------------------------------------------------- */
-  function flattenLocalTree(docs: TreeNode[] | null, ws: string): TreeNode[] {
-    if (!docs) return [];
-
-    // Find workspace root
-    const root = docs.find((n) => n.name === ws);
-    if (!root) return [];
-
-    // Find Rotorflight-docs wrapper
-    const rf = root.children?.find((n) => n.name === "Rotorflight-docs");
-    if (!rf) return [];
-
-    // Return only docs + versioned_docs
-    return rf.children || [];
-  }
-
-  /* -------------------------------------------------------
      INITIAL LOAD
   ------------------------------------------------------- */
   useEffect(() => {
@@ -133,11 +114,12 @@ export function useDocTrees(
             console.warn(`⚠️ Failed to fetch local workspace: ${ws}`);
             continue;
           }
+          //  console.log("TREE FOR", ws, JSON.stringify(localTrees[ws], null, 2));
 
           const { docs } = await res.json();
 
           // Flatten
-          results[ws] = flattenLocalTree(docs, ws);
+          results[ws] = docs;
         } catch (err) {
           console.error("Local load failed", err);
         }
@@ -165,7 +147,7 @@ export function useDocTrees(
 
     const data = await res.json();
 
-    const flattened = flattenLocalTree(data.docs, ws);
+    const flattened = data.docs;
 
     setLocalTrees((prev) => ({
       ...prev,
@@ -193,6 +175,7 @@ export function useDocTrees(
             null,
         );
       });
+    console.log("TREE FOR", ws, JSON.stringify(localTrees[ws], null, 2));
   }
 
   return {

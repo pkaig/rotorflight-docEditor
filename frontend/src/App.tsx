@@ -99,6 +99,9 @@ export default function App() {
   const [newFileFolder, setNewFileFolder] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState("");
   const [errorLine, setErrorLine] = useState<number | null>(null);
+  const [openWorkspaces, setOpenWorkspaces] = useState<Record<string, boolean>>(
+    {},
+  );
 
   /* -------------------------------------------------------
      CHANGE TRACKING + PR FLOW
@@ -507,35 +510,38 @@ export default function App() {
           </div>
 
           {/* -------------------------------------------------------
-          WORKSPACE TREES
-          ------------------------------------------------------- */}
-          {workspaces.map((ws) => (
-            <div key={ws} className="workspace-block">
-              <div className="workspace-title">{ws}</div>
+    WORKSPACE TREES (workspace name is the tree root)
+------------------------------------------------------- */}
+          {workspaces.map((ws) => {
+            const raw = localTrees[ws] || [];
+            console.log("LOCAL TREE RAW", ws, localTrees[ws]);
+            console.log("GITHUB TREE", githubTree);
 
-              {/* LOCAL TREE FOR THIS WORKSPACE */}
-              <Tree
-                nodes={localTrees[ws] || []}
-                onSelect={(path) => onSelect(ws, path)}
-                onDropFolder={(folder) => onDropFolder(ws, folder)}
-                setDraggedItem={setDraggedItem}
-                openFolders={openFolders}
-                setOpenFolders={setOpenFolders}
-              />
+            const children = raw[0]?.children || [];
+            console.log("LOCAL TREE CHILDREN", ws, children);
 
-              {/* GLOBAL GITHUB TREE (same for all workspaces) */}
-              {githubTree && (
+            const nodes: TreeNode[] = [
+              {
+                name: ws,
+                type: "dir",
+                path: `local-workspace/${ws}`,
+                children,
+              },
+            ];
+
+            return (
+              <div key={ws} className="workspace-block">
                 <Tree
-                  nodes={[githubTree]}
+                  nodes={nodes}
                   onSelect={(path) => onSelect(ws, path)}
                   onDropFolder={(folder) => onDropFolder(ws, folder)}
                   setDraggedItem={setDraggedItem}
                   openFolders={openFolders}
                   setOpenFolders={setOpenFolders}
                 />
-              )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
 
           {loadingLocal && (
             <div className="loadingLocalWorkspace">
