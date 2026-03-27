@@ -479,178 +479,168 @@ export default function App() {
       {/* LAYOUT: SIDEBAR + EDITOR + PREVIEW */}
       <div style={{ display: "flex", height: "100vh" }}>
         {/* SIDEBAR */}
+        {/* SIDEBAR */}
         <div className="sidebar">
-          <h3>Docs</h3>
-          <button
-            onClick={() => {
-              if (workspace) {
-                refreshLocalWorkspace(workspace);
-              }
-            }}
-          >
-            Refresh Local
-          </button>
+          {/* TOP SECTION */}
+          <div className="sidebar-top">
+            <h3>Docs</h3>
 
-          {/* -------------------------------------------------------
-           WORKSPACE CONTROLS
-          ------------------------------------------------------- */}
-          <div className="workspace-controls">
             <button
-              className="add-workspace-btn"
               onClick={() => {
-                setWorkspace(null); // Re-open WorkspaceSelector
+                if (workspace) {
+                  refreshLocalWorkspace(workspace);
+                }
               }}
             >
-              + Add Workspace
+              Refresh Local
             </button>
 
-            <div className="workspace-current-label">
-              Current workspace: <strong>{workspace}</strong>
+            {/* WORKSPACE CONTROLS */}
+            <div className="workspace-controls">
+              <button
+                className="add-workspace-btn"
+                onClick={() => {
+                  setWorkspace(null);
+                }}
+              >
+                + Add Workspace
+              </button>
+
+              <div className="workspace-current-label">
+                Current workspace: <strong>{workspace}</strong>
+              </div>
             </div>
+
+            {/* WORKSPACE TREES */}
+            {workspaces.map((ws) => {
+              const raw = localTrees[ws] || [];
+              const backendRoot = raw[0];
+
+              const nodes: TreeNode[] = [
+                {
+                  ...backendRoot,
+                  isWorkspaceRoot: true,
+                  path: `local-workspace/${ws}`,
+                },
+              ];
+
+              return (
+                <div key={ws} className="workspace-block">
+                  <Tree
+                    nodes={nodes}
+                    onSelect={(path) => onSelect(ws, path)}
+                    onDropFolder={(folder) => onDropFolder(ws, folder)}
+                    setDraggedItem={setDraggedItem}
+                    openFolders={openFolders}
+                    setOpenFolders={setOpenFolders}
+                  />
+                </div>
+              );
+            })}
+
+            {loadingLocal && (
+              <div className="loadingLocalWorkspace">
+                <LoadingLocalBanner message="Please wait… Loading local workspace" />
+              </div>
+            )}
+
+            {!loadingLocal && loadingGithub && (
+              <div className="loadingGithub">
+                <LoadingGithubBanner message="Please wait… Loading docs from GitHub" />
+              </div>
+            )}
           </div>
 
-          {/* -------------------------------------------------------
-    WORKSPACE TREES (workspace name is the tree root)
-------------------------------------------------------- */}
-          {workspaces.map((ws) => {
-            const raw = localTrees[ws] || [];
-            console.log("LOCAL TREE RAW", ws, localTrees[ws]);
-            console.log("GITHUB TREE", githubTree);
+          {/* BOTTOM SECTION — PINNED */}
+          <div className="sidebar-bottom">
+            <div className="changes-panel">
+              <div className="changes-actions">
+                <button
+                  className="clear-selected-btn"
+                  onClick={async (e) => {
+                    e.stopPropagation();
 
-            const children = raw[0]?.children || [];
-            console.log("LOCAL TREE CHILDREN", ws, children);
+                    const selected = Object.keys(selectedChanges).filter(
+                      (k) => selectedChanges[k],
+                    );
+                    if (selected.length === 0) return;
 
-            // const nodes: TreeNode[] = [
-            //   {
-            //     name: ws,
-            //     type: "dir",
-            //     path: `local-workspace/${ws}`,
-            //     children,
-            //     isWorkspaceRoot: true,
-            //   },
-            // ];
-            const backendRoot = raw[0];
-
-            const nodes: TreeNode[] = [
-              {
-                ...backendRoot,
-                isWorkspaceRoot: true,
-              },
-            ];
-
-            return (
-              <div key={ws} className="workspace-block">
-                <Tree
-                  nodes={nodes}
-                  onSelect={(path) => onSelect(ws, path)}
-                  onDropFolder={(folder) => onDropFolder(ws, folder)}
-                  setDraggedItem={setDraggedItem}
-                  openFolders={openFolders}
-                  setOpenFolders={setOpenFolders}
-                />
-              </div>
-            );
-          })}
-
-          {loadingLocal && (
-            <div className="loadingLocalWorkspace">
-              <LoadingLocalBanner message="Please wait… Loading local workspace" />
-            </div>
-          )}
-
-          {!loadingLocal && loadingGithub && (
-            <div className="loadingGithub">
-              <LoadingGithubBanner message="Please wait… Loading docs from GitHub" />
-            </div>
-          )}
-
-          {/* CHANGES + PR PANEL */}
-          <div className="changes-panel">
-            <div className="changes-actions">
-              <button
-                className="clear-selected-btn"
-                onClick={async (e) => {
-                  e.stopPropagation();
-
-                  const selected = Object.keys(selectedChanges).filter(
-                    (k) => selectedChanges[k],
-                  );
-                  if (selected.length === 0) return;
-
-                  if (
-                    !confirm(
-                      `Restore ${selected.length} file(s) from Rotorflight-docs?`,
+                    if (
+                      !confirm(
+                        `Restore ${selected.length} file(s) from Rotorflight-docs?`,
+                      )
                     )
-                  )
-                    return;
+                      return;
 
-                  // Extract workspace from the first selected path
-                  const wsMatch = selected[0].match(
-                    /^local-workspace\/([^/]+)\//,
-                  );
-                  const ws = wsMatch ? wsMatch[1] : null;
-                  if (!ws) return;
+                    const wsMatch = selected[0].match(
+                      /^local-workspace\/([^/]+)\//,
+                    );
+                    const ws = wsMatch ? wsMatch[1] : null;
+                    if (!ws) return;
 
-                  for (const path of selected) {
+                    for (const path of selected) {
+                      await fetch(
+                        `/api/docs/restore-file?login=${login}&workspace=${ws}`,
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ path }),
+                        },
+                      );
+                    }
+
+                    await refreshLocalWorkspace(ws);
+                    await clearSelectedChanges(ws, selected);
+                  }}
+                >
+                  Clear selected
+                </button>
+
+                <button
+                  className="clear-all-btn"
+                  onClick={async () => {
+                    if (
+                      !confirm("This will delete ALL local changes. Continue?")
+                    )
+                      return;
+
+                    const first = Object.keys(changes)[0];
+                    const wsMatch = first?.match(/^local-workspace\/([^/]+)\//);
+                    const ws = wsMatch ? wsMatch[1] : null;
+                    if (!ws) return;
+
                     await fetch(
-                      `/api/docs/restore-file?login=${login}&workspace=${ws}`,
+                      `/api/docs/reset-local?login=${encodeURIComponent(
+                        login || "",
+                      )}&workspace=${ws}`,
                       {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ path }),
                       },
                     );
-                  }
 
-                  await refreshLocalWorkspace(ws);
-                  await clearSelectedChanges(ws, selected);
-                }}
-              >
-                Clear selected
-              </button>
+                    await refreshLocalWorkspace(ws);
+                    clearAllChanges();
+                  }}
+                >
+                  Clear all
+                </button>
+              </div>
 
-              <button
-                className="clear-all-btn"
-                onClick={async () => {
-                  if (!confirm("This will delete ALL local changes. Continue?"))
-                    return;
+              <div className="changes-list-container">
+                <ChangesPanel
+                  changes={changes}
+                  selectedChanges={selectedChanges}
+                  setSelectedChanges={setSelectedChanges}
+                />
+              </div>
 
-                  const first = Object.keys(changes)[0];
-                  const wsMatch = first?.match(/^local-workspace\/([^/]+)\//);
-                  const ws = wsMatch ? wsMatch[1] : null;
-                  if (!ws) return;
-
-                  await fetch(
-                    `/api/docs/reset-local?login=${encodeURIComponent(
-                      login || "",
-                    )}&workspace=${ws}`,
-                    {
-                      method: "POST",
-                    },
-                  );
-
-                  await refreshLocalWorkspace(ws);
-                  clearAllChanges();
-                }}
-              >
-                Clear all
-              </button>
-            </div>
-
-            <div className="changes-list-container">
-              <ChangesPanel
-                changes={changes}
-                selectedChanges={selectedChanges}
-                setSelectedChanges={setSelectedChanges}
+              <PRPanel
+                slug={currentDocPath}
+                refreshGitHubTree={refreshGitHubTree}
+                clearEditor={clearEditor}
+                openEditFileModal={() => setShowEditModal(true)}
               />
             </div>
-
-            <PRPanel
-              slug={currentDocPath}
-              refreshGitHubTree={refreshGitHubTree}
-              clearEditor={clearEditor}
-              openEditFileModal={() => setShowEditModal(true)}
-            />
           </div>
         </div>
 

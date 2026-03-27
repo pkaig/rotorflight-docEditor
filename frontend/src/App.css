@@ -1,7 +1,5 @@
 /* ============================================================
    1. LEGACY VITE / LOGO STYLES
-   These are from the original Vite template. Safe to keep,
-   but isolated so they don’t clutter the real app styles.
    ============================================================ */
 
 .logo {
@@ -37,14 +35,12 @@
 .card {
   padding: 2em;
 }
-
 .read-the-docs {
   color: #888;
 }
 
 /* ============================================================
    2. SHARED ANIMATIONS
-   Used by modals, spinners, and fade‑in UI elements.
    ============================================================ */
 
 @keyframes fadeIn {
@@ -69,15 +65,11 @@
 
 /* ============================================================
    3. EDITOR "EDIT THIS FILE" MODAL
-   This modal appears when the user opens a GitHub-backed file.
    ============================================================ */
 
 .edit-modal-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
@@ -127,8 +119,7 @@
 }
 
 /* ============================================================
-   4. FILE TREE ROOT FOLDER STYLING
-   Local workspace (blue) and GitHub docs (yellow).
+   4. FILE TREE ROOT FOLDER STYLING (legacy)
    ============================================================ */
 
 .folder-root {
@@ -142,7 +133,6 @@
   box-sizing: border-box;
 }
 
-/* Local workspace root */
 .folder-local {
   background: #eaf7ff;
   border: 1px solid #bcdcff;
@@ -153,7 +143,6 @@
   background: #d4eaff;
 }
 
-/* GitHub docs root */
 .folder-docs {
   background: #fff3cd;
   border: 1px solid #ffeeba;
@@ -164,30 +153,13 @@
   background: #ffe8a6;
 }
 
-/* Extra spacing above root folders */
 .folder-local,
 .folder-docs {
   margin-top: 10px;
 }
 
-.tree-list > li > .tree-dir > .folder-local,
-.tree-list > li > .tree-dir > .folder-docs {
-  margin-top: 12px;
-}
-
-/* Remove bullet only for top-level roots (local-workspace, rotorflight-docs) */
-/* .tree-list > li:has(> details > summary.folder-root) {
-  list-style: none;
-} */
-
-/* Remove bullet only for leaf items (final files: md/mdx) */
-/* .tree-list li:not(:has(details)) {
-  list-style: none;
-} */
-
 /* ============================================================
    5. LOADING BANNERS
-   These appear when local workspace or GitHub data is loading.
    ============================================================ */
 
 .loading-icon {
@@ -224,7 +196,6 @@
 
 /* ============================================================
    6. PR DESCRIPTION MODAL
-   Shown when user clicks "Set up PR".
    ============================================================ */
 
 .modal-overlay {
@@ -277,7 +248,6 @@
 
 /* ============================================================
    7. PR PANEL BUTTON
-   The single "Set up PR" button.
    ============================================================ */
 
 .submit-pr {
@@ -290,13 +260,12 @@
 }
 
 /* ============================================================
-   8. GLOBAL BANNER (PR lifecycle + notifications)
-   Appears at the top of the workspace when PR events occur.
+   8. GLOBAL BANNER
    ============================================================ */
 
 .banner {
-  background: #eaf7ff; /* light blue (matches local workspace) */
-  border-left: 4px solid #0070f3; /* strong blue accent */
+  background: #eaf7ff;
+  border-left: 4px solid #0070f3;
   padding: 10px 14px;
   border-radius: 6px;
   margin: 0 0 1rem 0;
@@ -304,7 +273,7 @@
   justify-content: space-between;
   align-items: center;
   font-weight: 500;
-  color: #004a80; /* same tone as folder-local */
+  color: #004a80;
   animation: fadeIn 0.2s ease-out;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
@@ -323,9 +292,7 @@
 }
 
 /* ============================================================
-   9. MARKDOWN PREVIEW (rf-preview)
-   Unified styling for headings, text, code, tables, images,
-   blockquotes, admonitions, and tabbed content.
+   9. MARKDOWN PREVIEW
    ============================================================ */
 
 .rf-preview {
@@ -335,7 +302,6 @@
   padding: 1rem;
 }
 
-/* Headings */
 .rf-preview h1,
 .rf-preview h2,
 .rf-preview h3,
@@ -345,12 +311,10 @@
   margin-bottom: 0.8rem;
 }
 
-/* Paragraphs */
 .rf-preview p {
   margin: 1rem 0;
 }
 
-/* Inline code */
 .rf-preview code {
   background: #f5f5f5;
   padding: 2px 4px;
@@ -358,7 +322,6 @@
   font-size: 0.9rem;
 }
 
-/* Code blocks */
 .rf-preview pre code {
   display: block;
   padding: 1rem;
@@ -367,7 +330,6 @@
   overflow-x: auto;
 }
 
-/* Tables */
 .rf-preview table {
   border-collapse: collapse;
   margin: 1rem 0;
@@ -379,14 +341,12 @@
   padding: 0.5rem 0.75rem;
 }
 
-/* Images */
 .rf-preview img {
   max-width: 100%;
   border-radius: 6px;
   margin: 1rem 0;
 }
 
-/* Blockquotes */
 .rf-preview blockquote {
   border-left: 4px solid #ccc;
   padding-left: 1rem;
@@ -394,14 +354,8 @@
   margin: 1rem 0;
 }
 
-.docs-panel {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0; /* critical for flexbox scrolling */
-}
-
 /* ============================================================
-   10. ADMONITIONS (Docusaurus-style callouts)
+   10. ADMONITIONS
    ============================================================ */
 
 .rf-preview .admonition {
@@ -418,39 +372,34 @@
   color: var(--adm-color);
 }
 
-/* NOTE */
 .rf-preview .admonition-note {
   --adm-color: #2b6cb0;
   --adm-bg: #ebf4ff;
 }
 
-/* INFO */
 .rf-preview .admonition-info {
   --adm-color: #4a5568;
   --adm-bg: #f7fafc;
 }
 
-/* WARNING / CAUTION */
 .rf-preview .admonition-warning,
 .rf-preview .admonition-caution {
   --adm-color: #d69e2e;
   --adm-bg: #fffaf0;
 }
 
-/* DANGER */
 .rf-preview .admonition-danger {
   --adm-color: #c53030;
   --adm-bg: #fff5f5;
 }
 
-/* TIP */
 .rf-preview .admonition-tip {
   --adm-color: #2f855a;
   --adm-bg: #f0fff4;
 }
 
 /* ============================================================
-   11. TABS (Markdown tabbed content)
+   11. TABS
    ============================================================ */
 
 .rf-tabs {
@@ -482,17 +431,14 @@
 .rf-tabs-body {
   padding: 12px;
 }
-
 .rf-tab-panel {
   animation: fadeIn 0.15s ease;
 }
 
 /* ============================================================
    12. LAYOUT STYLES
-   Flexbox-based layout for sidebar, editor, and preview.
    ============================================================ */
 
-/* Sidebar */
 .sidebar {
   width: 350px;
   border-right: 1px solid #ccc;
@@ -506,17 +452,15 @@
 .docs-panel {
   flex: 1;
   overflow-y: auto;
-  min-height: 0; /* critical */
+  min-height: 0;
 }
 
-/* Editor + Preview wrapper */
 .main-area {
   flex: 1;
   display: flex;
   overflow: hidden;
 }
 
-/* Editor container */
 .editor-container {
   padding: 1rem;
   border-right: 1px solid #ddd;
@@ -527,30 +471,26 @@
   min-width: 420px;
 }
 
-/* Preview container */
 .preview-container {
   flex: 1;
   padding: 1rem;
   overflow-y: auto;
 }
 
-/* Drag handle */
 .drag-handle {
   width: 6px;
   cursor: col-resize;
   background: #eee;
 }
 
+/* ============================================================
+   13. CHANGES PANEL
+   ============================================================ */
+
 .changes-actions {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
-}
-
-.clear-btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.85rem;
-  cursor: pointer;
 }
 
 .change-item {
@@ -576,30 +516,22 @@
   font-size: 0.95rem;
   font-weight: 600;
 }
-.changes-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  max-height: 25%;
-  overflow-y: auto;
-}
 
+/* Updated buttons to match + Add Workspace */
 .changes-panel button {
-  background: #eaf7ff; /* identical to folder-local */
-  border: 1px solid #bcdcff; /* identical border */
-  color: #004a80; /* identical text colour */
-  border-radius: 10px; /* folder-local uses 10px */
-  padding: 5px 14px; /* folder-local geometry */
-  font-family: "Work Sans", sans-serif; /* critical */
-  font-weight: 600; /* folder-local uses 600 */
-  font-size: 0.9rem; /* folder-local scale */
-  line-height: 1.2; /* matches folder rendering */
-  letter-spacing: 0.2px; /* matches folder rendering */
+  background: #e0f0ff;
+  border: 1px solid #99caff;
+  color: #004a80;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 
 .changes-panel button:hover {
-  background: #d4eaff;
+  background: #d4e9ff;
 }
 
 .pr-button {
@@ -607,7 +539,7 @@
 }
 
 /* ============================================================
-   13. USER BAR
+   14. USER BAR
    ============================================================ */
 
 .user-bar {
@@ -626,8 +558,7 @@
 }
 
 /* ============================================================
-   14. SAVING INDICATOR
-   Small text in the editor that appears when changes are being saved.
+   15. SAVING INDICATOR
    ============================================================ */
 
 .saving-indicator {
@@ -639,8 +570,7 @@
 }
 
 /* ============================================================
-   14. MODAL OVERLAYS
-   Used for both the "Edit this file" prompt and the PR description modal.
+   16. MODAL OVERLAYS
    ============================================================ */
 
 .edit-modal-box {
@@ -658,7 +588,7 @@
 }
 
 /* ============================================================
-   15. LOADING BANNERS
+   17. LOADING BANNERS (duplicate block kept for safety)
    ============================================================ */
 
 .loading-local-banner,
@@ -677,30 +607,26 @@
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* ============================================================
+   18. UPDATED SIDEBAR SYSTEM (Option C)
+   ============================================================ */
 
-/* -------------------------------------------------------
-   Workspace Controls
-------------------------------------------------------- */
-
+/* Workspace Controls */
 .workspace-controls {
   margin-bottom: 1rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid #c7ddf5;
 }
 
 .add-workspace-btn {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.55rem 0.75rem;
   border-radius: 6px;
   background: #e0f0ff;
   border: 1px solid #99caff;
   text-align: left;
-  font-weight: 500;
+  font-weight: 600;
+  color: #004a80;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -715,37 +641,33 @@
   margin-top: 0.25rem;
 }
 
-/* -------------------------------------------------------
-   Workspace List (Rotorflight Configurator Style)
-------------------------------------------------------- */
-
+/* Workspace List */
 .workspace-list {
   margin-bottom: 1rem;
 }
 
 .workspace-item {
   padding: 0.45rem 0.65rem;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   margin-bottom: 0.35rem;
-  background: #2a2d32; /* RF dark panel */
-  border: 1px solid #3a3d42; /* RF darker border */
-  color: #e6e6e6;
+  background: #e0f0ff;
+  border: 1px solid #99caff;
+  color: #004a80;
+  font-weight: 500;
   transition:
     background 0.15s ease,
     border-color 0.15s ease;
 }
 
 .workspace-item:hover {
-  background: #32363c; /* hover lift */
-  border-color: #4a4e54;
+  background: #d4e9ff;
 }
 
 .workspace-item-active {
-  background: #1f4f7a; /* RF blue highlight */
-  border-color: #2f6fa5;
+  background: #cfe5ff;
+  border-color: #7bb8ff;
   font-weight: 600;
-  color: #ffffff;
 }
 
 .workspace-loading {
@@ -754,16 +676,11 @@
   padding: 0.25rem 0;
 }
 
-/* Add spacing between workspace blocks */
 .workspace-block {
   margin-bottom: 0.75rem;
 }
 
-/* -------------------------------------------------------
-   Tree View (Rotorflight Configurator Style)
-------------------------------------------------------- */
-
-/* Remove bullets + reset browser indent */
+/* Tree View */
 .tree-list,
 .tree-list li {
   list-style: none;
@@ -771,17 +688,14 @@
   padding: 0;
 }
 
-/* Root UL: flush-left */
 .tree-list {
   padding-left: 0;
 }
 
-/* Nested ULs: indent children */
 .tree-list .tree-list {
-  padding-left: 18px; /* RF spacing */
+  padding-left: 16px;
 }
 
-/* Base node layout */
 .tree-node {
   display: flex;
   align-items: center;
@@ -791,29 +705,26 @@
   background: none;
   border: none;
   text-align: left;
-  color: #dcdcdc; /* RF light text */
+  color: #004a80;
   font-size: 0.92rem;
 }
 
-/* Hollow dot for folders */
 .tree-node.folder::before {
   content: "○";
   font-size: 12px;
-  color: #9aa0a6; /* RF grey */
+  color: #004a80;
   width: 12px;
   display: inline-block;
 }
 
-/* Solid dot for files */
 .tree-node.file::before {
   content: "●";
   font-size: 10px;
-  color: #9aa0a6;
+  color: #004a80;
   width: 12px;
   display: inline-block;
 }
 
-/* Workspace roots: no dot, RF highlight */
 .tree-node.workspace-root::before {
   content: "";
   width: 12px;
@@ -823,10 +734,39 @@
 .tree-node.workspace-root {
   margin-left: 0;
   font-weight: 600;
-  background: #1f4f7a; /* RF blue */
+  background: #e0f0ff;
   border-radius: 6px;
-  padding: 4px 8px;
-  color: #ffffff;
-  border: 1px solid #2f6fa5; /* RF blue border */
-  margin-bottom: 4px; /* small gap below root */
+  padding: 6px 10px;
+  color: #004a80;
+  border: 1px solid #99caff;
+  margin-bottom: 6px;
+}
+
+/* Sidebar is already flex column */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Top section grows and scrolls */
+.sidebar-top {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0; /* critical */
+}
+
+/* Bottom section pinned, scrollable, max 30% height */
+.sidebar-bottom {
+  max-height: 30vh;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #c7ddf5;
+}
+
+/* Ensure changes panel fits inside scroll area */
+.sidebar-bottom .changes-panel {
+  margin-top: 0;
 }
