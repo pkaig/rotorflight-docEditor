@@ -51,7 +51,11 @@ export default function App() {
   /* -------------------------------------------------------
    WORKSPACE LIST (NEW)
   ------------------------------------------------------- */
-  const { workspaces, loading: loadingWorkspaces } = useWorkspaces(login);
+  const {
+    workspaces,
+    loading: loadingWorkspaces,
+    loadWorkspaces,
+  } = useWorkspaces(login);
 
   /* -------------------------------------------------------
      VERSION GATE (maintenance / updates)
@@ -99,6 +103,8 @@ export default function App() {
   const [newFileFolder, setNewFileFolder] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState("");
   const [errorLine, setErrorLine] = useState<number | null>(null);
+  const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
+
   const [openWorkspaces, setOpenWorkspaces] = useState<Record<string, boolean>>(
     {},
   );
@@ -273,19 +279,25 @@ export default function App() {
   }
 
   /* -------------------------------------------------------
-     WORKSPACE GATING (currently disabled)
+     Validate the workspace name before allowing the user to create it.
   ------------------------------------------------------- */
-  // if (!workspace) {
-  //   return (
-  //     <WorkspaceSelector
-  //       login={login || ""}
-  //       onSelect={(ws) => {
-  //         setWorkspace(ws);
-  //         localStorage.setItem("rf_workspace", ws);
-  //       }}
-  //     />
-  //   );
-  // }
+  function validateWorkspaceName(name: string): string | null {
+    if (!/^[a-z][a-z0-9-]{2,39}$/.test(name)) {
+      return "Workspace name must start with a letter and contain only lowercase letters, numbers, and hyphens.";
+    }
+
+    if (/--/.test(name)) {
+      return "Workspace name cannot contain consecutive hyphens.";
+      console.log("Invalid workspace name (consecutive hyphens):", name);
+    }
+
+    if (name === "mirror" || name === "rotorflight-docs") {
+      return `"${name}" is a reserved name and cannot be used.`;
+      console.log("Reserved workspace name attempted:", name);
+    }
+
+    return null;
+  }
 
   /* -------------------------------------------------------
      FILE SELECTION HANDLER (multi-workspace)
@@ -336,6 +348,31 @@ export default function App() {
     });
 
     setDraggedItem(null);
+  }
+
+  /* -------------------------------------------------------
+  Delete Workspace
+------------------------------------------------------- */
+  async function handleDeleteWorkspace(ws: string) {
+    if (!login) return;
+
+    if (!confirm(`Delete workspace "${ws}"? This cannot be undone.`)) return;
+
+    await fetch(
+      `/api/docs/delete-workspace?login=${encodeURIComponent(
+        login,
+      )}&workspace=${encodeURIComponent(ws)}`,
+      { method: "DELETE" },
+    );
+
+    // Refresh workspace list
+    await loadWorkspaces();
+
+    // If the deleted workspace was active, clear it
+    if (workspace === ws) {
+      setWorkspace(null);
+      clearEditor();
+    }
   }
 
   /* -------------------------------------------------------
@@ -479,13 +516,12 @@ export default function App() {
       {/* LAYOUT: SIDEBAR + EDITOR + PREVIEW */}
       <div style={{ display: "flex", height: "100vh" }}>
         {/* SIDEBAR */}
-        {/* SIDEBAR */}
         <div className="sidebar">
           {/* TOP SECTION */}
           <div className="sidebar-top">
             <h3>Docs</h3>
 
-            <button
+            {/* <button
               onClick={() => {
                 if (workspace) {
                   refreshLocalWorkspace(workspace);
@@ -493,18 +529,48 @@ export default function App() {
               }}
             >
               Refresh Local
-            </button>
+            </button> */}
 
             {/* WORKSPACE CONTROLS */}
             <div className="workspace-controls">
               <button
                 className="add-workspace-btn"
-                onClick={() => {
-                  setWorkspace(null);
-                }}
+                onClick={() => setShowWorkspaceSelector(true)}
               >
                 + Add Workspace
               </button>
+
+              {showWorkspaceSelector && (
+                <WorkspaceSelector
+                  login={login}
+                  onSelect={async (newWorkspaceName) => {
+                    const error = validateWorkspaceName(newWorkspaceName);
+                    if (error) {
+                      //return res.status(400).json({ error });
+                      alert(error);
+                    } else {
+                      // 1. Create the workspace
+                      await fetch(`/api/docs/create-workspace?login=${login}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ workspace: newWorkspaceName }),
+                      });
+
+                      // 2. Reload the workspace list (same as refresh)
+                      await loadWorkspaces();
+
+                      // 3. Set the active workspace
+                      setWorkspace(newWorkspaceName);
+
+                      // 4. Load its tree
+                      await refreshLocalWorkspace(newWorkspaceName);
+
+                      // 5. Close modal
+                      setShowWorkspaceSelector(false);
+                    }
+                  }}
+                />
+              )}
 
               <div className="workspace-current-label">
                 Current workspace: <strong>{workspace}</strong>
@@ -525,9 +591,32 @@ export default function App() {
               ];
 
               return (
-                <div key={ws} className="workspace-block">
+                <div
+                  key={ws}
+                  className="workspace-block"
+                  style={{ position: "relative" }}
+                >
+                  <button
+                    onClick={() => handleDeleteWorkspace(ws)}
+                    title="Delete workspace"
+                    style={{
+                      position: "absolute",
+                      top: "2px",
+                      right: "4px",
+                      background: "transparent",
+                      border: "none",
+                      color: "#b00",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ×
+                  </button>
+
                   <Tree
                     nodes={nodes}
+                    key={ws}
                     onSelect={(path) => onSelect(ws, path)}
                     onDropFolder={(folder) => onDropFolder(ws, folder)}
                     setDraggedItem={setDraggedItem}
@@ -664,7 +753,7 @@ export default function App() {
               height: "100%",
             }}
           >
-            {/* EDIT MODAL */}
+            EDIT MODAL
             {showEditModal && !isSyncingImages && (
               <div className="edit-modal-overlay">
                 <div className="edit-modal-box">
@@ -684,7 +773,6 @@ export default function App() {
                 </div>
               </div>
             )}
-
             {/* IMAGE SYNC OVERLAY */}
             {isSyncingImages && (
               <div className="edit-modal-overlay">
@@ -727,7 +815,6 @@ export default function App() {
                 </div>
               </div>
             )}
-
             {/* NEW FILE MODAL */}
             {showNewFileModal && (
               <div className="edit-modal-overlay">
@@ -785,7 +872,6 @@ export default function App() {
                 </div>
               </div>
             )}
-
             {/* EDITOR TEXTAREA */}
             <h3>Editor</h3>
             <textarea

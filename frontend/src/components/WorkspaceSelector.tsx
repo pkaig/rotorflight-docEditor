@@ -80,9 +80,7 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
 
   return (
     <div style={{ padding: "2rem", maxWidth: "500px", margin: "0 auto" }}>
-      <h2>Select a Workspace</h2>
-
-      {workspaces.length > 0 && (
+      {/* {workspaces.length > 0 && (
         <div style={{ marginTop: "1rem" }}>
           {workspaces.map((ws) => (
             <button
@@ -103,7 +101,7 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
             </button>
           ))}
         </div>
-      )}
+      )} */}
 
       <div style={{ marginTop: "2rem" }}>
         <h3>Create New Workspace</h3>

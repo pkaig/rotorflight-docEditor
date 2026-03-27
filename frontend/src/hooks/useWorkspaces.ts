@@ -2,30 +2,26 @@ import { useEffect, useState } from "react";
 
 export function useWorkspaces(login: string | null) {
   const [workspaces, setWorkspaces] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  async function refreshWorkspaces() {
     if (!login) return;
 
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/docs/list-workspaces?login=${login}`);
-        const data = await res.json();
+    const res = await fetch(`/api/docs/list-workspaces?login=${login}`);
+    const data = await res.json();
 
-        // PATCH: filter out the global mirror folder
-        const filtered = (data.workspaces || []).filter(
-          (ws: string) => ws !== "mirror",
-        );
+    setWorkspaces(data.workspaces || []);
+    setLoading(false);
+  }
 
-        setWorkspaces(filtered);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    load();
+  useEffect(() => {
+    refreshWorkspaces();
   }, [login]);
 
-  return { workspaces, loading };
+  return {
+    workspaces,
+    loading,
+    refreshWorkspaces, // ← MUST BE RETURNED
+    loadWorkspaces: refreshWorkspaces, // ← DEPRECATED, TO BE REMOVED
+  };
 }

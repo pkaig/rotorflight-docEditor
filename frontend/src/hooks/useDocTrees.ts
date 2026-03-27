@@ -147,14 +147,12 @@ export function useDocTrees(
 
     const data = await res.json();
 
-    const flattened = data.docs;
-
     setLocalTrees((prev) => ({
       ...prev,
-      [ws]: flattened,
+      [ws]: data.docs,
     }));
 
-    return flattened;
+    return data.docs;
   }
 
   /* -------------------------------------------------------

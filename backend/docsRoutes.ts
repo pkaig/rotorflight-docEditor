@@ -986,13 +986,63 @@ router.get("/list-workspaces", async (req, res) => {
     const entries = await fs.promises.readdir(base, { withFileTypes: true });
 
     const workspaces = entries
-      .filter((e) => e.isDirectory())
+      .filter((e) => e.isDirectory() && e.name !== "mirror")
       .map((e) => e.name);
 
     res.json({ workspaces });
   } catch (err) {
     console.error("Failed to list workspaces", err);
     res.status(500).json({ error: "Failed to list workspaces" });
+  }
+});
+
+router.get("/list-user-workspaces", async (req, res) => {
+  try {
+    const login = req.query.login;
+    if (!login) {
+      return res.status(400).json({ error: "Missing login" });
+    }
+
+    const base = path.join(process.cwd(), "workspaces", login);
+
+    let entries = [];
+    try {
+      entries = await fs.promises.readdir(base, { withFileTypes: true });
+    } catch (err) {
+      // Folder doesn't exist → return empty list instead of 500
+      return res.json({ workspaces: [] });
+    }
+
+    const workspaces = entries
+      .filter((e) => e.isDirectory() && e.name !== "mirror")
+      .map((e) => e.name);
+
+    return res.json({ workspaces });
+  } catch (err) {
+    console.error("list-user-workspaces failed:", err);
+    return res.json({ workspaces: [] });
+  }
+});
+
+router.delete("/delete-workspace", async (req, res) => {
+  const { login, workspace } = req.query;
+
+  console.log("Delete workspace request:", login, workspace);
+
+  if (!login || !workspace) {
+    return res.status(400).json({ error: "Missing login or workspace" });
+  }
+
+  // Build the correct path
+  const base = path.join(process.cwd(), "workspaces", login);
+  const wsPath = path.join(base, workspace);
+
+  try {
+    await fs.promises.rm(wsPath, { recursive: true, force: true });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Delete workspace error:", err);
+    return res.status(500).json({ error: "Failed to delete workspace" });
   }
 });
 
