@@ -9,12 +9,8 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [newName, setNewName] = useState("");
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  //
-  // Load existing workspaces for this user
-  //
   useEffect(() => {
     async function load() {
       try {
@@ -32,43 +28,6 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
 
     load();
   }, [login]);
-
-  //
-  // Create a new workspace
-  //
-  async function handleCreate() {
-    if (!newName.trim()) return;
-
-    setCreating(true);
-    setError(null);
-
-    try {
-      const res = await fetch(
-        `/api/docs/create-workspace?login=${encodeURIComponent(login)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspace: newName.trim() }),
-        },
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Failed to create workspace");
-        setCreating(false);
-        return;
-      }
-
-      // Add to list + select it
-      setWorkspaces((prev) => [...prev, newName.trim()]);
-      onSelect(newName.trim());
-    } catch (err) {
-      setError("Failed to create workspace");
-    } finally {
-      setCreating(false);
-    }
-  }
 
   if (loading) {
     return (
@@ -94,10 +53,9 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
         <div className="workspace-selector-buttons">
           <button
             className="workspace-create-btn"
-            onClick={handleCreate}
-            disabled={creating}
+            onClick={() => onSelect(newName.trim())}
           >
-            {creating ? "Creating…" : "Create Workspace"}
+            Create Workspace
           </button>
 
           <button
