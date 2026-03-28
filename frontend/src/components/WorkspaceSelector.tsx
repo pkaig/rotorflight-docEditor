@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { validateWorkspaceName } from "../utils/validateWorkspaceName";
 
 interface WorkspaceSelectorProps {
   login: string;
@@ -9,10 +10,9 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [newName, setNewName] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  // ADD THIS — you already have it
-  const [isInvalid, setIsInvalid] = useState(false);
+  // NEW: store the validator output
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   //
   // Load existing workspaces
@@ -36,35 +36,29 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
   }, [login]);
 
   //
-  // Validate as user types
+  // Validate using the REAL validator
   //
   useEffect(() => {
     const trimmed = newName.trim();
-    const invalid =
-      trimmed.length === 0 ||
-      trimmed.includes(" ") ||
-      trimmed.includes("/") ||
-      trimmed.includes("\\") ||
-      trimmed.includes("..");
-
-    setIsInvalid(invalid);
+    const error = validateWorkspaceName(trimmed);
+    setValidationError(error);
   }, [newName]);
 
   //
-  // Keyboard shortcuts: Enter = create, Escape = cancel
+  // Keyboard shortcuts
   //
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         onSelect(null);
       }
-      if (e.key === "Enter" && !isInvalid) {
+      if (e.key === "Enter" && !validationError) {
         onSelect(newName.trim());
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [newName, isInvalid, onSelect]);
+  }, [newName, validationError, onSelect]);
 
   if (loading) {
     return (
@@ -79,9 +73,8 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
       <div className="workspace-selector-inner">
         <h3>Create New Workspace</h3>
 
-        {/* UPDATED: add invalid class */}
         <input
-          className={`workspace-input ${isInvalid ? "invalid" : ""}`}
+          className={`workspace-input ${validationError ? "invalid" : ""}`}
           type="text"
           placeholder="e.g. modify-gov"
           value={newName}
@@ -89,17 +82,15 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
           autoFocus
         />
 
-        {/* NEW: inline error message */}
-        {isInvalid && (
-          <div className="workspace-input-error">Workspace name is invalid</div>
+        {validationError && (
+          <div className="workspace-input-error">{validationError}</div>
         )}
 
         <div className="workspace-selector-buttons">
-          {/* UPDATED: disable when invalid */}
           <button
             className="workspace-create-btn"
-            disabled={isInvalid}
-            onClick={() => !isInvalid && onSelect(newName.trim())}
+            disabled={!!validationError}
+            onClick={() => !validationError && onSelect(newName.trim())}
           >
             Create Workspace
           </button>
@@ -111,8 +102,6 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
             Cancel
           </button>
         </div>
-
-        {error && <p className="workspace-error">{error}</p>}
       </div>
     </div>
   );
