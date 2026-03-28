@@ -770,3 +770,110 @@
 .sidebar-bottom .changes-panel {
   margin-top: 0;
 }
+
+/* Workspace delete button container */
+.workspace-block {
+  position: relative;
+}
+
+/* Delete button */
+.workspace-delete-btn {
+  position: absolute;
+  top: 50%;
+  right: 12px; /* more right padding */
+  transform: translateY(-50%); /* vertical centering */
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.workspace-delete-btn:hover {
+  opacity: 1;
+}
+
+/* SVG icon */
+.workspace-delete-icon {
+  width: 18px; /* slightly larger */
+  height: 18px;
+  stroke: #b00;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+/* ============================================================
+   19. ADD WORKSPACE MODAL
+   ============================================================ */
+
+/* Modal container */
+.workspace-selector-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+}
+
+/* Modal content box */
+.workspace-selector-content {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 6px;
+  width: 320px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Input */
+.workspace-input {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Button row */
+.workspace-selector-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* Create button (primary) */
+.workspace-create-btn {
+  background: #0078d4;
+  color: white;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.workspace-create-btn:hover {
+  background: #006cbe;
+}
+
+/* Cancel button (secondary) */
+.workspace-cancel-btn {
+  background: #e0e0e0;
+  color: #333;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.workspace-cancel-btn:hover {
+  background: #d5d5d5;
+}

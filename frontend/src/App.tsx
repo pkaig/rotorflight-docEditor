@@ -544,30 +544,36 @@ export default function App() {
                 <WorkspaceSelector
                   login={login}
                   onSelect={async (newWorkspaceName) => {
+                    // Handle cancel
+                    if (newWorkspaceName === null) {
+                      setShowWorkspaceSelector(false);
+                      return;
+                    }
+
                     const error = validateWorkspaceName(newWorkspaceName);
                     if (error) {
-                      //return res.status(400).json({ error });
                       alert(error);
-                    } else {
-                      // 1. Create the workspace
-                      await fetch(`/api/docs/create-workspace?login=${login}`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ workspace: newWorkspaceName }),
-                      });
-
-                      // 2. Reload the workspace list (same as refresh)
-                      await loadWorkspaces();
-
-                      // 3. Set the active workspace
-                      setWorkspace(newWorkspaceName);
-
-                      // 4. Load its tree
-                      await refreshLocalWorkspace(newWorkspaceName);
-
-                      // 5. Close modal
-                      setShowWorkspaceSelector(false);
+                      return;
                     }
+
+                    // 1. Create the workspace
+                    await fetch(`/api/docs/create-workspace?login=${login}`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ workspace: newWorkspaceName }),
+                    });
+
+                    // 2. Reload the workspace list
+                    await loadWorkspaces();
+
+                    // 3. Set the active workspace
+                    setWorkspace(newWorkspaceName);
+
+                    // 4. Load its tree
+                    await refreshLocalWorkspace(newWorkspaceName);
+
+                    // 5. Close modal
+                    setShowWorkspaceSelector(false);
                   }}
                 />
               )}
@@ -597,21 +603,17 @@ export default function App() {
                   style={{ position: "relative" }}
                 >
                   <button
+                    className="workspace-delete-btn"
                     onClick={() => handleDeleteWorkspace(ws)}
                     title="Delete workspace"
-                    style={{
-                      position: "absolute",
-                      top: "2px",
-                      right: "4px",
-                      background: "transparent",
-                      border: "none",
-                      color: "#b00",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                      lineHeight: 1,
-                    }}
                   >
-                    ×
+                    <svg className="workspace-delete-icon" viewBox="0 0 24 24">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v6" />
+                      <path d="M14 11v6" />
+                      <path d="M9 6V4h6v2" />
+                    </svg>
                   </button>
 
                   <Tree

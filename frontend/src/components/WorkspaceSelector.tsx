@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 interface WorkspaceSelectorProps {
   login: string;
-  onSelect: (workspace: string) => void;
+  onSelect: (workspace: string | null) => void;
 }
 
 export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
@@ -72,69 +72,43 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
 
   if (loading) {
     return (
-      <div style={{ padding: "2rem" }}>
+      <div className="workspace-selector-loading">
         <h2>Loading workspaces…</h2>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "2rem", maxWidth: "500px", margin: "0 auto" }}>
-      {/* {workspaces.length > 0 && (
-        <div style={{ marginTop: "1rem" }}>
-          {workspaces.map((ws) => (
-            <button
-              key={ws}
-              onClick={() => onSelect(ws)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "0.75rem",
-                marginBottom: "0.5rem",
-                textAlign: "left",
-                borderRadius: "6px",
-                border: "1px solid #ccc",
-                background: "#f7f7f7",
-              }}
-            >
-              {ws}
-            </button>
-          ))}
-        </div>
-      )} */}
-
-      <div style={{ marginTop: "2rem" }}>
+    <div className="workspace-selector-container">
+      <div className="workspace-selector-inner">
         <h3>Create New Workspace</h3>
 
         <input
+          className="workspace-input"
           type="text"
           placeholder="e.g. modify-gov"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "0.5rem",
-            marginBottom: "0.5rem",
-            borderRadius: "4px",
-            border: "1px solid #ccc",
-          }}
         />
 
-        <button
-          onClick={handleCreate}
-          disabled={creating}
-          style={{
-            padding: "0.5rem 1rem",
-            borderRadius: "6px",
-            background: "#007bff",
-            color: "white",
-            border: "none",
-          }}
-        >
-          {creating ? "Creating…" : "Create Workspace"}
-        </button>
+        <div className="workspace-selector-buttons">
+          <button
+            className="workspace-create-btn"
+            onClick={handleCreate}
+            disabled={creating}
+          >
+            {creating ? "Creating…" : "Create Workspace"}
+          </button>
 
-        {error && <p style={{ color: "red", marginTop: "0.5rem" }}>{error}</p>}
+          <button
+            className="workspace-cancel-btn"
+            onClick={() => onSelect(null)}
+          >
+            Cancel
+          </button>
+        </div>
+
+        {error && <p className="workspace-error">{error}</p>}
       </div>
     </div>
   );
