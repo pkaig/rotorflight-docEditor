@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+const AUTOSAVE_ENABLED = false;
 
 export function useAutosave(
   login: string | null,
@@ -9,6 +10,7 @@ export function useAutosave(
   setSuppressNextAutosave: (v: boolean) => void,
   saveFn: (cleanPath: string, content: string) => Promise<void> | void,
 ) {
+  if (!AUTOSAVE_ENABLED) return;
   // Ignore invalid content
   if (content === undefined || content === null) return;
   if (typeof content !== "string") return;

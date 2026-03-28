@@ -233,7 +233,7 @@ export default function App() {
       return;
     }
 
-    loadDoc(path);
+    loadDoc(path, ws);
   };
 
   /* MOVE FILES / NEW PAGE */

@@ -117,6 +117,7 @@ export function useDocTrees(
           //  console.log("TREE FOR", ws, JSON.stringify(localTrees[ws], null, 2));
 
           const { docs } = await res.json();
+          //console.log("TREE FOR", ws, docs);
 
           // Flatten
           results[ws] = docs;

@@ -1,11 +1,12 @@
 import { visit } from "unist-util-visit";
+import path from "path-browserify";
 
 export default function rehypeImages(currentDocPath: string) {
   // Extract workspace name
   const match = currentDocPath.match(/^local-workspace\/([^/]+)\//);
   const workspace = match ? match[1] : null;
 
-  // Directory containing the MDX file
+  // Directory containing the MDX file (e.g. local-workspace/ws/docs/)
   const docDir = currentDocPath.replace(/[^/]+$/, "");
 
   return (tree: any) => {
@@ -25,15 +26,23 @@ export default function rehypeImages(currentDocPath: string) {
 
       const login = localStorage.getItem("rf_login") || "";
 
-      // Resolve relative to the MDX file directory
-      const combined = `${docDir}${src}`;
-      const resolved = combined.replace(/\/\.\//g, "/");
+      //
+      // 1. Resolve relative to MDX file directory
+      //
+      const resolved = path
+        .normalize(path.join(docDir, src))
+        .replace(/\\/g, "/");
 
-      // ALWAYS local now
-      props.src =
-        `/api/docs/images/local?path=${encodeURIComponent(resolved)}` +
-        `&login=${encodeURIComponent(login)}` +
-        `&workspace=${encodeURIComponent(workspace || "")}`;
+      //
+      // 2. Build URL using URLSearchParams to avoid &amp; escaping
+      //
+      const params = new URLSearchParams({
+        path: resolved,
+        login,
+        workspace: workspace || "",
+      });
+
+      props.src = `/api/docs/images/local?${params.toString()}`;
     });
   };
 }

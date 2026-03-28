@@ -5,9 +5,10 @@ dotenv.config();
 // THEN import everything else
 import express from "express";
 import cors from "cors";
-import authRoutes from "./authRoutes";
-import docsRoutes from "./docsRoutes";
-import imagesRoutes from "./imagesRoutes";
+import authRoutes from "./routes/authRoutes";
+import docsRoutes from "./routes/docsRoutes";
+import imagesRoutes from "./routes/imagesRoutes";
+import resetMirrorRoutes from "./routes/resetMirror";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -26,6 +27,9 @@ app.use("/api/images", imagesRoutes);
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+// Mount Mirror Reset API
+app.use("/api/reset-mirror", resetMirrorRoutes);
 
 app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT}`);

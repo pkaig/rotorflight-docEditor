@@ -18,15 +18,16 @@ export function useDocEditor(login: string | null, workspace: string | null) {
   //
   // LOAD DOCUMENT (LOCAL ONLY)
   //
-  function loadDoc(inputPath: string) {
-    if (!login || !workspace) return;
+  function loadDoc(inputPath: string, ws: string) {
+    if (!login || !ws) return;
+    console.log("loadDoc using workspace =", ws);
 
     const storedLogin = login || localStorage.getItem("rf_login");
 
     // Always convert workspace-relative paths into canonical local-workspace paths
     const canonical = inputPath.startsWith("local-workspace/")
       ? inputPath
-      : `local-workspace/${workspace}/${inputPath}`;
+      : `local-workspace/${ws}/${inputPath}`;
 
     setCurrentDocPath(canonical);
 
@@ -34,7 +35,7 @@ export function useDocEditor(login: string | null, workspace: string | null) {
       `/api/docs/load?path=${encodeURIComponent(
         canonical,
       )}&login=${encodeURIComponent(storedLogin || "")}&workspace=${encodeURIComponent(
-        workspace,
+        ws,
       )}`,
     )
       .then(async (res) => {

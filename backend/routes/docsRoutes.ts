@@ -1,11 +1,11 @@
 import express from "express";
-import { githubRequest } from "./githubClient";
+import { githubRequest } from "../githubClient";
 import { getTokenForUser } from "./authRoutes";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
   GITHUB_DEFAULT_BRANCH,
-} from "./config/github";
+} from "../config/github";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
@@ -21,7 +21,7 @@ type TreeNode = {
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-const routesDebug = true;
+const routesDebug = false;
 
 // ---------------------------------------------
 // Helper
@@ -99,6 +99,8 @@ async function walk(currentPath: string, token: string) {
 function requireToken(req, res) {
   const login = req.query.login as string;
   const workspace = (req.query.workspace as string) || req.body?.workspace;
+
+  //console.log("🔑 requireToken for login:", login, "workspace:", workspace);
 
   if (!login) {
     res.status(401).json({ error: "Missing login" });
@@ -397,7 +399,11 @@ router.get("/load", async (req, res) => {
   filePath = filePath.replace(/\\/g, "/");
 
   try {
-    // NEW: local workspace files (docs + versioned_docs)
+    //
+    // CASE 1: Direct workspace-relative paths
+    //   docs/index.md
+    //   versioned_docs/v1.0/foo.md
+    //
     if (
       filePath.startsWith("docs/") ||
       filePath.startsWith("versioned_docs/")
@@ -414,22 +420,25 @@ router.get("/load", async (req, res) => {
       return res.json({ content });
     }
 
+    //
+    // CASE 2: Canonical frontend paths
+    //   local-workspace/<workspace>/docs/...
+    //
     if (filePath.startsWith("local-workspace/")) {
       if (routesDebug) {
-        console.log(
-          "👣 Walking local-workspace...",
-          new Date().getMinutes(),
-          ":",
-          new Date().getSeconds(),
-        );
+        console.log("👣 Walking local-workspace...", new Date().toISOString());
       }
-      const localRelative = filePath.replace(/^local-workspace\//, "");
+
+      // Strip "local-workspace/<workspace>/"
+      // Extract workspace from the path
+      const [, ws, ...rest] = filePath.split("/");
+      const localRelative = rest.join("/");
 
       const fullPath = path.join(
         process.cwd(),
         "workspaces",
         login,
-        workspace,
+        ws, // ← use the workspace from the path
         localRelative,
       );
 
@@ -437,6 +446,9 @@ router.get("/load", async (req, res) => {
       return res.json({ content });
     }
 
+    //
+    // CASE 3: Legacy "local/docs/..." paths
+    //
     if (filePath.startsWith("local/")) {
       const localRelative = filePath
         .replace(/^local\//, "")
@@ -454,6 +466,9 @@ router.get("/load", async (req, res) => {
       return res.json({ content });
     }
 
+    //
+    // CASE 4: GitHub fallback
+    //
     filePath = filePath.replace(/^Rotorflight-docs\//, "");
     const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
 
@@ -632,28 +647,25 @@ router.get("/images/local", async (req, res) => {
   const auth = requireToken(req, res);
   if (!auth) return;
 
-  const { login, workspace } = auth;
+  const { login } = auth;
   let imgPath = req.query.path as string;
 
   imgPath = imgPath.replace(/\\/g, "/");
 
-  // NEW: support workspace-relative paths
-  let cleanImg = imgPath;
-
-  // Strip legacy prefix if present
-  cleanImg = cleanImg.replace(/^local-workspace\/[^/]+\//, "");
-
-  // Now cleanImg is like:
-  //   docs/img/foo.png
-  //   versioned_docs/v1.0/img/bar.jpg
+  // Extract workspace from canonical path
+  // imgPath = "local-workspace/<ws>/docs/img/foo.png"
+  const parts = imgPath.split("/");
+  const ws = parts[1]; // <ws>
+  const cleanImg = parts.slice(2).join("/"); // docs/img/foo.png
 
   const fullPath = path.join(
     process.cwd(),
     "workspaces",
     login,
-    workspace,
+    ws, // ← use workspace from path, not requireToken()
     cleanImg,
   );
+  console.log("IMAGE using ws =", ws, "cleanImg =", cleanImg);
 
   try {
     return res.sendFile(fullPath);
@@ -680,19 +692,21 @@ router.post("/save", async (req, res) => {
   const { login, workspace } = auth;
   const { path: filePath, content } = req.body;
 
+  if (!filePath) {
+    return res.status(400).json({ error: "Missing file path" });
+  }
+
   if (!filePath.startsWith("local-workspace/")) {
     return res.status(400).json({ error: "Invalid save path" });
   }
 
-  if (!filePath) {
-    return res.status(400).json({ error: "Missing file path" });
-  }
   if (typeof content !== "string") {
     return res.status(400).json({ error: "Invalid file content" });
   }
 
   try {
-    const cleanPath = filePath.replace(/^local-workspace\//, "");
+    // FIX: strip "local-workspace/<workspace>/"
+    const cleanPath = filePath.replace(/^local-workspace\/[^/]+\//, "");
 
     const fullPath = path.join(
       process.cwd(),
@@ -708,7 +722,7 @@ router.post("/save", async (req, res) => {
     try {
       existing = await fs.promises.readFile(fullPath, "utf8");
     } catch {
-      // File does not exist yet
+      // File does not exist yet — that's fine
     }
 
     if (existing === content) {
