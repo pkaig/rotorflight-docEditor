@@ -567,6 +567,7 @@ export default function App() {
             {workspaces.map((ws) => {
               const raw = localTrees[ws] || [];
               const backendRoot = raw[0];
+              console.log("WORKSPACE RENDER", ws);
 
               const nodes: TreeNode[] = [
                 {
@@ -599,7 +600,16 @@ export default function App() {
                   <Tree
                     nodes={nodes}
                     key={ws}
-                    onSelect={(path) => onSelect(ws, path)}
+                    onSelect={(path) => {
+                      // Always switch workspace first
+                      setWorkspace(ws);
+
+                      // Then run your existing file-selection logic
+                      onSelect(ws, path);
+                    }}
+                    onFolderClick={() => {
+                      setWorkspace(ws);
+                    }}
                     onDropFolder={(folder) => onDropFolder(ws, folder)}
                     setDraggedItem={setDraggedItem}
                     openFolders={openFolders}

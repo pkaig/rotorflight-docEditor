@@ -775,28 +775,37 @@
 .workspace-block {
   position: relative;
 }
+/* -----------------------------------------------------------
+   18. UPDATED SIDEBAR SYSTEM - DELETE BUTTON          
+    ----------------------------------------------------------- */
 
-/* Delete button */
+.workspace-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  padding-top: 3px;
+}
+
 .workspace-delete-btn {
   position: absolute;
-  top: 50%;
-  right: 12px; /* more right padding */
-  transform: translateY(-50%); /* vertical centering */
+  top: 10px;
+  right: 12px; /* keep your spacing */
   background: transparent;
   border: none;
   padding: 0;
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 0.15s ease;
+  z-index: 10; /* ensure it stays above the tree */
 }
 
 .workspace-delete-btn:hover {
   opacity: 1;
 }
 
-/* SVG icon */
 .workspace-delete-icon {
-  width: 18px; /* slightly larger */
+  width: 18px;
   height: 18px;
   stroke: #b00;
   stroke-width: 2;

@@ -13,6 +13,7 @@ interface TreeProps {
   onSelect: (path: string) => void;
   onDropFolder: (path: string) => void;
   setDraggedItem: (path: string | null) => void;
+  onFolderClick?: (path: string) => void;
   openFolders: Record<string, boolean>;
   setOpenFolders: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }
@@ -20,6 +21,7 @@ interface TreeProps {
 export function Tree({
   nodes,
   onSelect,
+  onFolderClick,
   onDropFolder,
   setDraggedItem,
   openFolders,
@@ -43,7 +45,6 @@ export function Tree({
 
         // --- SAFETY: ensure key is always a string ---
         const key = (node.path ?? node.name).replace(/\/$/, "");
-        console.log("NODE", node.name, node.isWorkspaceRoot);
 
         return (
           <li key={key}>
@@ -58,6 +59,9 @@ export function Tree({
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleFolder(node.path);
+                    if (onFolderClick) {
+                      onFolderClick(node.path);
+                    }
                   }}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => node.path && onDropFolder(node.path)}
@@ -69,6 +73,7 @@ export function Tree({
                   <Tree
                     nodes={node.children || []}
                     onSelect={onSelect}
+                    onFolderClick={onFolderClick}
                     onDropFolder={onDropFolder}
                     setDraggedItem={setDraggedItem}
                     openFolders={folders}
