@@ -3,15 +3,18 @@ import { useState } from "react";
 import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
 import Preview from "./components/Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
+
 import { useAutosave } from "./hooks/useAutosave";
 import { useGitPR } from "./hooks/useGitPR";
 import { PRPanel } from "./components/PRPanel";
 import { ChangesPanel } from "./components/ChangesPanel";
+
 import {
   MaintenanceModal,
   ForceUpdateModal,
   UpdateAvailableModal,
 } from "./components/versionModals";
+
 import { Tree } from "./components/Tree";
 import { useAuth } from "./hooks/useAuth";
 import { useVersionGate } from "./hooks/useVersionGate";
@@ -22,17 +25,12 @@ import { WorkspaceSelector } from "./components/WorkspaceSelector";
 import { useWorkspaces } from "./hooks/useWorkspaces";
 import { validateWorkspaceName } from "./utils/validateWorkspaceName";
 
-import { isLocalPath, normaliseLocalPath } from "./utils/paths";
-
 /* -------------------------------------------------------
    ROOT APPLICATION COMPONENT
-   Auth, workspace, trees, editor, preview, PR, autosave.
 ------------------------------------------------------- */
 
 export default function App() {
-  /* -------------------------------------------------------
-     AUTHENTICATION
-  ------------------------------------------------------- */
+  /* AUTH */
   const {
     user,
     login,
@@ -43,48 +41,32 @@ export default function App() {
     startGitHubLogin,
   } = useAuth();
 
-  /* -------------------------------------------------------
-     WORKSPACE SELECTION
-     Must exist before hooks that depend on it.
-  ------------------------------------------------------- */
+  /* WORKSPACE SELECTION */
   const [workspace, setWorkspace] = useState<string | null>(null);
 
-  /* -------------------------------------------------------
-   WORKSPACE LIST (NEW)
-  ------------------------------------------------------- */
+  /* WORKSPACE LIST */
   const {
     workspaces,
     loading: loadingWorkspaces,
     loadWorkspaces,
   } = useWorkspaces(login);
 
-  /* -------------------------------------------------------
-     VERSION GATE (maintenance / updates)
-  ------------------------------------------------------- */
+  /* VERSION GATE */
   const { editorStatus, setEditorStatus } = useVersionGate();
 
-  /* -------------------------------------------------------
-     DOCUMENT TREES (local + GitHub)
-  ------------------------------------------------------- */
-  const {
-    localTrees,
-    githubTree,
-    loadingLocal,
-    loadingGithub,
-    refreshLocalWorkspace,
-    refreshGitHubTree,
-  } = useDocTrees(login, workspaces, isAuthenticated);
+  /* DOCUMENT TREES (LOCAL ONLY) */
+  const { localTrees, loadingLocal, refreshLocalWorkspace } = useDocTrees(
+    login,
+    workspaces,
+    isAuthenticated,
+  );
 
-  /* -------------------------------------------------------
-     EDITOR STATE + FILE OPERATIONS
-  ------------------------------------------------------- */
+  /* EDITOR STATE */
   const {
     content,
     setContent,
     currentDocPath,
     setCurrentDocPath,
-    showEditModal,
-    setShowEditModal,
     isSyncingImages,
     setIsSyncingImages,
     clearEditor,
@@ -94,9 +76,7 @@ export default function App() {
     setSuppressNextAutosave,
   } = useDocEditor(login, workspace);
 
-  /* -------------------------------------------------------
-     UI STATE (layout, folders, new file modal, errors)
-  ------------------------------------------------------- */
+  /* UI STATE */
   const { editorWidth, startDrag } = useDragResize(50);
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
@@ -110,9 +90,7 @@ export default function App() {
     {},
   );
 
-  /* -------------------------------------------------------
-     CHANGE TRACKING + PR FLOW
-  ------------------------------------------------------- */
+  /* CHANGE TRACKING + PR FLOW */
   const [selectedChanges, setSelectedChanges] = useState<
     Record<string, boolean>
   >({});
@@ -129,21 +107,14 @@ export default function App() {
     clearBanner,
     clearAllChanges,
   } = useGitPR({
-    refreshGitHubTree,
     clearEditor,
-    openEditFileModal: () => setShowEditModal(true),
     login: login || "",
     workspace,
   });
 
-  /* -------------------------------------------------------
-     EFFECTIVE PATH
-  ------------------------------------------------------- */
   const effectivePath = currentDocPath || "";
 
-  /* -------------------------------------------------------
-     FOLDER EXPANSION UTILITY
-  ------------------------------------------------------- */
+  /* FOLDER EXPANSION */
   function expandFolderChain(fullPath: string) {
     const parts = fullPath.split("/");
     let accum = "";
@@ -157,9 +128,7 @@ export default function App() {
     setOpenFolders((prev) => ({ ...prev, ...updates }));
   }
 
-  /* -------------------------------------------------------
-     AUTOSAVE (debounced)
-  ------------------------------------------------------- */
+  /* AUTOSAVE */
   const saving = useAutosave(
     login,
     workspace,
@@ -168,8 +137,6 @@ export default function App() {
     suppressNextAutosave,
     setSuppressNextAutosave,
     async (path, content) => {
-      // Never autosave GitHub files
-      if (path.startsWith("Rotorflight-docs/")) return;
       if (!login || !workspace) return;
 
       const res = await fetch(
@@ -198,36 +165,7 @@ export default function App() {
       notifyFileSaved("local-workspace", path);
     },
   );
-
-  /* -------------------------------------------------------
-     VERSION GATE UI
-  ------------------------------------------------------- */
-  if (!editorStatus) return null;
-
-  if (editorStatus.type === "blocked") {
-    return <MaintenanceModal {...editorStatus} />;
-  }
-
-  if (editorStatus.type === "forceUpdate") {
-    return <ForceUpdateModal {...editorStatus} />;
-  }
-
-  if (editorStatus.type === "updateAvailable") {
-    return (
-      <UpdateAvailableModal
-        {...editorStatus}
-        onContinue={() => {
-          const timeout = Date.now() + 60 * 1000;
-          localStorage.setItem("rf_dismissed_until", timeout.toString());
-          setEditorStatus({ type: "ok" });
-        }}
-      />
-    );
-  }
-
-  /* -------------------------------------------------------
-     AUTHENTICATION UI
-  ------------------------------------------------------- */
+  /* AUTH UI */
   if (!isAuthenticated) {
     return (
       <div style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
@@ -279,17 +217,13 @@ export default function App() {
     );
   }
 
-  /* -------------------------------------------------------
-     FILE SELECTION HANDLER (multi-workspace)
-  ------------------------------------------------------- */
+  /* FILE SELECTION */
   const onSelect = (ws: string, path: string) => {
-    // keep editor bound to the workspace of the selected file
     if (workspace !== ws) {
       setWorkspace(ws);
       localStorage.setItem("rf_workspace", ws);
     }
 
-    // Ignore folder clicks (no extension)
     if (!/\.[a-z0-9]+$/i.test(path)) return;
 
     const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
@@ -302,10 +236,10 @@ export default function App() {
     loadDoc(path);
   };
 
+  /* MOVE FILES / NEW PAGE */
   function onDropFolder(ws: string, targetFolderPath: string) {
     if (!draggedItem) return;
 
-    // New page creation
     if (draggedItem === "__NEW_PAGE__") {
       setNewFileFolder(targetFolderPath);
       setNewFileName("");
@@ -314,7 +248,6 @@ export default function App() {
       return;
     }
 
-    // Moving an existing file
     const filename = draggedItem.split("/").pop();
     const newPath = `${targetFolderPath}/${filename}`;
 
@@ -323,16 +256,14 @@ export default function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ oldPath: draggedItem, newPath }),
     }).then(() => {
-      notifyFileRenamed("Rotorflight-docs", draggedItem, newPath);
+      notifyFileRenamed("local-workspace", draggedItem, newPath);
       refreshLocalWorkspace(ws);
     });
 
     setDraggedItem(null);
   }
 
-  /* -------------------------------------------------------
-  Delete Workspace
-------------------------------------------------------- */
+  /* DELETE WORKSPACE */
   async function handleDeleteWorkspace(ws: string) {
     if (!login) return;
 
@@ -345,19 +276,15 @@ export default function App() {
       { method: "DELETE" },
     );
 
-    // Refresh workspace list
     await loadWorkspaces();
 
-    // If the deleted workspace was active, clear it
     if (workspace === ws) {
       setWorkspace(null);
       clearEditor();
     }
   }
 
-  /* -------------------------------------------------------
-     LOADING BANNERS
-  ------------------------------------------------------- */
+  /* Loading Local Workspace Banner */
   function LoadingLocalBanner({ message }: { message: string }) {
     return (
       <div className="loading-local-banner">
@@ -384,35 +311,7 @@ export default function App() {
     );
   }
 
-  function LoadingGithubBanner({ message }: { message: string }) {
-    return (
-      <div className="loading-github-banner">
-        <svg
-          className="loading-icon"
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            cx="12"
-            cy="12"
-            r="9"
-            fill="none"
-            stroke="#856404"
-            strokeWidth="2"
-            strokeDasharray="56"
-            strokeDashoffset="28"
-            strokeLinecap="round"
-          />
-        </svg>
-        <span>{message}</span>
-      </div>
-    );
-  }
-
-  /* -------------------------------------------------------
-   CLEAR SELECTED CHANGES (multi-workspace)
-  ------------------------------------------------------- */
+  /* RESTORE SELECTED CHANGES */
   async function clearSelectedChanges(ws: string, paths: string[]) {
     if (!login) return;
 
@@ -433,29 +332,9 @@ export default function App() {
     setSelectedChanges({});
   }
 
-  /* -------------------------------------------------------
-     EDIT GITHUB FILE (clone → sync images → open)
-  ------------------------------------------------------- */
-  async function onEditThisFile() {
-    setIsSyncingImages(true);
-
-    const clonedPath = await handleCloneToLocal(refreshLocalWorkspace);
-
-    setOpenFolders((prev) => ({ ...prev, "Rotorflight-docs": false }));
-    setOpenFolders((prev) => ({ ...prev, "local-workspace": true }));
-
-    expandFolderChain(clonedPath);
-    setCurrentDocPath(clonedPath);
-
-    setIsSyncingImages(false);
-  }
-
-  /* -------------------------------------------------------
-     MAIN UI
-  ------------------------------------------------------- */
+  /* MAIN UI */
   return (
     <>
-      {/* AUTOSAVE INDICATOR */}
       {saving && (
         <div
           style={{
@@ -470,7 +349,6 @@ export default function App() {
         </div>
       )}
 
-      {/* USER HEADER */}
       {user && (
         <div
           style={{
@@ -493,25 +371,12 @@ export default function App() {
         </div>
       )}
 
-      {/* LAYOUT: SIDEBAR + EDITOR + PREVIEW */}
       <div style={{ display: "flex", height: "100vh" }}>
         {/* SIDEBAR */}
         <div className="sidebar">
-          {/* TOP SECTION */}
           <div className="sidebar-top">
             <h3>Docs</h3>
 
-            {/* <button
-              onClick={() => {
-                if (workspace) {
-                  refreshLocalWorkspace(workspace);
-                }
-              }}
-            >
-              Refresh Local
-            </button> */}
-
-            {/* WORKSPACE CONTROLS */}
             <div className="workspace-controls">
               <button
                 className="add-workspace-btn"
@@ -524,7 +389,6 @@ export default function App() {
                 <WorkspaceSelector
                   login={login}
                   onSelect={async (newWorkspaceName) => {
-                    // Handle cancel
                     if (newWorkspaceName === null) {
                       setShowWorkspaceSelector(false);
                       return;
@@ -536,23 +400,15 @@ export default function App() {
                       return;
                     }
 
-                    // 1. Create the workspace
                     await fetch(`/api/docs/create-workspace?login=${login}`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ workspace: newWorkspaceName }),
                     });
 
-                    // 2. Reload the workspace list
                     await loadWorkspaces();
-
-                    // 3. Set the active workspace
                     setWorkspace(newWorkspaceName);
-
-                    // 4. Load its tree
                     await refreshLocalWorkspace(newWorkspaceName);
-
-                    // 5. Close modal
                     setShowWorkspaceSelector(false);
                   }}
                 />
@@ -567,7 +423,6 @@ export default function App() {
             {workspaces.map((ws) => {
               const raw = localTrees[ws] || [];
               const backendRoot = raw[0];
-              console.log("WORKSPACE RENDER", ws);
 
               const nodes: TreeNode[] = [
                 {
@@ -578,11 +433,7 @@ export default function App() {
               ];
 
               return (
-                <div
-                  key={ws}
-                  className="workspace-block"
-                  style={{ position: "relative" }}
-                >
+                <div key={ws} className="workspace-block">
                   <button
                     className="workspace-delete-btn"
                     onClick={() => handleDeleteWorkspace(ws)}
@@ -601,15 +452,10 @@ export default function App() {
                     nodes={nodes}
                     key={ws}
                     onSelect={(path) => {
-                      // Always switch workspace first
                       setWorkspace(ws);
-
-                      // Then run your existing file-selection logic
                       onSelect(ws, path);
                     }}
-                    onFolderClick={() => {
-                      setWorkspace(ws);
-                    }}
+                    onFolderClick={() => setWorkspace(ws)}
                     onDropFolder={(folder) => onDropFolder(ws, folder)}
                     setDraggedItem={setDraggedItem}
                     openFolders={openFolders}
@@ -624,15 +470,9 @@ export default function App() {
                 <LoadingLocalBanner message="Please wait… Loading local workspace" />
               </div>
             )}
-
-            {!loadingLocal && loadingGithub && (
-              <div className="loadingGithub">
-                <LoadingGithubBanner message="Please wait… Loading docs from GitHub" />
-              </div>
-            )}
           </div>
 
-          {/* BOTTOM SECTION — PINNED */}
+          {/* CHANGES PANEL */}
           <div className="sidebar-bottom">
             <div className="changes-panel">
               <div className="changes-actions">
@@ -648,7 +488,7 @@ export default function App() {
 
                     if (
                       !confirm(
-                        `Restore ${selected.length} file(s) from Rotorflight-docs?`,
+                        `Restore ${selected.length} file(s) from GitHub?`,
                       )
                     )
                       return;
@@ -715,16 +555,10 @@ export default function App() {
                 />
               </div>
 
-              <PRPanel
-                slug={currentDocPath}
-                refreshGitHubTree={refreshGitHubTree}
-                clearEditor={clearEditor}
-                openEditFileModal={() => setShowEditModal(true)}
-              />
+              <PRPanel slug={currentDocPath} clearEditor={clearEditor} />
             </div>
           </div>
         </div>
-
         {/* EDITOR + PREVIEW PANEL */}
         <div
           style={{
@@ -745,68 +579,32 @@ export default function App() {
               height: "100%",
             }}
           >
-            EDIT MODAL
-            {showEditModal && !isSyncingImages && (
-              <div className="edit-modal-overlay">
-                <div className="edit-modal-box">
-                  <h3>Edit this file?</h3>
-                  <p>
-                    This file is from GitHub. A local copy will be created and
-                    its <code>img/</code> folder will be synced so you can edit
-                    safely.
-                  </p>
+            <h3>Editor</h3>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              style={{
+                flex: 1,
+                width: "100%",
+                minHeight: 0,
+                fontFamily: "monospace",
+                fontSize: "14px",
+                padding: "1rem",
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                background:
+                  errorLine !== null
+                    ? `linear-gradient(
+                        to bottom,
+                        transparent ${(errorLine - 1) * 1.4}rem,
+                        #ffe6e6 ${(errorLine - 1) * 1.4}rem,
+                        #ffe6e6 ${errorLine * 1.4}rem,
+                        transparent ${errorLine * 1.4}rem
+                      )`
+                    : "white",
+              }}
+            />
 
-                  <div className="edit-modal-buttons">
-                    <button onClick={onEditThisFile}>Edit this file</button>
-                    <button onClick={() => setShowEditModal(false)}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* IMAGE SYNC OVERLAY */}
-            {isSyncingImages && (
-              <div className="edit-modal-overlay">
-                <div className="edit-modal-box">
-                  <h3>Loading images into workspace…</h3>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.75rem",
-                      marginTop: "1rem",
-                    }}
-                  >
-                    <svg
-                      className="loading-icon"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      style={{ animation: "spin 1s linear infinite" }}
-                    >
-                      <circle
-                        cx="12"
-                        cy="12"
-                        r="9"
-                        fill="none"
-                        stroke="#856404"
-                        strokeWidth="2"
-                        strokeDasharray="56"
-                        strokeDashoffset="28"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-
-                    <span>
-                      Please wait while we sync to the <br />
-                      local-workspace…
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
             {/* NEW FILE MODAL */}
             {showNewFileModal && (
               <div className="edit-modal-overlay">
@@ -864,32 +662,6 @@ export default function App() {
                 </div>
               </div>
             )}
-            {/* EDITOR TEXTAREA */}
-            <h3>Editor</h3>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              style={{
-                flex: 1,
-                width: "100%",
-                minHeight: 0,
-                fontFamily: "monospace",
-                fontSize: "14px",
-                padding: "1rem",
-                border: "1px solid #ccc",
-                borderRadius: 4,
-                background:
-                  errorLine !== null
-                    ? `linear-gradient(
-                        to bottom,
-                        transparent ${(errorLine - 1) * 1.4}rem,
-                        #ffe6e6 ${(errorLine - 1) * 1.4}rem,
-                        #ffe6e6 ${errorLine * 1.4}rem,
-                        transparent ${errorLine * 1.4}rem
-                      )`
-                    : "white",
-              }}
-            />
           </div>
 
           {/* DRAG HANDLE */}

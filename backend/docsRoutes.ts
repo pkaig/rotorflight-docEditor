@@ -397,6 +397,23 @@ router.get("/load", async (req, res) => {
   filePath = filePath.replace(/\\/g, "/");
 
   try {
+    // NEW: local workspace files (docs + versioned_docs)
+    if (
+      filePath.startsWith("docs/") ||
+      filePath.startsWith("versioned_docs/")
+    ) {
+      const fullPath = path.join(
+        process.cwd(),
+        "workspaces",
+        login,
+        workspace,
+        filePath,
+      );
+
+      const content = await fs.promises.readFile(fullPath, "utf8");
+      return res.json({ content });
+    }
+
     if (filePath.startsWith("local-workspace/")) {
       if (routesDebug) {
         console.log(
@@ -620,7 +637,16 @@ router.get("/images/local", async (req, res) => {
 
   imgPath = imgPath.replace(/\\/g, "/");
 
-  const cleanImg = imgPath.replace(/^local-workspace\//, "");
+  // NEW: support workspace-relative paths
+  let cleanImg = imgPath;
+
+  // Strip legacy prefix if present
+  cleanImg = cleanImg.replace(/^local-workspace\/[^/]+\//, "");
+
+  // Now cleanImg is like:
+  //   docs/img/foo.png
+  //   versioned_docs/v1.0/img/bar.jpg
+
   const fullPath = path.join(
     process.cwd(),
     "workspaces",

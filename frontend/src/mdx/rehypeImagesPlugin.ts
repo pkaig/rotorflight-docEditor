@@ -1,7 +1,9 @@
 import { visit } from "unist-util-visit";
 
 export default function rehypeImages(currentDocPath: string) {
-  const isLocal = currentDocPath.startsWith("local-workspace/");
+  // Extract workspace name
+  const match = currentDocPath.match(/^local-workspace\/([^/]+)\//);
+  const workspace = match ? match[1] : null;
 
   // Directory containing the MDX file
   const docDir = currentDocPath.replace(/[^/]+$/, "");
@@ -21,26 +23,17 @@ export default function rehypeImages(currentDocPath: string) {
       if (src.startsWith("http://") || src.startsWith("https://")) return;
       if (src.startsWith("data:")) return;
 
+      const login = localStorage.getItem("rf_login") || "";
+
       // Resolve relative to the MDX file directory
       const combined = `${docDir}${src}`;
       const resolved = combined.replace(/\/\.\//g, "/");
 
-      const login = localStorage.getItem("rf_login") || "";
-
-      if (isLocal) {
-        // LOCAL WORKSPACE
-        const clean = resolved.replace(/^local-workspace\//, "");
-
-        props.src = `/api/docs/images/local?path=${encodeURIComponent(
-          clean,
-        )}&login=${encodeURIComponent(login)}`;
-      } else {
-        // GITHUB
-        // Preserve full path including Rotorflight-docs and version folders
-        props.src = `/api/docs/image?path=${encodeURIComponent(
-          resolved,
-        )}&login=${encodeURIComponent(login)}`;
-      }
+      // ALWAYS local now
+      props.src =
+        `/api/docs/images/local?path=${encodeURIComponent(resolved)}` +
+        `&login=${encodeURIComponent(login)}` +
+        `&workspace=${encodeURIComponent(workspace || "")}`;
     });
   };
 }
