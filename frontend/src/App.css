@@ -877,3 +877,23 @@
 .workspace-cancel-btn:hover {
   background: #d5d5d5;
 }
+
+/* Invalid input highlight */
+.workspace-input.invalid {
+  border: 1px solid #d9534f;
+  background: #fff5f5;
+}
+
+/* Inline error message */
+.workspace-input-error {
+  color: #d9534f;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Disabled create button */
+.workspace-create-btn:disabled {
+  background: #9bbce0;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
