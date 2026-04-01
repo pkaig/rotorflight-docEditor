@@ -906,3 +906,110 @@
   cursor: not-allowed;
   opacity: 0.7;
 }
+
+/* ============================================================
+   20. MERGE VIEW
+   ============================================================ */
+.merge-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.merge-columns {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+}
+
+.merge-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pane-header {
+  padding: 6px 10px;
+  font-weight: 600;
+  border-bottom: 1px solid #ccc;
+}
+
+.pane-header.workspace {
+  background: rgba(173, 216, 230, 0.4); /* light blue */
+}
+
+.pane-header.upstream {
+  background: rgba(255, 215, 0, 0.4); /* soft yellow */
+}
+
+.pane-header.merged {
+  background: #eee;
+}
+
+.merge-bottom {
+  margin-top: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.merge-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 12px;
+}
+
+.merge-actions button {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: none;
+  background: #0078d4;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Merge conflict styling */
+
+.file-item.conflict {
+  background: rgba(255, 215, 0, 0.25); /* soft yellow */
+  border-left: 3px solid #e6b800;
+}
+
+.conflict-dot {
+  width: 8px;
+  height: 8px;
+  background: #e6b800;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.diff-container {
+  display: flex;
+  flex-direction: column;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.diff-row {
+  display: flex;
+  border-bottom: 1px solid #eee;
+}
+
+.diff-left,
+.diff-right {
+  flex: 1;
+  padding: 4px 8px;
+  white-space: pre-wrap;
+}
+
+.diff-changed .diff-left {
+  background: #ffe6e6;
+}
+
+.diff-changed .diff-right {
+  background: #e6f0ff;
+}

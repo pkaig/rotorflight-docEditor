@@ -7,7 +7,8 @@ import {
   GITHUB_DEFAULT_BRANCH,
 } from "../config/github";
 import path from "path";
-import fs from "fs";
+//import fs from "fs";
+import * as fs from "fs-extra";
 import multer from "multer";
 
 type TreeNode = {
@@ -776,7 +777,12 @@ router.post("/reset-local", async (req, res) => {
       login,
       workspace,
     );
-    const mirrorRoot = path.join(process.cwd(), "workspaces", login, "mirror");
+    const mirrorRoot = path.join(
+      process.cwd(),
+      "Rotorflight-docs",
+      login,
+      "mirror",
+    );
 
     await fs.promises.rm(workspaceRoot, { recursive: true, force: true });
     await fs.promises.mkdir(workspaceRoot, { recursive: true });
@@ -844,7 +850,7 @@ router.get("/scan-local-changes", async (req, res) => {
     login,
     workspace,
   );
-  const mirrorRoot = path.join(process.cwd(), "workspaces", login, "mirror");
+  const mirrorRoot = path.join(process.cwd(), workspace, "mirror");
 
   try {
     const localFiles = await walkLocalTree(workspaceRoot);
@@ -891,8 +897,130 @@ router.get("/scan-local-changes", async (req, res) => {
   }
 });
 
+// // ---------------------------------------------
+// // CREATE NEW WORKSPACE
+// // ---------------------------------------------
+// router.post("/create-workspace", async (req, res) => {
+//   const login = req.query.login as string;
+//   const workspace = req.body.workspace as string;
+
+//   if (!login) {
+//     return res.status(401).json({ error: "Missing login" });
+//   }
+
+//   if (!workspace || typeof workspace !== "string") {
+//     return res.status(400).json({ error: "Missing or invalid workspace name" });
+//   }
+
+//   // Validate workspace name: short, safe, no spaces
+//   if (!/^[a-zA-Z0-9-_]+$/.test(workspace)) {
+//     return res.status(400).json({
+//       error:
+//         "Invalid workspace name. Use only letters, numbers, hyphens, and underscores.",
+//     });
+//   }
+
+//   try {
+//     const token = getTokenForUser(login);
+
+//     const userRoot = path.join(process.cwd(), "workspaces", login);
+//     console.log("User root:", userRoot);
+//     const workspaceRoot = path.join(userRoot, workspace);
+//     console.log("Workspace root:", workspaceRoot);
+//     const mirrorRoot = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+//     console.log("Mirror root:", mirrorRoot);
+
+//     // Ensure user root exists
+//     await fs.promises.mkdir(userRoot, { recursive: true });
+
+//     // Ensure mirror exists — if not, build it
+//     const mirrorExists = fs.existsSync(mirrorRoot);
+
+//     if (!mirrorExists) {
+//       console.log("⚠️ Mirror missing — building fresh mirror for user:", login);
+
+//       await fs.promises.mkdir(mirrorRoot, { recursive: true });
+
+//       const tree = await githubRequest(
+//         token,
+//         `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees/${GITHUB_DEFAULT_BRANCH}?recursive=1`,
+//       );
+
+//       if (!tree || !Array.isArray(tree.tree)) {
+//         return res.status(500).json({ error: "Failed to build mirror" });
+//       }
+
+//       for (const item of tree.tree) {
+//         if (item.type !== "blob") continue;
+//         if (
+//           !item.path.startsWith("docs/") &&
+//           !item.path.startsWith("versioned_docs/")
+//         ) {
+//           continue;
+//         }
+
+//         const mirrorPath = path.join(mirrorRoot, item.path);
+//         await fs.promises.mkdir(path.dirname(mirrorPath), { recursive: true });
+
+//         const file = await githubRequest(
+//           token,
+//           `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${item.path}?ref=${GITHUB_DEFAULT_BRANCH}`,
+//         );
+
+//         const content = Buffer.from(file.content, "base64").toString("utf8");
+//         await fs.promises.writeFile(mirrorPath, content, "utf8");
+//       }
+//     }
+
+//     // Create workspace folder
+//     await fs.promises.mkdir(workspaceRoot, { recursive: true });
+
+//     // Copy mirror → workspace/docs + workspace/versioned_docs
+//     const mirrorDocs = path.join(mirrorRoot, "docs");
+//     const mirrorVersioned = path.join(mirrorRoot, "versioned_docs");
+
+//     const wsDocs = path.join(workspaceRoot, "docs");
+//     const wsVersioned = path.join(workspaceRoot, "versioned_docs");
+
+//     await fs.promises.mkdir(wsDocs, { recursive: true });
+//     await fs.promises.mkdir(wsVersioned, { recursive: true });
+
+//     // Helper to copy recursively
+//     async function copyRecursive(src: string, dest: string) {
+//       if (!fs.existsSync(src)) return;
+
+//       const entries = await fs.promises.readdir(src, { withFileTypes: true });
+
+//       for (const entry of entries) {
+//         const srcPath = path.join(src, entry.name);
+//         const destPath = path.join(dest, entry.name);
+
+//         if (entry.isDirectory()) {
+//           await fs.promises.mkdir(destPath, { recursive: true });
+//           await copyRecursive(srcPath, destPath);
+//         } else {
+//           const content = await fs.promises.readFile(srcPath);
+//           await fs.promises.writeFile(destPath, content);
+//         }
+//       }
+//     }
+
+//     await copyRecursive(mirrorDocs, wsDocs);
+//     await copyRecursive(mirrorVersioned, wsVersioned);
+
+//     return res.json({
+//       ok: true,
+//       workspace,
+//       path: `local-workspace/${workspace}`,
+//     });
+//   } catch (err) {
+//     console.error("❌ create-workspace error:", err);
+//     return res.status(500).json({ error: "Failed to create workspace" });
+//   }
+// });
+
 // ---------------------------------------------
-// CREATE NEW WORKSPACE
+// CREATE NEW WORKSPACE (FINAL ARCHITECTURE)
 // ---------------------------------------------
 router.post("/create-workspace", async (req, res) => {
   const login = req.query.login as string;
@@ -906,7 +1034,6 @@ router.post("/create-workspace", async (req, res) => {
     return res.status(400).json({ error: "Missing or invalid workspace name" });
   }
 
-  // Validate workspace name: short, safe, no spaces
   if (!/^[a-zA-Z0-9-_]+$/.test(workspace)) {
     return res.status(400).json({
       error:
@@ -918,86 +1045,65 @@ router.post("/create-workspace", async (req, res) => {
     const token = getTokenForUser(login);
 
     const userRoot = path.join(process.cwd(), "workspaces", login);
-    const mirrorRoot = path.join(userRoot, "mirror");
     const workspaceRoot = path.join(userRoot, workspace);
 
-    // Ensure user root exists
-    await fs.promises.mkdir(userRoot, { recursive: true });
+    const globalMirror = path.join(process.cwd(), "Rotorflight-docs", "mirror");
 
-    // Ensure mirror exists — if not, build it
-    const mirrorExists = fs.existsSync(mirrorRoot);
+    const workspaceMirror = path.join(workspaceRoot, "mirror");
+    const workspaceDocs = path.join(workspaceRoot, "docs");
+    const workspaceVersioned = path.join(workspaceRoot, "versioned_docs");
 
-    if (!mirrorExists) {
-      console.log("⚠️ Mirror missing — building fresh mirror for user:", login);
+    // -------------------------------------------------------
+    // 1. Ensure global mirror exists — call /api/reset-mirror
+    // -------------------------------------------------------
+    if (!fs.existsSync(globalMirror)) {
+      console.log("⚠️ Global mirror missing — calling /api/reset-mirror");
 
-      await fs.promises.mkdir(mirrorRoot, { recursive: true });
-
-      const tree = await githubRequest(
-        token,
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees/${GITHUB_DEFAULT_BRANCH}?recursive=1`,
+      const resetRes = await fetch(
+        `http://localhost:4000/api/reset-mirror?login=${login}`,
+        { method: "POST" },
       );
 
-      if (!tree || !Array.isArray(tree.tree)) {
-        return res.status(500).json({ error: "Failed to build mirror" });
+      if (!resetRes.ok) {
+        return res.status(500).json({
+          error: "Failed to initialize global mirror via /reset-mirror",
+        });
       }
 
-      for (const item of tree.tree) {
-        if (item.type !== "blob") continue;
-        if (
-          !item.path.startsWith("docs/") &&
-          !item.path.startsWith("versioned_docs/")
-        ) {
-          continue;
-        }
-
-        const mirrorPath = path.join(mirrorRoot, item.path);
-        await fs.promises.mkdir(path.dirname(mirrorPath), { recursive: true });
-
-        const file = await githubRequest(
-          token,
-          `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${item.path}?ref=${GITHUB_DEFAULT_BRANCH}`,
-        );
-
-        const content = Buffer.from(file.content, "base64").toString("utf8");
-        await fs.promises.writeFile(mirrorPath, content, "utf8");
-      }
+      console.log("Global mirror initialized.");
     }
 
-    // Create workspace folder
+    // -------------------------------------------------------
+    // 2. Ensure workspace root exists
+    // -------------------------------------------------------
     await fs.promises.mkdir(workspaceRoot, { recursive: true });
 
-    // Copy mirror → workspace/docs + workspace/versioned_docs
-    const mirrorDocs = path.join(mirrorRoot, "docs");
-    const mirrorVersioned = path.join(mirrorRoot, "versioned_docs");
+    // -------------------------------------------------------
+    // 3. Create workspace/mirror and copy ONLY docs + versioned_docs
+    // -------------------------------------------------------
+    console.log("COPY baseline docs + versioned_docs → workspace/mirror");
 
-    const wsDocs = path.join(workspaceRoot, "docs");
-    const wsVersioned = path.join(workspaceRoot, "versioned_docs");
+    await fs.copy(
+      path.join(globalMirror, "docs"),
+      path.join(workspaceMirror, "docs"),
+    );
 
-    await fs.promises.mkdir(wsDocs, { recursive: true });
-    await fs.promises.mkdir(wsVersioned, { recursive: true });
+    await fs.copy(
+      path.join(globalMirror, "versioned_docs"),
+      path.join(workspaceMirror, "versioned_docs"),
+    );
 
-    // Helper to copy recursively
-    async function copyRecursive(src: string, dest: string) {
-      if (!fs.existsSync(src)) return;
+    // -------------------------------------------------------
+    // 4. Copy editable docs + versioned_docs into workspace
+    // -------------------------------------------------------
+    console.log("COPY docs → workspace/docs");
+    await fs.copy(path.join(globalMirror, "docs"), workspaceDocs);
 
-      const entries = await fs.promises.readdir(src, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const srcPath = path.join(src, entry.name);
-        const destPath = path.join(dest, entry.name);
-
-        if (entry.isDirectory()) {
-          await fs.promises.mkdir(destPath, { recursive: true });
-          await copyRecursive(srcPath, destPath);
-        } else {
-          const content = await fs.promises.readFile(srcPath);
-          await fs.promises.writeFile(destPath, content);
-        }
-      }
-    }
-
-    await copyRecursive(mirrorDocs, wsDocs);
-    await copyRecursive(mirrorVersioned, wsVersioned);
+    console.log("COPY versioned_docs → workspace/versioned_docs");
+    await fs.copy(
+      path.join(globalMirror, "versioned_docs"),
+      workspaceVersioned,
+    );
 
     return res.json({
       ok: true,
@@ -1007,32 +1113,6 @@ router.post("/create-workspace", async (req, res) => {
   } catch (err) {
     console.error("❌ create-workspace error:", err);
     return res.status(500).json({ error: "Failed to create workspace" });
-  }
-});
-
-// WORKSPACE LISTING (for dropdowns, etc.)
-router.get("/list-workspaces", async (req, res) => {
-  const login = req.query.login;
-  if (!login) {
-    return res.status(400).json({ error: "Missing login" });
-  }
-
-  const base = path.join(process.cwd(), "workspaces", login);
-
-  // Ensure the directory exists
-  await fs.promises.mkdir(base, { recursive: true });
-
-  try {
-    const entries = await fs.promises.readdir(base, { withFileTypes: true });
-
-    const workspaces = entries
-      .filter((e) => e.isDirectory() && e.name !== "mirror")
-      .map((e) => e.name);
-
-    res.json({ workspaces });
-  } catch (err) {
-    console.error("Failed to list workspaces", err);
-    res.status(500).json({ error: "Failed to list workspaces" });
   }
 });
 

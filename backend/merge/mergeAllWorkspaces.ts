@@ -6,9 +6,9 @@ import { applyUpstreamToWorkspace } from "../merge/applyUpstream";
 
 const router = express.Router();
 
-router.post("/merge-all-workspaces", async (req, res) => {
+router.post("/merge-workspace", async (req, res) => {
   try {
-    const baseDir = path.join(process.cwd(), "mirror-old");
+    const baseDir = path.join(process.cwd(), "workspaces", login, "mirror");
     const newDir = path.join(process.cwd(), "mirror");
     const workspacesRoot = path.join(process.cwd(), "workspaces");
 

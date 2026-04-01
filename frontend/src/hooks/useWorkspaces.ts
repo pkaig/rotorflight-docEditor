@@ -7,7 +7,7 @@ export function useWorkspaces(login: string | null) {
   async function refreshWorkspaces() {
     if (!login) return;
 
-    const res = await fetch(`/api/docs/list-workspaces?login=${login}`);
+    const res = await fetch(`/api/docs/list-user-workspaces?login=${login}`);
     const data = await res.json();
 
     setWorkspaces(data.workspaces || []);

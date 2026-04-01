@@ -8,6 +8,8 @@ import { useAutosave } from "./hooks/useAutosave";
 import { useGitPR } from "./hooks/useGitPR";
 import { PRPanel } from "./components/PRPanel";
 import { ChangesPanel } from "./components/ChangesPanel";
+import ConflictResolver from "./components/ConflictResolver";
+import { isConflictFile, baseFileName } from "./components/conflictUtils";
 
 import {
   MaintenanceModal,
@@ -89,6 +91,8 @@ export default function App() {
   const [openWorkspaces, setOpenWorkspaces] = useState<Record<string, boolean>>(
     {},
   );
+
+  const conflict = isConflictFile(currentDocPath);
 
   /* CHANGE TRACKING + PR FLOW */
   const [selectedChanges, setSelectedChanges] = useState<
@@ -568,7 +572,7 @@ export default function App() {
             height: "100vh",
           }}
         >
-          {/* EDITOR PANEL */}
+          {/* EDITOR PANEL
           <div
             className="editor-container"
             style={{
@@ -603,7 +607,56 @@ export default function App() {
                       )`
                     : "white",
               }}
-            />
+                    
+          {/* EDITOR PANEL */}
+          <div
+            className="editor-container"
+            style={{
+              width: `${editorWidth}%`,
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
+            }}
+          >
+            <h3>{conflict ? "Resolve Conflict" : "Editor"}</h3>
+
+            {conflict ? (
+              <ConflictResolver
+                workspace={workspace}
+                file={baseFileName(currentDocPath)}
+                onMergedChange={(text) => setContent(text)} // live preview
+                onResolved={async () => {
+                  await refreshLocalWorkspace(workspace);
+                  onSelect(workspace, baseFileName(currentDocPath));
+                }}
+              />
+            ) : (
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                style={{
+                  flex: 1,
+                  width: "100%",
+                  minHeight: 0,
+                  fontFamily: "monospace",
+                  fontSize: "14px",
+                  padding: "1rem",
+                  border: "1px solid #ccc",
+                  borderRadius: 4,
+                  background:
+                    errorLine !== null
+                      ? `linear-gradient(
+                to bottom,
+                transparent ${(errorLine - 1) * 1.4}rem,
+                #ffe6e6 ${(errorLine - 1) * 1.4}rem,
+                #ffe6e6 ${errorLine * 1.4}rem,
+                transparent ${errorLine * 1.4}rem
+              )`
+                      : "white",
+                }}
+              />
+            )}
 
             {/* NEW FILE MODAL */}
             {showNewFileModal && (

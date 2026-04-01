@@ -1,14 +1,180 @@
 import express from "express";
 import * as fs from "fs-extra";
+import crypto from "crypto";
 
 import path from "path";
 import fetch from "node-fetch";
 import { getTokenForUser } from "./authRoutes";
+import { computeUpstreamDiff } from "../merge/computeUpstreamDiff";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
   GITHUB_DEFAULT_BRANCH,
 } from "../config/github";
+
+function hashFile(buf: Buffer | string) {
+  return crypto.createHash("sha1").update(buf).digest("hex");
+}
+
+async function listFilesRecursive(root: string): Promise<string[]> {
+  const out: string[] = [];
+
+  async function walk(dir: string) {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      const rel = path.relative(root, full);
+      if (e.isDirectory()) {
+        await walk(full);
+      } else {
+        out.push(rel.replace(/\\/g, "/"));
+      }
+    }
+  }
+
+  if (await fs.pathExists(root)) {
+    await walk(root);
+  }
+
+  return out;
+}
+
+type UpstreamChange =
+  | { type: "added"; file: string }
+  | { type: "modified"; file: string }
+  | { type: "deleted"; file: string };
+
+async function computeUpstreamDiff(
+  base: string,
+  theirs: string,
+): Promise<UpstreamChange[]> {
+  const baseFiles = await listFilesRecursive(base);
+  const theirFiles = await listFilesRecursive(theirs);
+
+  const baseSet = new Set(baseFiles);
+  const theirSet = new Set(theirFiles);
+
+  const changes: UpstreamChange[] = [];
+
+  // added or modified
+  for (const f of theirFiles) {
+    const theirsPath = path.join(theirs, f);
+    const theirsBuf = await fs.readFile(theirsPath);
+    const theirsHash = hashFile(theirsBuf);
+
+    if (!baseSet.has(f)) {
+      changes.push({ type: "added", file: f });
+      continue;
+    }
+
+    const basePath = path.join(base, f);
+    const baseBuf = await fs.readFile(basePath);
+    const baseHash = hashFile(baseBuf);
+
+    if (baseHash !== theirsHash) {
+      changes.push({ type: "modified", file: f });
+    }
+  }
+
+  // deleted
+  for (const f of baseFiles) {
+    if (!theirSet.has(f)) {
+      changes.push({ type: "deleted", file: f });
+    }
+  }
+
+  return changes;
+}
+
+type WorkspaceMergeResult = {
+  applied: string[];
+  conflicts: string[];
+  deleted: string[];
+};
+
+async function applyUpstreamToWorkspace(
+  workspacePath: string,
+  base: string,
+  theirs: string,
+  upstream: UpstreamChange[],
+): Promise<WorkspaceMergeResult> {
+  const applied: string[] = [];
+  const conflicts: string[] = [];
+  const deleted: string[] = [];
+
+  for (const change of upstream) {
+    const rel = change.file;
+    const baseFile = path.join(base, rel);
+    const theirsFile = path.join(theirs, rel);
+    const wsFile = path.join(workspacePath, rel);
+    const wsConflictFile = wsFile + ".conflict";
+
+    if (change.type === "deleted") {
+      // if user hasn't touched it, delete from workspace
+      if (await fs.pathExists(wsFile)) {
+        const [baseBuf, wsBuf] = await Promise.all([
+          fs.pathExists(baseFile)
+            ? fs.readFile(baseFile)
+            : Promise.resolve(Buffer.alloc(0)),
+          fs.readFile(wsFile),
+        ]);
+
+        const baseHash = hashFile(baseBuf);
+        const wsHash = hashFile(wsBuf);
+
+        if (baseHash === wsHash) {
+          await fs.remove(wsFile);
+          deleted.push(rel);
+        } else {
+          // user changed it; leave it, no conflict file for deletes
+        }
+      }
+      continue;
+    }
+
+    // added / modified
+    const theirsBuf = await fs.readFile(theirsFile);
+    const theirsHash = hashFile(theirsBuf);
+
+    const baseBuf = (await fs.pathExists(baseFile))
+      ? await fs.readFile(baseFile)
+      : Buffer.alloc(0);
+    const baseHash = hashFile(baseBuf);
+
+    const wsExists = await fs.pathExists(wsFile);
+
+    if (!wsExists) {
+      // workspace didn't have it: just write theirs
+      await fs.ensureDir(path.dirname(wsFile));
+      await fs.writeFile(wsFile, theirsBuf);
+      applied.push(rel);
+      continue;
+    }
+
+    const wsBuf = await fs.readFile(wsFile);
+    const wsHash = hashFile(wsBuf);
+
+    // workspace unchanged vs base → safe to apply theirs
+    if (wsHash === baseHash) {
+      await fs.writeFile(wsFile, theirsBuf);
+      applied.push(rel);
+      continue;
+    }
+
+    // workspace changed vs base
+    if (wsHash === theirsHash) {
+      // user already matches upstream; nothing to do
+      continue;
+    }
+
+    // true conflict: user changed and upstream changed differently
+    await fs.ensureDir(path.dirname(wsConflictFile));
+    await fs.writeFile(wsConflictFile, theirsBuf);
+    conflicts.push(rel);
+  }
+
+  return { applied, conflicts, deleted };
+}
 
 const router = express.Router();
 
@@ -93,7 +259,7 @@ router.post("/reset-mirror", async (req, res) => {
   if (!auth) return;
 
   const { login } = auth;
-  const mirrorPath = path.join(process.cwd(), "workspaces", login, "mirror");
+  const mirrorPath = path.join(process.cwd(), "Rotorflight-docs", "mirror");
 
   try {
     console.log("RESET-MIRROR: deleting old mirror...");
@@ -116,8 +282,8 @@ router.post("/reset-mirror", async (req, res) => {
 
 router.post("/merge-all-workspaces", async (req, res) => {
   try {
-    const base = path.join(process.cwd(), "mirror-old");
-    const theirs = path.join(process.cwd(), "mirror");
+    const base = path.join(process.cwd(), "Rotorflight-docs", "mirror-old");
+    const theirs = path.join(process.cwd(), "Rotorflight-docs", "mirror");
     const workspacesRoot = path.join(process.cwd(), "workspaces");
 
     console.log("MERGE: computing upstream diff...");
@@ -147,6 +313,80 @@ router.post("/merge-all-workspaces", async (req, res) => {
   } catch (err) {
     console.error("MERGE ERROR:", err);
     return res.status(500).json({ error: "Merge failed" });
+  }
+});
+
+router.get("/conflict-file", async (req, res) => {
+  const { workspace, file } = req.query;
+
+  const wsPath = path.join("workspaces", workspace, "workspace", file);
+  const conflictPath = wsPath + ".conflict";
+
+  const workspaceText = await fs.readFile(wsPath, "utf8");
+  const upstreamText = await fs.readFile(conflictPath, "utf8");
+
+  res.json({ workspace: workspaceText, upstream: upstreamText });
+});
+
+router.post("/resolve-conflict", async (req, res) => {
+  const { workspace, file, resolution, content } = req.body;
+
+  const wsPath = path.join("workspaces", workspace, "workspace", file);
+  const conflictPath = wsPath + ".conflict";
+
+  if (resolution === "workspace") {
+    await fs.remove(conflictPath);
+  }
+
+  if (resolution === "upstream") {
+    const upstream = await fs.readFile(conflictPath);
+    await fs.writeFile(wsPath, upstream);
+    await fs.remove(conflictPath);
+  }
+
+  if (resolution === "manual") {
+    await fs.writeFile(wsPath, content);
+    await fs.remove(conflictPath);
+  }
+
+  res.json({ ok: true });
+});
+
+router.post("/rebase-workspace", async (req, res) => {
+  const { login, workspace } = req.query;
+
+  const workspacePath = path.join(
+    process.cwd(),
+    "workspaces",
+    login as string,
+    workspace as string,
+  );
+
+  const baseline = path.join(workspacePath, "mirror");
+  console.log("REBASE: baseline path", baseline);
+  const upstream = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+  console.log("REBASE: upstream path", upstream);
+
+  try {
+    console.log("REBASE: computing diff...");
+    const diff = await computeUpstreamDiff(baseline, upstream);
+
+    console.log("REBASE: applying upstream changes...");
+    const result = await applyUpstreamToWorkspace(
+      workspacePath,
+      baseline,
+      upstream,
+      diff,
+    );
+
+    console.log("REBASE: updating baseline mirror...");
+    await fs.remove(baseline);
+    await fs.copy(upstream, baseline);
+
+    return res.json({ ok: true, result });
+  } catch (err) {
+    console.error("REBASE ERROR:", err);
+    return res.status(500).json({ error: "Rebase failed" });
   }
 });
 
