@@ -298,6 +298,7 @@ export default function App() {
     if (!login) return;
 
     for (const p of paths) {
+      console.log("Restore path:", p);
       await fetch(
         `/api/docs/restore-file?login=${encodeURIComponent(
           login,
@@ -462,6 +463,9 @@ export default function App() {
               <button
                 className="clear-selected-btn"
                 onClick={async (e) => {
+                  console.log("CLICK START");
+                  setTimeout(() => console.log("ASYNC TICK"), 0);
+
                   e.stopPropagation();
 
                   const selected = Object.keys(selectedChanges).filter(
@@ -470,23 +474,22 @@ export default function App() {
                   if (selected.length === 0) return;
 
                   if (
-                    !confirm(`Restore ${selected.length} file(s) from GitHub?`)
+                    !confirm(
+                      `Restore ${selected.length} file(s) from Rotorflight docs?`,
+                    )
                   )
                     return;
 
-                  const wsMatch = selected[0].match(
-                    /^local-workspace\/([^/]+)\//,
-                  );
-                  const ws = wsMatch ? wsMatch[1] : null;
-                  if (!ws) return;
-
+                  const ws = workspace;
                   for (const path of selected) {
+                    const clean = path.replace(/^local-workspace\/[^/]+\//, "");
+
                     await fetch(
                       `/api/docs/restore-file?login=${login}&workspace=${ws}`,
                       {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ path }),
+                        body: JSON.stringify({ path: clean }),
                       },
                     );
                   }

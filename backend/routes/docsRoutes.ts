@@ -559,13 +559,14 @@ router.post("/clone-to-local", async (req, res) => {
 });
 
 // ---------------------------------------------
-// RESTORE A SINGLE FILE FROM GITHUB TO LOCAL
+// RESTORE A SINGLE FILE FROM LOCAL MIRROR
 // ---------------------------------------------
 router.post("/restore-file", async (req, res) => {
+  console.log("🔥 restore-file hit", req.method, req.url, req.body);
   const auth = requireToken(req, res);
   if (!auth) return;
 
-  const { token, login, workspace } = auth;
+  const { login, workspace } = auth;
   const { path: filePath } = req.body;
 
   if (!filePath) {
@@ -573,24 +574,30 @@ router.post("/restore-file", async (req, res) => {
   }
 
   try {
-    const githubPath = filePath.replace(/^Rotorflight-docs\//, "");
+    // Normalise path (strip Rotorflight-docs/ if present)
+    const cleanPath = filePath.replace(/^Rotorflight-docs\//, "");
 
-    const result = await githubRequest(
-      token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${githubPath}?ref=${GITHUB_DEFAULT_BRANCH}`,
-    );
-
-    const content = Buffer.from(result.content, "base64").toString("utf8");
-
+    // Workspace root
     const workspaceRoot = path.join(
       process.cwd(),
       "workspaces",
       login,
       workspace,
     );
-    const localPath = path.join(workspaceRoot, githubPath);
 
+    // Mirror path (baseline)
+    const mirrorPath = path.join(workspaceRoot, "mirror", cleanPath);
+    console.log("Mirror:", mirrorPath);
+    // Local editable path
+    const localPath = path.join(workspaceRoot, cleanPath);
+    console.log("Local Path:", localPath);
+    // Read from mirror
+    const content = await fs.promises.readFile(mirrorPath, "utf8");
+
+    // Ensure directory exists
     await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+
+    // Write to editable workspace
     await fs.promises.writeFile(localPath, content, "utf8");
 
     return res.json({ ok: true });
