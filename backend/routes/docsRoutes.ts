@@ -679,63 +679,52 @@ router.get("/images/local", async (req, res) => {
 // SAVE DOCUMENT LOCALLY (content-aware)
 // ---------------------------------------------
 router.post("/save", async (req, res) => {
-  console.log(
-    "SAVE ROUTE HIT",
-    req.body,
-    new Date().getMinutes(),
-    ":",
-    new Date().getSeconds(),
-  );
-
   const auth = requireToken(req, res);
   if (!auth) return;
 
   const { login, workspace } = auth;
-  const { path: filePath, content } = req.body;
-
-  if (!filePath) {
-    return res.status(400).json({ error: "Missing file path" });
-  }
-
-  if (!filePath.startsWith("local-workspace/")) {
-    return res.status(400).json({ error: "Invalid save path" });
-  }
-
-  if (typeof content !== "string") {
-    return res.status(400).json({ error: "Invalid file content" });
-  }
+  let { path: filePath, content } = req.body;
 
   try {
-    // FIX: strip "local-workspace/<workspace>/"
-    const cleanPath = filePath.replace(/^local-workspace\/[^/]+\//, "");
+    // Normalise slashes
+    filePath = filePath.replace(/\\/g, "/");
 
+    // CASE A: canonical local-workspace/<workspace>/docs/...
+    if (filePath.startsWith("local-workspace/")) {
+      const [, ws, ...rest] = filePath.split("/");
+      filePath = rest.join("/"); // strip "local-workspace/<workspace>/"
+    }
+
+    // CASE B: legacy "local/docs/..."
+    if (filePath.startsWith("local/")) {
+      filePath = filePath.replace(/^local\//, "");
+    }
+
+    // CASE C: strip accidental "<workspace>/" prefix
+    filePath = filePath.replace(new RegExp(`^${workspace}/`), "");
+
+    // CASE D: normalise versioned docs
+    filePath = filePath.replace(/^versioned-docs\//, "versioned_docs/");
+
+    // Build final path
     const fullPath = path.join(
       process.cwd(),
       "workspaces",
       login,
       workspace,
-      cleanPath,
+      filePath,
     );
 
+    // Ensure directory exists
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
 
-    let existing = null;
-    try {
-      existing = await fs.promises.readFile(fullPath, "utf8");
-    } catch {
-      // File does not exist yet — that's fine
-    }
-
-    if (existing === content) {
-      return res.json({ ok: true, unchanged: true });
-    }
-
+    // Write file
     await fs.promises.writeFile(fullPath, content, "utf8");
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
-    console.error("❌ Failed to save file:", err);
-    res.status(500).json({ error: "Failed to save file" });
+    console.error("❌ SAVE ERROR:", err);
+    return res.status(500).json({ error: "Failed to save document" });
   }
 });
 
@@ -850,7 +839,8 @@ router.get("/scan-local-changes", async (req, res) => {
     login,
     workspace,
   );
-  const mirrorRoot = path.join(process.cwd(), workspace, "mirror");
+
+  const mirrorRoot = path.join(workspaceRoot, "mirror");
 
   try {
     const localFiles = await walkLocalTree(workspaceRoot);
@@ -867,6 +857,7 @@ router.get("/scan-local-changes", async (req, res) => {
     const localSet = new Set(localFiles.filter(filterDocs));
     const mirrorSet = new Set(mirrorFiles.filter(filterDocs));
 
+    // Added + Modified
     for (const file of localSet) {
       if (!mirrorSet.has(file)) {
         added.push({ path: file, type: "added" });
@@ -884,6 +875,7 @@ router.get("/scan-local-changes", async (req, res) => {
       }
     }
 
+    // Deleted
     for (const file of mirrorSet) {
       if (!localSet.has(file)) {
         deleted.push({ path: file, type: "deleted" });
@@ -896,128 +888,6 @@ router.get("/scan-local-changes", async (req, res) => {
     res.status(500).json({ error: "Failed to scan local changes" });
   }
 });
-
-// // ---------------------------------------------
-// // CREATE NEW WORKSPACE
-// // ---------------------------------------------
-// router.post("/create-workspace", async (req, res) => {
-//   const login = req.query.login as string;
-//   const workspace = req.body.workspace as string;
-
-//   if (!login) {
-//     return res.status(401).json({ error: "Missing login" });
-//   }
-
-//   if (!workspace || typeof workspace !== "string") {
-//     return res.status(400).json({ error: "Missing or invalid workspace name" });
-//   }
-
-//   // Validate workspace name: short, safe, no spaces
-//   if (!/^[a-zA-Z0-9-_]+$/.test(workspace)) {
-//     return res.status(400).json({
-//       error:
-//         "Invalid workspace name. Use only letters, numbers, hyphens, and underscores.",
-//     });
-//   }
-
-//   try {
-//     const token = getTokenForUser(login);
-
-//     const userRoot = path.join(process.cwd(), "workspaces", login);
-//     console.log("User root:", userRoot);
-//     const workspaceRoot = path.join(userRoot, workspace);
-//     console.log("Workspace root:", workspaceRoot);
-//     const mirrorRoot = path.join(process.cwd(), "Rotorflight-docs", "mirror");
-//     console.log("Mirror root:", mirrorRoot);
-
-//     // Ensure user root exists
-//     await fs.promises.mkdir(userRoot, { recursive: true });
-
-//     // Ensure mirror exists — if not, build it
-//     const mirrorExists = fs.existsSync(mirrorRoot);
-
-//     if (!mirrorExists) {
-//       console.log("⚠️ Mirror missing — building fresh mirror for user:", login);
-
-//       await fs.promises.mkdir(mirrorRoot, { recursive: true });
-
-//       const tree = await githubRequest(
-//         token,
-//         `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees/${GITHUB_DEFAULT_BRANCH}?recursive=1`,
-//       );
-
-//       if (!tree || !Array.isArray(tree.tree)) {
-//         return res.status(500).json({ error: "Failed to build mirror" });
-//       }
-
-//       for (const item of tree.tree) {
-//         if (item.type !== "blob") continue;
-//         if (
-//           !item.path.startsWith("docs/") &&
-//           !item.path.startsWith("versioned_docs/")
-//         ) {
-//           continue;
-//         }
-
-//         const mirrorPath = path.join(mirrorRoot, item.path);
-//         await fs.promises.mkdir(path.dirname(mirrorPath), { recursive: true });
-
-//         const file = await githubRequest(
-//           token,
-//           `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${item.path}?ref=${GITHUB_DEFAULT_BRANCH}`,
-//         );
-
-//         const content = Buffer.from(file.content, "base64").toString("utf8");
-//         await fs.promises.writeFile(mirrorPath, content, "utf8");
-//       }
-//     }
-
-//     // Create workspace folder
-//     await fs.promises.mkdir(workspaceRoot, { recursive: true });
-
-//     // Copy mirror → workspace/docs + workspace/versioned_docs
-//     const mirrorDocs = path.join(mirrorRoot, "docs");
-//     const mirrorVersioned = path.join(mirrorRoot, "versioned_docs");
-
-//     const wsDocs = path.join(workspaceRoot, "docs");
-//     const wsVersioned = path.join(workspaceRoot, "versioned_docs");
-
-//     await fs.promises.mkdir(wsDocs, { recursive: true });
-//     await fs.promises.mkdir(wsVersioned, { recursive: true });
-
-//     // Helper to copy recursively
-//     async function copyRecursive(src: string, dest: string) {
-//       if (!fs.existsSync(src)) return;
-
-//       const entries = await fs.promises.readdir(src, { withFileTypes: true });
-
-//       for (const entry of entries) {
-//         const srcPath = path.join(src, entry.name);
-//         const destPath = path.join(dest, entry.name);
-
-//         if (entry.isDirectory()) {
-//           await fs.promises.mkdir(destPath, { recursive: true });
-//           await copyRecursive(srcPath, destPath);
-//         } else {
-//           const content = await fs.promises.readFile(srcPath);
-//           await fs.promises.writeFile(destPath, content);
-//         }
-//       }
-//     }
-
-//     await copyRecursive(mirrorDocs, wsDocs);
-//     await copyRecursive(mirrorVersioned, wsVersioned);
-
-//     return res.json({
-//       ok: true,
-//       workspace,
-//       path: `local-workspace/${workspace}`,
-//     });
-//   } catch (err) {
-//     console.error("❌ create-workspace error:", err);
-//     return res.status(500).json({ error: "Failed to create workspace" });
-//   }
-// });
 
 // ---------------------------------------------
 // CREATE NEW WORKSPACE (FINAL ARCHITECTURE)
@@ -1116,6 +986,9 @@ router.post("/create-workspace", async (req, res) => {
   }
 });
 
+// -------------------------------------------------------
+// List the user workspaces for the doc trees
+// -------------------------------------------------------
 router.get("/list-user-workspaces", async (req, res) => {
   try {
     const login = req.query.login;

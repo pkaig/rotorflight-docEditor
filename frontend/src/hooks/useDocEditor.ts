@@ -1,14 +1,28 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 export function useDocEditor(login: string | null, workspace: string | null) {
   const [content, setContent] = useState("");
   const [currentDocPath, setCurrentDocPath] = useState("");
   const [isSyncingImages, setIsSyncingImages] = useState(false);
+  const lastSavedContentRef = useRef<string>("");
 
   const [suppressNextAutosave, setSuppressNextAutosave] = useState(false);
   const [editorImageFolder, setEditorImageFolder] = useState<string | null>(
     null,
   );
+
+  //Auto save state
+  useEffect(() => {
+    if (!currentDocPath) return;
+
+    // When a new file loads, baseline = loaded content
+    lastSavedContentRef.current = content;
+  }, [currentDocPath]);
+
+  // save indicator state
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
 
   function clearEditor() {
     setContent("");
@@ -24,10 +38,9 @@ export function useDocEditor(login: string | null, workspace: string | null) {
 
     const storedLogin = login || localStorage.getItem("rf_login");
 
-    // Always convert workspace-relative paths into canonical local-workspace paths
     const canonical = inputPath.startsWith("local-workspace/")
       ? inputPath
-      : `local-workspace/${ws}/${inputPath}`;
+      : `local-workspace/${inputPath}`;
 
     setCurrentDocPath(canonical);
 
@@ -56,15 +69,84 @@ export function useDocEditor(login: string | null, workspace: string | null) {
       });
   }
 
+  function normaliseSavePath(path: string, workspace: string) {
+    return (
+      path
+
+        // Remove ANY leading local-workspace/<workspace>/ prefix
+        .replace(new RegExp(`^local-workspace/${workspace}/`), "")
+
+        // Remove ANY leading local-workspace/ prefix
+        .replace(/^local-workspace\//, "")
+
+        // Remove ANY duplicated workspace/docs prefix
+        .replace(new RegExp(`^${workspace}/docs/`), "")
+
+        // Remove ANY leading workspace/ prefix
+        .replace(new RegExp(`^${workspace}/`), "")
+
+        // Normalize versioned docs
+        .replace(/^versioned-docs\//, "versioned_docs/")
+
+        // Ensure docs/ stays docs/
+        .replace(/^docs\//, "docs/")
+    );
+  }
+
   //
-  // CLONE GITHUB FILE → LOCAL WORKSPACE (backend handles GitHub)
+  // SAVE DOCUMENT
+  //
+  async function saveDocument(newContent: string) {
+    if (!login || !workspace || !currentDocPath) return;
+
+    // ⭐ Skip save if content hasn't changed
+    if (newContent === lastSavedContentRef.current) {
+      return;
+    }
+
+    setSaveState("saving");
+
+    try {
+      console.log("Workspace start:", workspace);
+      console.log("Path start:", currentDocPath);
+      const normalisedPath = normaliseSavePath(currentDocPath, workspace);
+      console.log("Normalised Path:", normalisedPath);
+      const res = await fetch(
+        `/api/docs/save?login=${encodeURIComponent(login)}&workspace=${encodeURIComponent(workspace)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: normalisedPath,
+            content: newContent,
+          }),
+        },
+      );
+
+      if (!res.ok) {
+        setSaveState("error");
+        return;
+      }
+
+      // ⭐ Update baseline AFTER successful save
+      lastSavedContentRef.current = newContent;
+
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 1500);
+    } catch (err) {
+      console.error("Save failed:", err);
+      setSaveState("error");
+    }
+  }
+
+  //
+  // CLONE GITHUB FILE → LOCAL WORKSPACE
   //
   async function handleCloneToLocal(
     refreshLocalWorkspace: () => Promise<void>,
   ) {
     if (!login || !workspace) return;
 
-    // Convert canonical → workspace-relative
     const relative = currentDocPath.replace(/^local-workspace\/[^/]+\//, "");
 
     const res = await fetch(
@@ -79,7 +161,7 @@ export function useDocEditor(login: string | null, workspace: string | null) {
     );
 
     const data = await res.json();
-    const canonical = data.localPath; // already canonical
+    const canonical = data.localPath;
 
     const folder = relative.replace(/[^/]+$/, "") + "img";
     setEditorImageFolder(folder);
@@ -109,5 +191,7 @@ export function useDocEditor(login: string | null, workspace: string | null) {
     handleCloneToLocal,
     suppressNextAutosave,
     setSuppressNextAutosave,
+    saveState,
+    saveDocument,
   };
 }

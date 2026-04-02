@@ -3,6 +3,7 @@ import { useState } from "react";
 import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
 import Preview from "./components/Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
+import { EditorPanel } from "./components/EditorPanel";
 
 import { useAutosave } from "./hooks/useAutosave";
 import { useGitPR } from "./hooks/useGitPR";
@@ -76,6 +77,8 @@ export default function App() {
     handleCloneToLocal,
     suppressNextAutosave,
     setSuppressNextAutosave,
+    saveState,
+    saveDocument,
   } = useDocEditor(login, workspace);
 
   /* UI STATE */
@@ -133,6 +136,7 @@ export default function App() {
   }
 
   /* AUTOSAVE */
+  /* AUTOSAVE */
   const saving = useAutosave(
     login,
     workspace,
@@ -140,35 +144,9 @@ export default function App() {
     content,
     suppressNextAutosave,
     setSuppressNextAutosave,
-    async (path, content) => {
-      if (!login || !workspace) return;
-
-      const res = await fetch(
-        `/api/docs/load?path=${encodeURIComponent(
-          path,
-        )}&login=${encodeURIComponent(
-          login,
-        )}&workspace=${encodeURIComponent(workspace)}`,
-      );
-      const data = await res.json();
-      const existing = data?.content ?? "";
-
-      if (existing === content) return;
-
-      await fetch(
-        `/api/docs/save?login=${encodeURIComponent(
-          login,
-        )}&workspace=${encodeURIComponent(workspace)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path, content }),
-        },
-      );
-
-      notifyFileSaved("local-workspace", path);
-    },
+    saveDocument,
   );
+
   /* AUTH UI */
   if (!isAuthenticated) {
     return (
@@ -375,9 +353,11 @@ export default function App() {
         </div>
       )}
 
+      {/* MAIN LAYOUT */}
       <div style={{ display: "flex", height: "100vh" }}>
         {/* SIDEBAR */}
         <div className="sidebar">
+          {/* SIDEBAR TOP */}
           <div className="sidebar-top">
             <h3>Docs</h3>
 
@@ -428,7 +408,7 @@ export default function App() {
               const raw = localTrees[ws] || [];
               const backendRoot = raw[0];
 
-              const nodes: TreeNode[] = [
+              const nodes = [
                 {
                   ...backendRoot,
                   isWorkspaceRoot: true,
@@ -477,93 +457,86 @@ export default function App() {
           </div>
 
           {/* CHANGES PANEL */}
-          <div className="sidebar-bottom">
-            <div className="changes-panel">
-              <div className="changes-actions">
-                <button
-                  className="clear-selected-btn"
-                  onClick={async (e) => {
-                    e.stopPropagation();
+          <div className="changes-panel">
+            <div className="changes-actions">
+              <button
+                className="clear-selected-btn"
+                onClick={async (e) => {
+                  e.stopPropagation();
 
-                    const selected = Object.keys(selectedChanges).filter(
-                      (k) => selectedChanges[k],
-                    );
-                    if (selected.length === 0) return;
+                  const selected = Object.keys(selectedChanges).filter(
+                    (k) => selectedChanges[k],
+                  );
+                  if (selected.length === 0) return;
 
-                    if (
-                      !confirm(
-                        `Restore ${selected.length} file(s) from GitHub?`,
-                      )
-                    )
-                      return;
+                  if (
+                    !confirm(`Restore ${selected.length} file(s) from GitHub?`)
+                  )
+                    return;
 
-                    const wsMatch = selected[0].match(
-                      /^local-workspace\/([^/]+)\//,
-                    );
-                    const ws = wsMatch ? wsMatch[1] : null;
-                    if (!ws) return;
+                  const wsMatch = selected[0].match(
+                    /^local-workspace\/([^/]+)\//,
+                  );
+                  const ws = wsMatch ? wsMatch[1] : null;
+                  if (!ws) return;
 
-                    for (const path of selected) {
-                      await fetch(
-                        `/api/docs/restore-file?login=${login}&workspace=${ws}`,
-                        {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ path }),
-                        },
-                      );
-                    }
-
-                    await refreshLocalWorkspace(ws);
-                    await clearSelectedChanges(ws, selected);
-                  }}
-                >
-                  Clear selected
-                </button>
-
-                <button
-                  className="clear-all-btn"
-                  onClick={async () => {
-                    if (
-                      !confirm("This will delete ALL local changes. Continue?")
-                    )
-                      return;
-
-                    const first = Object.keys(changes)[0];
-                    const wsMatch = first?.match(/^local-workspace\/([^/]+)\//);
-                    const ws = wsMatch ? wsMatch[1] : null;
-                    if (!ws) return;
-
+                  for (const path of selected) {
                     await fetch(
-                      `/api/docs/reset-local?login=${encodeURIComponent(
-                        login || "",
-                      )}&workspace=${ws}`,
+                      `/api/docs/restore-file?login=${login}&workspace=${ws}`,
                       {
                         method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ path }),
                       },
                     );
+                  }
 
-                    await refreshLocalWorkspace(ws);
-                    clearAllChanges();
-                  }}
-                >
-                  Clear all
-                </button>
-              </div>
+                  await refreshLocalWorkspace(ws);
+                  await clearSelectedChanges(ws, selected);
+                }}
+              >
+                Clear selected
+              </button>
 
-              <div className="changes-list-container">
-                <ChangesPanel
-                  changes={changes}
-                  selectedChanges={selectedChanges}
-                  setSelectedChanges={setSelectedChanges}
-                />
-              </div>
+              <button
+                className="clear-all-btn"
+                onClick={async () => {
+                  if (!confirm("This will delete ALL local changes. Continue?"))
+                    return;
 
-              <PRPanel slug={currentDocPath} clearEditor={clearEditor} />
+                  const first = Object.keys(changes)[0];
+                  const wsMatch = first?.match(/^local-workspace\/([^/]+)\//);
+                  const ws = wsMatch ? wsMatch[1] : null;
+                  if (!ws) return;
+
+                  await fetch(
+                    `/api/docs/reset-local?login=${encodeURIComponent(
+                      login || "",
+                    )}&workspace=${ws}`,
+                    { method: "POST" },
+                  );
+
+                  await refreshLocalWorkspace(ws);
+                  clearAllChanges();
+                }}
+              >
+                Clear all
+              </button>
             </div>
+
+            <div className="changes-list-container">
+              <ChangesPanel
+                changes={changes}
+                selectedChanges={selectedChanges}
+                setSelectedChanges={setSelectedChanges}
+              />
+            </div>
+
+            <PRPanel slug={currentDocPath} clearEditor={clearEditor} />
           </div>
-        </div>
-        {/* EDITOR + PREVIEW PANEL */}
+        </div>{" "}
+        {/* END SIDEBAR */}
+        {/* MAIN EDITOR + PREVIEW AREA */}
         <div
           style={{
             flex: 1,
@@ -572,155 +545,42 @@ export default function App() {
             height: "100vh",
           }}
         >
-          {/* EDITOR PANEL
+          {/* EDITOR COLUMN */}
           <div
-            className="editor-container"
+            className="editor-column"
             style={{
               width: `${editorWidth}%`,
-              position: "relative",
               display: "flex",
               flexDirection: "column",
               height: "100%",
+              overflow: "hidden",
             }}
           >
-            <h3>Editor</h3>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              style={{
-                flex: 1,
-                width: "100%",
-                minHeight: 0,
-                fontFamily: "monospace",
-                fontSize: "14px",
-                padding: "1rem",
-                border: "1px solid #ccc",
-                borderRadius: 4,
-                background:
-                  errorLine !== null
-                    ? `linear-gradient(
-                        to bottom,
-                        transparent ${(errorLine - 1) * 1.4}rem,
-                        #ffe6e6 ${(errorLine - 1) * 1.4}rem,
-                        #ffe6e6 ${errorLine * 1.4}rem,
-                        transparent ${errorLine * 1.4}rem
-                      )`
-                    : "white",
-              }}
-                    
-          {/* EDITOR PANEL */}
-          <div
-            className="editor-container"
-            style={{
-              width: `${editorWidth}%`,
-              position: "relative",
-              display: "flex",
-              flexDirection: "column",
-              height: "100%",
-            }}
-          >
-            <h3>{conflict ? "Resolve Conflict" : "Editor"}</h3>
-
-            {conflict ? (
-              <ConflictResolver
-                workspace={workspace}
-                file={baseFileName(currentDocPath)}
-                onMergedChange={(text) => setContent(text)} // live preview
-                onResolved={async () => {
-                  await refreshLocalWorkspace(workspace);
-                  onSelect(workspace, baseFileName(currentDocPath));
-                }}
-              />
-            ) : (
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                style={{
-                  flex: 1,
-                  width: "100%",
-                  minHeight: 0,
-                  fontFamily: "monospace",
-                  fontSize: "14px",
-                  padding: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: 4,
-                  background:
-                    errorLine !== null
-                      ? `linear-gradient(
-                to bottom,
-                transparent ${(errorLine - 1) * 1.4}rem,
-                #ffe6e6 ${(errorLine - 1) * 1.4}rem,
-                #ffe6e6 ${errorLine * 1.4}rem,
-                transparent ${errorLine * 1.4}rem
-              )`
-                      : "white",
-                }}
-              />
-            )}
-
-            {/* NEW FILE MODAL */}
-            {showNewFileModal && (
-              <div className="edit-modal-overlay">
-                <div className="edit-modal-box">
-                  <h3>Create new page</h3>
-
-                  <p>Enter a file name (without extension):</p>
-
-                  <input
-                    type="text"
-                    value={newFileName}
-                    onChange={(e) => setNewFileName(e.target.value)}
-                    placeholder="my-new-page"
-                    style={{ width: "100%", marginTop: "0.5rem" }}
-                  />
-
-                  <div
-                    className="edit-modal-buttons"
-                    style={{ marginTop: "1rem" }}
-                  >
-                    <button
-                      onClick={async () => {
-                        const safe = newFileName.trim().replace(/\s+/g, "-");
-                        if (!safe || !newFileFolder) return;
-
-                        const wsMatch = newFileFolder.match(
-                          /^local-workspace\/([^/]+)\//,
-                        );
-                        const ws = wsMatch ? wsMatch[1] : null;
-                        if (!ws) return;
-
-                        const newPath = `${newFileFolder}/${safe}.mdx`;
-
-                        setCurrentDocPath(newPath);
-                        setContent(newDocTemplate);
-
-                        notifyFileCreated("local-workspace", newPath);
-                        setShowNewFileModal(false);
-                        setNewFileFolder(null);
-                        await refreshLocalWorkspace(ws);
-                      }}
-                    >
-                      Create
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setShowNewFileModal(false);
-                        setNewFileFolder(null);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            <EditorPanel
+              content={content}
+              setContent={setContent}
+              currentDocPath={currentDocPath}
+              conflict={conflict}
+              errorLine={errorLine}
+              saveState={saveState}
+              workspace={workspace}
+              refreshLocalWorkspace={refreshLocalWorkspace}
+              onSelect={onSelect}
+              showNewFileModal={showNewFileModal}
+              setShowNewFileModal={setShowNewFileModal}
+              newFileName={newFileName}
+              setNewFileName={setNewFileName}
+              newFileFolder={newFileFolder}
+              setNewFileFolder={setNewFileFolder}
+              notifyFileCreated={notifyFileCreated}
+              newDocTemplate={newDocTemplate}
+            />
           </div>
 
           {/* DRAG HANDLE */}
           <div onMouseDown={startDrag} className="drag-handle" />
 
-          {/* PREVIEW PANEL */}
+          {/* PREVIEW COLUMN */}
           <div
             style={{
               flex: 1,

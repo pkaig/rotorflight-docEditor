@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-const AUTOSAVE_ENABLED = false;
+const AUTOSAVE_ENABLED = true;
 
 export function useAutosave(
   login: string | null,
@@ -8,9 +8,10 @@ export function useAutosave(
   content: string,
   suppressNextAutosave: boolean,
   setSuppressNextAutosave: (v: boolean) => void,
-  saveFn: (cleanPath: string, content: string) => Promise<void> | void,
+  saveDocument: (content: string) => Promise<void> | void,
 ) {
   if (!AUTOSAVE_ENABLED) return;
+
   // Ignore invalid content
   if (content === undefined || content === null) return;
   if (typeof content !== "string") return;
@@ -35,7 +36,8 @@ export function useAutosave(
     timeout.current = window.setTimeout(async () => {
       setSaving(true);
       try {
-        await saveFn(filePath, content);
+        // ⭐ Call your unified save function
+        await saveDocument(content);
       } finally {
         setSaving(false);
       }
@@ -51,7 +53,7 @@ export function useAutosave(
     content,
     suppressNextAutosave,
     setSuppressNextAutosave,
-    saveFn,
+    saveDocument,
   ]);
 
   return saving;

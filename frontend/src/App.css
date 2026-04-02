@@ -561,12 +561,36 @@
    15. SAVING INDICATOR
    ============================================================ */
 
-.saving-indicator {
+.save-indicator {
   position: absolute;
   top: 8px;
   right: 12px;
-  font-size: 0.85rem;
-  color: #666;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0;
+  transition:
+    opacity 0.2s ease,
+    background 0.2s ease;
+}
+
+.save-indicator.saving {
+  opacity: 1;
+  background: #f7d774;
+  color: #5a4a00;
+}
+
+.save-indicator.saved {
+  opacity: 1;
+  background: #8be28b;
+  color: #0f4d0f;
+}
+
+.save-indicator.error {
+  opacity: 1;
+  background: #ff8a8a;
+  color: #5a0000;
 }
 
 /* ============================================================
