@@ -1037,3 +1037,35 @@
 .diff-changed .diff-right {
   background: #e6f0ff;
 }
+
+/* ============================================================
+   21. PREVIEW
+   ============================================================ */
+
+.preview-panel {
+  width: 50%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.preview-panel * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.preview-panel img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.preview-panel table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.preview-panel pre,
+.preview-panel code {
+  max-width: 100%;
+  overflow-x: auto;
+}

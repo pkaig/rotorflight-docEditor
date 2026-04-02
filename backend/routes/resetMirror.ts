@@ -1,6 +1,7 @@
 import express from "express";
 import * as fs from "fs-extra";
 import crypto from "crypto";
+import simpleGit from "simple-git";
 
 import path from "path";
 import fetch from "node-fetch";
@@ -251,8 +252,6 @@ async function walkGithubTree(treeUrl: string, baseDir: string, token: string) {
     }
   }
 }
-
-import simpleGit from "simple-git";
 
 router.post("/reset-mirror", async (req, res) => {
   const auth = requireToken(req, res);

@@ -843,6 +843,7 @@ router.get("/scan-local-changes", async (req, res) => {
   const mirrorRoot = path.join(workspaceRoot, "mirror");
 
   try {
+    // Walk both trees
     const localFiles = await walkLocalTree(workspaceRoot);
     const mirrorFiles = await walkLocalTree(mirrorRoot);
 
@@ -851,14 +852,18 @@ router.get("/scan-local-changes", async (req, res) => {
     const deleted: any[] = [];
     const renamed: any[] = [];
 
+    // Only diff docs + versioned_docs
     const filterDocs = (f: string) =>
       f.startsWith("docs/") || f.startsWith("versioned_docs/");
 
     const localSet = new Set(localFiles.filter(filterDocs));
     const mirrorSet = new Set(mirrorFiles.filter(filterDocs));
 
+    // ---------------------------------------------
     // Added + Modified
+    // ---------------------------------------------
     for (const file of localSet) {
+      // NEW FILE
       if (!mirrorSet.has(file)) {
         added.push({ path: file, type: "added" });
         continue;
@@ -867,6 +872,28 @@ router.get("/scan-local-changes", async (req, res) => {
       const localPath = path.join(workspaceRoot, file);
       const mirrorPath = path.join(mirrorRoot, file);
 
+      const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(file);
+
+      // ---------------------------------------------
+      // IMAGE DIFF (fast)
+      // ---------------------------------------------
+      if (isImage) {
+        const localStat = await fs.promises.stat(localPath);
+        const mirrorStat = await fs.promises.stat(mirrorPath);
+
+        const localSig = `${localStat.size}-${localStat.mtimeMs}`;
+        const mirrorSig = `${mirrorStat.size}-${mirrorStat.mtimeMs}`;
+
+        if (localSig !== mirrorSig) {
+          modified.push({ path: file, type: "modified" });
+        }
+
+        continue;
+      }
+
+      // ---------------------------------------------
+      // TEXT DIFF (accurate)
+      // ---------------------------------------------
       const localContent = await fs.promises.readFile(localPath, "utf8");
       const mirrorContent = await fs.promises.readFile(mirrorPath, "utf8");
 
@@ -875,7 +902,9 @@ router.get("/scan-local-changes", async (req, res) => {
       }
     }
 
+    // ---------------------------------------------
     // Deleted
+    // ---------------------------------------------
     for (const file of mirrorSet) {
       if (!localSet.has(file)) {
         deleted.push({ path: file, type: "deleted" });

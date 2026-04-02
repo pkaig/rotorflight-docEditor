@@ -546,7 +546,7 @@ export default function App() {
           }}
         >
           {/* EDITOR COLUMN */}
-          <div
+          {/*<div
             className="editor-column"
             style={{
               width: `${editorWidth}%`,
@@ -554,6 +554,16 @@ export default function App() {
               flexDirection: "column",
               height: "100%",
               overflow: "hidden",
+            }}
+          >*/}
+          <div
+            className="editor-container"
+            style={{
+              width: "50%",
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
             }}
           >
             <EditorPanel
@@ -578,12 +588,21 @@ export default function App() {
           </div>
 
           {/* DRAG HANDLE */}
-          <div onMouseDown={startDrag} className="drag-handle" />
+          {/*<div onMouseDown={startDrag} className="drag-handle" />*/}
 
           {/* PREVIEW COLUMN */}
-          <div
+          {/*<div
             style={{
               flex: 1,
+              padding: "1rem",
+              overflowY: "auto",
+            }}
+          >*/}
+          <div
+            className="preview-panel"
+            style={{
+              width: "50%",
+              minWidth: 0,
               padding: "1rem",
               overflowY: "auto",
             }}

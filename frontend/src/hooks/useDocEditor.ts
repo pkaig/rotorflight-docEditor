@@ -1,6 +1,13 @@
 import { useState, useRef, useEffect } from "react";
+import { useGitPR } from "./useGitPR";
 
-export function useDocEditor(login: string | null, workspace: string | null) {
+export function useDocEditor(
+  login,
+  workspace,
+  refreshGitHubTree,
+  openEditFileModal,
+) {
+  // export function useDocEditor(login: string | null, workspace: string | null) {
   const [content, setContent] = useState("");
   const [currentDocPath, setCurrentDocPath] = useState("");
   const [isSyncingImages, setIsSyncingImages] = useState(false);
@@ -10,6 +17,14 @@ export function useDocEditor(login: string | null, workspace: string | null) {
   const [editorImageFolder, setEditorImageFolder] = useState<string | null>(
     null,
   );
+
+  const { notifyFileSaved } = useGitPR({
+    login,
+    workspace,
+    refreshGitHubTree,
+    clearEditor,
+    openEditFileModal,
+  });
 
   //Auto save state
   useEffect(() => {
@@ -130,6 +145,7 @@ export function useDocEditor(login: string | null, workspace: string | null) {
 
       // ⭐ Update baseline AFTER successful save
       lastSavedContentRef.current = newContent;
+      notifyFileSaved();
 
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 1500);
@@ -168,9 +184,10 @@ export function useDocEditor(login: string | null, workspace: string | null) {
 
     setSuppressNextAutosave(true);
 
-    await refreshLocalWorkspace(workspace);
+    //await refreshLocalWorkspace(workspace);
+    await refreshLocalWorkspace();
 
-    loadDoc(canonical);
+    loadDoc(canonical, workspace);
     setCurrentDocPath(canonical);
 
     setIsSyncingImages(false);
