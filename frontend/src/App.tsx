@@ -1,5 +1,5 @@
 import "./App.css";
-import { useState } from "react";
+import { useState, useEffect } from "react"; // <-- UPDATED
 import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
 import Preview from "./components/Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
@@ -16,11 +16,13 @@ import {
   MaintenanceModal,
   ForceUpdateModal,
   UpdateAvailableModal,
+  UpdateBanner,
 } from "./components/versionModals";
+
+const APP_VERSION = "1.3.0";
 
 import { Tree } from "./components/Tree";
 import { useAuth } from "./hooks/useAuth";
-import { useVersionGate } from "./hooks/useVersionGate";
 import { useDocTrees } from "./hooks/useDocTrees";
 import { useDocEditor } from "./hooks/useDocEditor";
 import { useDragResize } from "./hooks/useDragResize";
@@ -55,7 +57,13 @@ export default function App() {
   } = useWorkspaces(login);
 
   /* VERSION GATE */
-  const { editorStatus, setEditorStatus } = useVersionGate();
+  const [editorStatus, setEditorStatus] = useState<null | {
+    type: "blocked" | "forceUpdate" | "updateAvailable" | "ok";
+    message?: string;
+    current?: string;
+    latest?: string;
+    downloadUrl?: string;
+  }>(null);
 
   /* DOCUMENT TREES (LOCAL ONLY) */
   const { localTrees, loadingLocal, refreshLocalWorkspace } = useDocTrees(
@@ -118,21 +126,6 @@ export default function App() {
 
   const effectivePath = currentDocPath || "";
 
-  /* FOLDER EXPANSION */
-  function expandFolderChain(fullPath: string) {
-    const parts = fullPath.split("/");
-    let accum = "";
-    const updates: Record<string, boolean> = {};
-
-    for (let i = 0; i < parts.length - 1; i++) {
-      accum = accum ? `${accum}/${parts[i]}` : parts[i];
-      updates[accum] = true;
-    }
-
-    setOpenFolders((prev) => ({ ...prev, ...updates }));
-  }
-
-  /* AUTOSAVE */
   /* AUTOSAVE */
   const saving = useAutosave(
     login,
@@ -143,6 +136,66 @@ export default function App() {
     setSuppressNextAutosave,
     saveDocument,
   );
+
+  // -----------------------------
+  // VERSION EVALUATION
+  // -----------------------------
+  function evaluateStatus(cfg, APP_VERSION) {
+    function compare(a, b) {
+      const pa = a.split(".").map(Number);
+      const pb = b.split(".").map(Number);
+      for (let i = 0; i < 3; i++) {
+        if (pa[i] > pb[i]) return 1;
+        if (pa[i] < pb[i]) return -1;
+      }
+      return 0;
+    }
+
+    if (cfg.blocked) {
+      return { type: "blocked", message: cfg.blockMessage };
+    }
+
+    if (compare(APP_VERSION, cfg.minSupportedVersion) < 0) {
+      return {
+        type: "forceUpdate",
+        current: APP_VERSION,
+        latest: cfg.latestVersion,
+        message: cfg.updateMessage,
+        downloadUrl: cfg.downloadUrl,
+      };
+    }
+
+    if (compare(APP_VERSION, cfg.latestVersion) < 0) {
+      return {
+        type: "updateAvailable",
+        current: APP_VERSION,
+        latest: cfg.latestVersion,
+        message: cfg.updateMessage,
+        downloadUrl: cfg.downloadUrl,
+      };
+    }
+
+    return { type: "ok" };
+  }
+
+  // -----------------------------
+  // EDITOR STATUS CHECK
+  // -----------------------------
+  useEffect(() => {
+    async function checkStatus() {
+      const res = await fetch("/api/version", { cache: "no-store" });
+      if (!res.ok) {
+        setEditorStatus({ type: "ok" });
+        return;
+      }
+
+      const cfg = await res.json();
+      const status = evaluateStatus(cfg, APP_VERSION);
+      setEditorStatus(status);
+    }
+
+    checkStatus();
+  }, []);
 
   /* AUTH UI */
   if (!isAuthenticated) {
@@ -193,6 +246,28 @@ export default function App() {
           </div>
         )}
       </div>
+    );
+  }
+
+  /* -------------------------------------------
+     VERSION-GATE MODALS (MAINTENANCE INCLUDED)
+  ------------------------------------------- */
+  if (editorStatus === null) return null;
+
+  if (editorStatus.type === "blocked") {
+    return <MaintenanceModal message={editorStatus.message} />;
+  }
+
+  if (editorStatus.type === "forceUpdate") {
+    return <ForceUpdateModal {...editorStatus} />;
+  }
+
+  if (editorStatus.type === "updateAvailable") {
+    return (
+      <UpdateAvailableModal
+        {...editorStatus}
+        onContinue={() => setEditorStatus({ type: "ok" })}
+      />
     );
   }
 
@@ -311,9 +386,31 @@ export default function App() {
     setSelectedChanges({});
   }
 
+  if (editorStatus === null) return null;
+
+  if (editorStatus.type === "blocked") {
+    return <MaintenanceModal message={editorStatus.message} />;
+  }
+
+  if (editorStatus.type === "forceUpdate") {
+    return <ForceUpdateModal {...editorStatus} />;
+  }
+
+  if (editorStatus.type === "updateAvailable") {
+    return (
+      <UpdateAvailableModal
+        {...editorStatus}
+        onContinue={() => setEditorStatus({ type: "ok" })}
+      />
+    );
+  }
+
   /* MAIN UI */
   return (
     <>
+      {editorStatus.type === "updateAvailable" && (
+        <UpdateBanner {...editorStatus} />
+      )}
       {saving && (
         <div
           style={{

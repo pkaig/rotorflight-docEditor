@@ -1,12 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useGitPR } from "./useGitPR";
 
-export function useDocEditor(
-  login,
-  workspace,
-  refreshGitHubTree,
-  openEditFileModal,
-) {
+export function useDocEditor(login, workspace) {
   // export function useDocEditor(login: string | null, workspace: string | null) {
   const [content, setContent] = useState("");
   const [currentDocPath, setCurrentDocPath] = useState("");
@@ -21,9 +16,6 @@ export function useDocEditor(
   const { notifyFileSaved } = useGitPR({
     login,
     workspace,
-    refreshGitHubTree,
-    clearEditor,
-    openEditFileModal,
   });
 
   //Auto save state
@@ -38,11 +30,6 @@ export function useDocEditor(
   const [saveState, setSaveState] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
-
-  function clearEditor() {
-    setContent("");
-    setCurrentDocPath("");
-  }
 
   //
   // LOAD DOCUMENT (LOCAL ONLY)
@@ -203,7 +190,6 @@ export function useDocEditor(
     isSyncingImages,
     setIsSyncingImages,
     editorImageFolder,
-    clearEditor,
     loadDoc,
     handleCloneToLocal,
     suppressNextAutosave,
