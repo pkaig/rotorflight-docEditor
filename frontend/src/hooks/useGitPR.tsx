@@ -15,9 +15,6 @@ export interface PRResponse {
 }
 
 interface UseGitPROptions {
-  refreshGitHubTree: () => void;
-  clearEditor: () => void;
-  openEditFileModal: (path: string) => void;
   login: string;
   workspace: string | null;
 }
@@ -38,13 +35,7 @@ type ChangeSet = {
   renamed: ChangeEntry[];
 };
 
-export function useGitPR({
-  refreshGitHubTree,
-  clearEditor,
-  openEditFileModal,
-  login,
-  workspace,
-}: UseGitPROptions) {
+export function useGitPR({ login, workspace }: UseGitPROptions) {
   const [banner, setBanner] = useState<null | {
     type: PRStatus;
     prNumber?: number;
@@ -116,16 +107,12 @@ export function useGitPR({
           break;
 
         case "pr_merged":
-          clearEditor();
-          refreshGitHubTree();
           setActivePR(null);
           setBanner({ type: "pr_merged", prNumber: res.prNumber });
           loadChangesFromMirror();
           break;
 
         case "pr_closed":
-          clearEditor();
-          refreshGitHubTree();
           setActivePR(null);
           setBanner({ type: "pr_closed", prNumber: res.prNumber });
           loadChangesFromMirror();
@@ -139,7 +126,7 @@ export function useGitPR({
           break;
       }
     },
-    [clearEditor, refreshGitHubTree, loadChangesFromMirror],
+    [loadChangesFromMirror],
   );
 
   /* -------------------------------------------------------
@@ -236,16 +223,6 @@ export function useGitPR({
   );
 
   /* -------------------------------------------------------
-     Edit file
-  ------------------------------------------------------- */
-  const editFile = useCallback(
-    (path: string) => {
-      openEditFileModal(path);
-    },
-    [openEditFileModal],
-  );
-
-  /* -------------------------------------------------------
      Return API
   ------------------------------------------------------- */
   return {
@@ -258,7 +235,6 @@ export function useGitPR({
     notifyFileRenamed,
     notifyFileDeleted,
     notifyFileCreated,
-    editFile,
     clearBanner: () => setBanner(null),
   };
 }

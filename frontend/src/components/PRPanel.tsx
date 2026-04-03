@@ -6,10 +6,11 @@ import { useGitPR } from "../hooks/useGitPR";
 import { PRDescriptionModal } from "./PRDescriptionModal";
 
 export function PRPanel({
-  slug,
   refreshGitHubTree,
   clearEditor,
   openEditFileModal,
+  login,
+  workspace,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 

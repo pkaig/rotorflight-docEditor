@@ -72,7 +72,6 @@ export default function App() {
     setCurrentDocPath,
     isSyncingImages,
     setIsSyncingImages,
-    clearEditor,
     loadDoc,
     handleCloneToLocal,
     suppressNextAutosave,
@@ -110,11 +109,9 @@ export default function App() {
     notifyFileSaved,
     notifyFileRenamed,
     notifyFileCreated,
-    editFile,
     clearBanner,
     clearAllChanges,
   } = useGitPR({
-    clearEditor,
     login: login || "",
     workspace,
   });
@@ -262,7 +259,6 @@ export default function App() {
 
     if (workspace === ws) {
       setWorkspace(null);
-      clearEditor();
     }
   }
 
@@ -534,8 +530,12 @@ export default function App() {
                 setSelectedChanges={setSelectedChanges}
               />
             </div>
+            {/* <PRPanel
+              login={login}
+              workspace={workspace}
+            /> */}
 
-            <PRPanel slug={currentDocPath} clearEditor={clearEditor} />
+            {/*<PRPanel slug={currentDocPath} />*/}
           </div>
         </div>{" "}
         {/* END SIDEBAR */}

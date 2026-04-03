@@ -1075,4 +1075,47 @@ router.delete("/delete-workspace", async (req, res) => {
   }
 });
 
+// ---------------------------------------------
+// SUBMIT PR (create or update)
+// ---------------------------------------------
+router.post("/submit-pr", async (req, res) => {
+  console.log("🔥 submit-pr hit", req.method, req.url, req.body);
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, workspace, token } = auth;
+
+  try {
+    // 1. Scan local changes
+    const scan = await fetch(
+      `http://localhost:4000/api/docs/scan-local-changes?login=${login}&workspace=${workspace}`,
+    ).then((r) => r.json());
+
+    // 2. Commit changes
+    const commitRes = await fetch(
+      `http://localhost:4000/api/git/commit?login=${login}&workspace=${workspace}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ changes: scan }),
+      },
+    ).then((r) => r.json());
+
+    // 3. Create or update PR
+    const prRes = await fetch(
+      `http://localhost:4000/api/git/pr?login=${login}&workspace=${workspace}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      },
+    ).then((r) => r.json());
+
+    return res.json(prRes);
+  } catch (err) {
+    console.error("❌ submit-pr error:", err);
+    return res.status(500).json({ error: "Failed to submit PR" });
+  }
+});
+
 export default router;
