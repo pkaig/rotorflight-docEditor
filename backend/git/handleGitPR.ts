@@ -72,39 +72,16 @@ async function checkPRState(slug: string) {
   return { status: "pr_open", prNumber: session.prNumber };
 }
 
-export async function submitPR(slug: string, description: string) {
-  const changes = getChanges(slug);
+export async function submitPR(description: string) {
+  const res = await fetch("/api/docs/submit-pr", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ description }),
+  });
 
-  if (!sessionExists(slug)) {
-    const branch = `docs/${slug}/${Date.now()}`;
-    await createBranch(branch);
-    await commitChanges(branch, changes);
-    await pushBranch(branch);
-
-    const pr = await createPR(branch, `Update ${slug}`, description);
-
-    saveSession(slug, {
-      branch,
-      prNumber: pr.prNumber,
-      status: "open",
-      changes,
-    });
-
-    return { status: "pr_created", url: pr.url, prNumber: pr.prNumber };
+  if (!res.ok) {
+    throw new Error("Failed to submit PR");
   }
 
-  const session = loadSession(slug)!;
-  const pr = await getPRStatus(session.prNumber);
-
-  if (pr.merged || pr.state === "closed") {
-    resetWorkspaceForSlug(slug, session.changes);
-    deleteSession(slug);
-    clearChanges(slug);
-    return await submitPR(slug, description);
-  }
-
-  await commitChanges(session.branch, changes);
-  await pushBranch(session.branch);
-
-  return { status: "pr_updated", prNumber: session.prNumber };
+  return await res.json();
 }

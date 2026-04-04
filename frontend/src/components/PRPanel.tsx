@@ -2,19 +2,22 @@
 
 import { useState } from "react";
 import { useGitPR } from "../hooks/useGitPR";
-
 import { PRDescriptionModal } from "./PRDescriptionModal";
 
 export function PRPanel({ login, workspace }) {
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { banner, activePR, submitPR, clearBanner } = useGitPR({});
+  // FIX: pass login + workspace into the hook
+  const { banner, activePR, submitPR, clearBanner } = useGitPR({
+    login,
+    workspace,
+  });
 
   const handleOpenModal = () => setModalOpen(true);
 
   const handleSubmitDescription = async (description: string) => {
     setModalOpen(false);
-    await submitPR(slug, description);
+    await submitPR(description);
   };
 
   return (

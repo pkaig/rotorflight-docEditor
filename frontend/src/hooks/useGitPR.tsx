@@ -133,7 +133,7 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
      Submit PR
   ------------------------------------------------------- */
   const submitPR = useCallback(
-    async (slug: string, description: string) => {
+    async (description: string) => {
       if (!login || !workspace) return;
 
       const res = await fetch(
@@ -143,7 +143,7 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug, description }),
+          body: JSON.stringify({ description }),
         },
       );
 

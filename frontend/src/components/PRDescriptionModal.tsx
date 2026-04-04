@@ -1,9 +1,16 @@
 // PRDescriptionModal.tsx
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 export function PRDescriptionModal({ isOpen, onSubmit, onCancel }) {
   const [description, setDescription] = useState("");
+
+  // Reset description every time the modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setDescription("");
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -22,10 +29,11 @@ export function PRDescriptionModal({ isOpen, onSubmit, onCancel }) {
         <div className="modal-buttons">
           <button
             className="modal-submit"
-            onClick={() => onSubmit(description)}
+            onClick={() => onSubmit(description.concat(" ", "-(docEditor)"))}
           >
             Submit
           </button>
+
           <button className="modal-cancel" onClick={onCancel}>
             Cancel
           </button>

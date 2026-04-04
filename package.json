@@ -4,5 +4,8 @@
   },
   "scripts": {
     "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\""
+  },
+  "dependencies": {
+    "curl": "^0.1.4"
   }
 }

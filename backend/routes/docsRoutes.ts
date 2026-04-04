@@ -582,7 +582,7 @@ router.post("/submit-pr", async (req, res) => {
 });
 
 /* ============================================================
-   LIST USER WORKSPACES
+   14. LIST USER WORKSPACES
    ============================================================ */
 
 router.get("/list-user-workspaces", async (req, res) => {
@@ -607,6 +607,31 @@ router.get("/list-user-workspaces", async (req, res) => {
   } catch (err) {
     console.error("❌ list-user-workspaces error:", err);
     return res.status(500).json({ error: "Failed to list workspaces" });
+  }
+});
+
+/* ============================================================
+   15. DELETE USER WORKSPACES
+   ============================================================ */
+router.delete("/delete-workspace", async (req, res) => {
+  const { login, workspace } = req.query;
+
+  console.log("Delete workspace request:", login, workspace);
+
+  if (!login || !workspace) {
+    return res.status(400).json({ error: "Missing login or workspace" });
+  }
+
+  // Build the correct path
+  const base = path.join(process.cwd(), "workspaces", login);
+  const wsPath = path.join(base, workspace);
+
+  try {
+    await fs.promises.rm(wsPath, { recursive: true, force: true });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Delete workspace error:", err);
+    return res.status(500).json({ error: "Failed to delete workspace" });
   }
 });
 

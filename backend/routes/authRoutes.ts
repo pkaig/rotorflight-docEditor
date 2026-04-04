@@ -131,6 +131,9 @@ router.post("/device/poll", async (req, res) => {
   // Fetch user identity
   const user = await githubRequest<any>(data.access_token, "/user");
 
+  // 🔐 Verify token scopes BEFORE saving
+  await assertRepoScope(data.access_token);
+
   // Compute expiration safely
   const expires_at =
     typeof data.expires_in === "number"
@@ -199,5 +202,29 @@ router.post("/merge", (_req, res) => {
     error: "Merging pull requests is not allowed by this application.",
   });
 });
+
+// ---------------------------------------------
+// Set Repo Scope
+// ---------------------------------------------
+export async function assertRepoScope(token: string) {
+  const res = await fetch("https://api.github.com/user", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+    },
+  });
+
+  const scopes = res.headers.get("x-oauth-scopes") || "";
+  console.log("🔐 GitHub token scopes:", scopes);
+
+  const scopeList = scopes.split(",").map((s) => s.trim());
+
+  if (!scopeList.includes("repo")) {
+    throw new Error(
+      `GitHub token missing "repo" scope. Got: [${scopes}]. ` +
+        `User must re-authenticate with updated permissions.`,
+    );
+  }
+}
 
 export default router;

@@ -19,7 +19,7 @@ import {
   UpdateBanner,
 } from "./components/versionModals";
 
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.2";
 
 import { Tree } from "./components/Tree";
 import { useAuth } from "./hooks/useAuth";
@@ -627,15 +627,11 @@ export default function App() {
                 setSelectedChanges={setSelectedChanges}
               />
             </div>
-            {/* <PRPanel
-              login={login}
-              workspace={workspace}
-            /> */}
+            <PRPanel login={login} workspace={workspace} />
 
             {/*<PRPanel slug={currentDocPath} />*/}
           </div>
         </div>{" "}
-        {/* END SIDEBAR */}
         {/* MAIN EDITOR + PREVIEW AREA */}
         <div
           style={{
@@ -646,16 +642,6 @@ export default function App() {
           }}
         >
           {/* EDITOR COLUMN */}
-          {/*<div
-            className="editor-column"
-            style={{
-              width: `${editorWidth}%`,
-              display: "flex",
-              flexDirection: "column",
-              height: "100%",
-              overflow: "hidden",
-            }}
-          >*/}
           <div
             className="editor-container"
             style={{
