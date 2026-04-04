@@ -1,6 +1,7 @@
 import express from "express";
 import { githubRequest } from "../githubClient";
 import { getTokenForUser } from "./authRoutes";
+import { ensureMirrorUpToDate } from "./resetMirror";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -488,29 +489,24 @@ router.post("/create-workspace", async (req, res) => {
   const login = req.query.login as string;
   const workspace = req.body.workspace as string;
 
-  if (!login) return res.status(401).json({ error: "Missing login" });
-  if (!workspace) return res.status(400).json({ error: "Missing workspace" });
-
   try {
     const token = getTokenForUser(login);
 
-    const userRoot = path.join(process.cwd(), "workspaces", login);
-    const workspaceRoot = path.join(userRoot, workspace);
+    // 1. Ensure global mirror is current
+    await ensureMirrorUpToDate(token);
 
+    // 2. Copy mirror into workspace
     const globalMirror = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+    const workspaceRoot = path.join(
+      process.cwd(),
+      "workspaces",
+      login,
+      workspace,
+    );
 
     const workspaceMirror = path.join(workspaceRoot, "mirror");
     const workspaceDocs = path.join(workspaceRoot, "docs");
     const workspaceVersioned = path.join(workspaceRoot, "versioned_docs");
-
-    if (!fs.existsSync(globalMirror)) {
-      await fetch(
-        `http://localhost:4000/api/reset-mirror?login=${encodeURIComponent(
-          login,
-        )}`,
-        { method: "POST" },
-      );
-    }
 
     await fs.ensureDir(workspaceRoot);
 
@@ -529,8 +525,19 @@ router.post("/create-workspace", async (req, res) => {
       workspaceVersioned,
     );
 
+    // 3. Store the upstream hash used for this workspace
+    const upstreamSha = await fs.readFile(
+      path.join(globalMirror, ".upstream-hash"),
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(workspaceRoot, "mirror-hash.txt"),
+      upstreamSha,
+    );
+
     return res.json({ ok: true, workspace });
-  } catch {
+  } catch (err) {
+    console.error("Failed to create workspace:", err);
     return res.status(500).json({ error: "Failed to create workspace" });
   }
 });
@@ -632,6 +639,52 @@ router.delete("/delete-workspace", async (req, res) => {
   } catch (err) {
     console.error("Delete workspace error:", err);
     return res.status(500).json({ error: "Failed to delete workspace" });
+  }
+});
+
+/* ============================================================
+   16. CHECK UPSTREAM STATUS FOR CHANGES
+   ============================================================ */
+router.get("/workspace-upstream-status", async (req, res) => {
+  const login = req.query.login as string;
+  const workspace = req.query.workspace as string;
+
+  if (!login || !workspace)
+    return res.status(400).json({ error: "Missing login or workspace" });
+
+  try {
+    const token = getTokenForUser(login);
+
+    const globalHash = await fs
+      .readFile(
+        path.join("Rotorflight-docs", "mirror", ".upstream-hash"),
+        "utf8",
+      )
+      .then((s) => s.trim());
+
+    const workspaceHashPath = path.join(
+      "workspaces",
+      login,
+      workspace,
+      "mirror-hash.txt",
+    );
+
+    if (!(await fs.pathExists(workspaceHashPath))) {
+      return res.json({ stale: true, reason: "no-workspace-hash" });
+    }
+
+    const workspaceHash = await fs
+      .readFile(workspaceHashPath, "utf8")
+      .then((s) => s.trim());
+
+    return res.json({
+      stale: globalHash !== workspaceHash,
+      globalHash,
+      workspaceHash,
+    });
+  } catch (err) {
+    console.error("workspace-upstream-status error:", err);
+    return res.status(500).json({ error: "Failed to check workspace status" });
   }
 });
 

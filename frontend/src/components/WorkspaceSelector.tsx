@@ -11,8 +11,12 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
   const [newName, setNewName] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // NEW: store the validator output
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // NEW: upstream freshness state
+  const [checkingUpstream, setCheckingUpstream] = useState(false);
+  const [upstreamStale, setUpstreamStale] = useState(false);
+  const [cloning, setCloning] = useState(false);
 
   //
   // Load existing workspaces
@@ -36,7 +40,43 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
   }, [login]);
 
   //
-  // Validate using the REAL validator
+  // NEW: check upstream freshness when modal opens
+  //
+  useEffect(() => {
+    if (!loading) {
+      setCheckingUpstream(true);
+      setUpstreamStale(false);
+      setCloning(false);
+      if (!login) return;
+
+      fetch(
+        `/api/reset-mirror/upstream-status?login=${encodeURIComponent(login)}`,
+      )
+        .then((r) => r.json())
+        .then(async (data) => {
+          if (data.stale) {
+            setUpstreamStale(true);
+            setCloning(true);
+
+            // Trigger mirror refresh
+            await fetch(
+              `/api/reset-mirror?login=${encodeURIComponent(login)}`,
+              { method: "POST" },
+            );
+
+            // ⭐ Reset stale indicator after clone completes
+            setUpstreamStale(false);
+          }
+        })
+        .finally(() => {
+          setCheckingUpstream(false);
+          setCloning(false);
+        });
+    }
+  }, [loading, login]);
+
+  //
+  // Validate workspace name
   //
   useEffect(() => {
     const trimmed = newName.trim();
@@ -52,13 +92,13 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
       if (e.key === "Escape") {
         onSelect(null);
       }
-      if (e.key === "Enter" && !validationError) {
+      if (e.key === "Enter" && !validationError && !cloning) {
         onSelect(newName.trim());
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [newName, validationError, onSelect]);
+  }, [newName, validationError, cloning, onSelect]);
 
   if (loading) {
     return (
@@ -72,6 +112,16 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
     <div className="workspace-selector-container">
       <div className="workspace-selector-inner">
         <h3>Create New Workspace</h3>
+
+        {checkingUpstream && (
+          <div className="workspace-banner info">Checking upstream status…</div>
+        )}
+
+        {upstreamStale && (
+          <div className="workspace-banner warning">
+            Changes detected — cloning Rotorflight-docs…
+          </div>
+        )}
 
         <input
           className={`workspace-input ${validationError ? "invalid" : ""}`}
@@ -89,10 +139,12 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
         <div className="workspace-selector-buttons">
           <button
             className="workspace-create-btn"
-            disabled={!!validationError}
-            onClick={() => !validationError && onSelect(newName.trim())}
+            disabled={!!validationError || cloning}
+            onClick={() =>
+              !validationError && !cloning && onSelect(newName.trim())
+            }
           >
-            Create Workspace
+            {cloning ? "Preparing…" : "Create Workspace"}
           </button>
 
           <button

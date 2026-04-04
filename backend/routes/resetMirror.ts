@@ -254,11 +254,37 @@ async function walkGithubTree(treeUrl: string, baseDir: string, token: string) {
   }
 }
 
-router.post("/reset-mirror", async (req, res) => {
+// router.post("/", async (req, res) => {
+//   const auth = requireToken(req, res);
+//   if (!auth) return;
+
+//   const { login } = auth;
+//   const mirrorPath = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+
+//   try {
+//     console.log("RESET-MIRROR: deleting old mirror...");
+//     await fs.remove(mirrorPath);
+
+//     console.log("RESET-MIRROR: cloning repo...");
+//     await simpleGit().clone(
+//       `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}.git`,
+//       mirrorPath,
+//       ["--depth=1"],
+//     );
+
+//     console.log("RESET-MIRROR: complete.");
+//     return res.json({ ok: true });
+//   } catch (err) {
+//     console.error("RESET-MIRROR ERROR:", err);
+//     return res.status(500).json({ error: "Mirror rebuild failed" });
+//   }
+// });
+
+router.post("/", async (req, res) => {
   const auth = requireToken(req, res);
   if (!auth) return;
 
-  const { login } = auth;
+  const { login, token } = auth;
   const mirrorPath = path.join(process.cwd(), "Rotorflight-docs", "mirror");
 
   try {
@@ -270,6 +296,19 @@ router.post("/reset-mirror", async (req, res) => {
       `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}.git`,
       mirrorPath,
       ["--depth=1"],
+    );
+
+    // ⭐ NEW: fetch upstream SHA
+    const commit = await githubJson(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${GITHUB_DEFAULT_BRANCH}`,
+      token,
+    );
+
+    // ⭐ NEW: write hash file
+    await fs.writeFile(
+      path.join(mirrorPath, ".upstream-hash"),
+      commit.sha,
+      "utf8",
     );
 
     console.log("RESET-MIRROR: complete.");
@@ -387,6 +426,90 @@ router.post("/rebase-workspace", async (req, res) => {
   } catch (err) {
     console.error("REBASE ERROR:", err);
     return res.status(500).json({ error: "Rebase failed" });
+  }
+});
+
+/* ---------------------------------------------
+ Check current Rotorflight-docs Hash
+ ---------------------------------------------*/
+export async function ensureMirrorUpToDate(token: string) {
+  const mirrorPath = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+  const hashFile = path.join(mirrorPath, ".upstream-hash");
+
+  // 1. Fetch latest upstream SHA
+  const commit = await githubJson(
+    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${GITHUB_DEFAULT_BRANCH}`,
+    token,
+  );
+  const upstreamSha = commit.sha;
+
+  // 2. Read local SHA
+  let localSha = null;
+  if (await fs.pathExists(hashFile)) {
+    localSha = (await fs.readFile(hashFile, "utf8")).trim();
+  }
+
+  // 3. If same → nothing to do
+  if (localSha === upstreamSha) {
+    console.log("Mirror already up to date:", upstreamSha);
+    return;
+  }
+
+  // 4. Otherwise rebuild mirror
+  console.log("Mirror stale — rebuilding…");
+
+  await fs.remove(mirrorPath);
+  await simpleGit().clone(
+    `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}.git`,
+    mirrorPath,
+    ["--depth=1"],
+  );
+
+  await fs.writeFile(hashFile, upstreamSha, "utf8");
+  console.log("Mirror updated to", upstreamSha);
+}
+
+/* ---------------------------------------------
+ CHECK STATUS
+ ---------------------------------------------*/
+router.get("/upstream-status", async (req, res) => {
+  const login = req.query.login as string;
+  if (!login) return res.status(400).json({ error: "Missing login" });
+
+  try {
+    const token = getTokenForUser(login);
+
+    const mirrorPath = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+    const hashFile = path.join(mirrorPath, ".upstream-hash");
+
+    // Mirror missing → stale
+    if (!(await fs.pathExists(mirrorPath))) {
+      return res.json({ stale: true, reason: "no-mirror" });
+    }
+
+    // Hash missing → stale
+    if (!(await fs.pathExists(hashFile))) {
+      return res.json({ stale: true, reason: "no-hash" });
+    }
+
+    // Fetch upstream SHA
+    const commit = await githubJson(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${GITHUB_DEFAULT_BRANCH}`,
+      token,
+    );
+    const upstreamSha = commit.sha;
+
+    // Read local SHA
+    const localSha = (await fs.readFile(hashFile, "utf8")).trim();
+
+    return res.json({
+      stale: upstreamSha !== localSha,
+      upstreamSha,
+      localSha,
+    });
+  } catch (err) {
+    console.error("upstream-status error:", err);
+    return res.status(500).json({ error: "Failed to check upstream status" });
   }
 });
 

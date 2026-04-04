@@ -1070,3 +1070,33 @@
   max-width: 100%;
   overflow-x: auto;
 }
+
+/* ============================================================
+   22. BANNERS
+   ============================================================ */
+
+/* Generic banner style */
+.modal-banner,
+.workspace-banner {
+  padding: 0.6rem 0.9rem;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* Light red warning banner */
+.modal-banner.warning,
+.workspace-banner.warning {
+  background: #ffe5e5; /* soft red tint */
+  border: 1px solid #ffb3b3; /* slightly darker border */
+  color: #b30000; /* readable dark red text */
+}
+
+/* Light blue info banner (optional, matches your existing style) */
+.modal-banner.info,
+.workspace-banner.info {
+  background: #e8f3ff;
+  border: 1px solid #bcd9ff;
+  color: #1a4d8f;
+}

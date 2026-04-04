@@ -4,6 +4,7 @@ import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
 import Preview from "./components/Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
 import { EditorPanel } from "./components/EditorPanel";
+import { useUpstreamStatus } from "./hooks/useUpstreamStatus";
 
 import { useAutosave } from "./hooks/useAutosave";
 import { useGitPR } from "./hooks/useGitPR";
@@ -97,6 +98,7 @@ export default function App() {
   const [newFileName, setNewFileName] = useState("");
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
+  const { checking, stale, updating } = useUpstreamStatus(login);
 
   const [openWorkspaces, setOpenWorkspaces] = useState<Record<string, boolean>>(
     {},
@@ -177,6 +179,28 @@ export default function App() {
 
     return { type: "ok" };
   }
+
+  // -----------------------------
+  // Check Upstream
+  // -----------------------------
+  useEffect(() => {
+    async function checkUpstream() {
+      if (!login) return;
+      const res = await fetch(
+        `/api/reset-mirror/upstream-status?login=${login}`,
+      );
+      const data = await res.json();
+
+      if (data.stale) {
+        if (!login) return;
+        await fetch(`/api/reset-mirror?login=${login}`, {
+          method: "POST",
+        });
+      }
+    }
+
+    checkUpstream();
+  }, [login]);
 
   // -----------------------------
   // EDITOR STATUS CHECK
@@ -454,6 +478,40 @@ export default function App() {
           {/* SIDEBAR TOP */}
           <div className="sidebar-top">
             <h3>Docs</h3>
+
+            {/* UPSTREAM BANNER */}
+            {/* UPSTREAM BANNER */}
+            {(checking || updating) && (
+              <div
+                className={
+                  updating
+                    ? "workspace-banner warning"
+                    : "workspace-banner info"
+                }
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  style={{ animation: "spin 1s linear infinite" }}
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    fill="none"
+                    stroke={updating ? "#b30000" : "#1a4d8f"}
+                    strokeWidth="2"
+                    strokeDasharray="56"
+                    strokeDashoffset="28"
+                    strokeLinecap="round"
+                  />
+                </svg>
+
+                {updating ? "Updating Rotorflight-docs…" : "Checking upstream…"}
+              </div>
+            )}
 
             <div className="workspace-controls">
               <button
