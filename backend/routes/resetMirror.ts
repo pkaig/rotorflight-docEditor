@@ -254,32 +254,9 @@ async function walkGithubTree(treeUrl: string, baseDir: string, token: string) {
   }
 }
 
-// router.post("/", async (req, res) => {
-//   const auth = requireToken(req, res);
-//   if (!auth) return;
-
-//   const { login } = auth;
-//   const mirrorPath = path.join(process.cwd(), "Rotorflight-docs", "mirror");
-
-//   try {
-//     console.log("RESET-MIRROR: deleting old mirror...");
-//     await fs.remove(mirrorPath);
-
-//     console.log("RESET-MIRROR: cloning repo...");
-//     await simpleGit().clone(
-//       `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}.git`,
-//       mirrorPath,
-//       ["--depth=1"],
-//     );
-
-//     console.log("RESET-MIRROR: complete.");
-//     return res.json({ ok: true });
-//   } catch (err) {
-//     console.error("RESET-MIRROR ERROR:", err);
-//     return res.status(500).json({ error: "Mirror rebuild failed" });
-//   }
-// });
-
+/* ---------------------------------------------
+ reset the global mirror
+ ---------------------------------------------*/
 router.post("/", async (req, res) => {
   const auth = requireToken(req, res);
   if (!auth) return;
@@ -298,13 +275,13 @@ router.post("/", async (req, res) => {
       ["--depth=1"],
     );
 
-    // ⭐ NEW: fetch upstream SHA
+    // fetch upstream SHA
     const commit = await githubJson(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${GITHUB_DEFAULT_BRANCH}`,
       token,
     );
 
-    // ⭐ NEW: write hash file
+    // write hash file
     await fs.writeFile(
       path.join(mirrorPath, ".upstream-hash"),
       commit.sha,
@@ -319,42 +296,104 @@ router.post("/", async (req, res) => {
   }
 });
 
+/* ---------------------------------------------
+ Load the workspace mirror
+ ---------------------------------------------*/
+router.post("/load-workspace-mirror", async (req, res) => {
+  const login = req.query.login as string;
+  const workspace = req.query.workspace as string;
+
+  if (!login || !workspace) {
+    return res.status(400).json({ error: "Missing login or workspace" });
+  }
+
+  try {
+    const globalMirror = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+    const workspaceRoot = path.join(
+      process.cwd(),
+      "workspaces",
+      login,
+      workspace,
+    );
+    const workspaceMirror = path.join(workspaceRoot, "mirror");
+
+    await fs.rm(workspaceMirror, { recursive: true, force: true });
+    await fs.ensureDir(workspaceMirror);
+
+    await fs.copy(globalMirror, workspaceMirror);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("load-workspace-mirror error:", err);
+    return res.status(500).json({ error: "Failed to load workspace mirror" });
+  }
+});
+
+/* -------------------------------------
+  MERGE ALL WORKSPACES
+  -----------------------------------*/
 router.post("/merge-all-workspaces", async (req, res) => {
   try {
-    const base = path.join(process.cwd(), "Rotorflight-docs", "mirror-old");
-    const theirs = path.join(process.cwd(), "Rotorflight-docs", "mirror");
     const workspacesRoot = path.join(process.cwd(), "workspaces");
-
-    console.log("MERGE: computing upstream diff...");
-    const upstream = await computeUpstreamDiff(base, theirs);
-
-    console.log("MERGE: applying upstream diff to all workspaces...");
-    const workspaceNames = await fs.readdir(workspacesRoot);
+    const users = await fs.readdir(workspacesRoot);
 
     const results = [];
 
-    for (const name of workspaceNames) {
-      const workspacePath = path.join(workspacesRoot, name, "workspace");
+    for (const user of users) {
+      const userPath = path.join(workspacesRoot, user);
+      const workspaceNames = await fs.readdir(userPath);
 
-      if (!(await fs.pathExists(workspacePath))) continue;
+      for (const name of workspaceNames) {
+        console.log(`MERGE-ALL: processing ${user}/${name}`);
 
-      const result = await applyUpstreamToWorkspace(
-        workspacePath,
-        base,
-        theirs,
-        upstream,
-      );
+        // 1. Refresh workspace mirror
+        const loadRes = await fetch(
+          `http://localhost:${process.env.PORT || 4000}/api/reset-mirror/load-workspace-mirror?login=${encodeURIComponent(
+            user,
+          )}&workspace=${encodeURIComponent(name)}`,
+          { method: "POST" },
+        );
 
-      results.push({ workspace: name, ...result });
+        const loadJson = await loadRes.json();
+
+        // If mirror load failed, record and continue
+        if (!loadJson.ok) {
+          results.push({
+            workspace: `${user}/${name}`,
+            error: "Failed to load workspace mirror",
+            load: loadJson,
+          });
+          continue;
+        }
+
+        // 2. Rebase workspace
+        const rebaseRes = await fetch(
+          `http://localhost:${process.env.PORT || 4000}/api/reset-mirror/rebase-all-workspace?login=${encodeURIComponent(
+            user,
+          )}&workspace=${encodeURIComponent(name)}`,
+          { method: "POST" },
+        );
+
+        const rebaseJson = await rebaseRes.json();
+
+        results.push({
+          workspace: `${user}/${name}`,
+          load: loadJson,
+          rebase: rebaseJson,
+        });
+      }
     }
 
     return res.json({ ok: true, results });
   } catch (err) {
-    console.error("MERGE ERROR:", err);
-    return res.status(500).json({ error: "Merge failed" });
+    console.error("MERGE-ALL ERROR:", err);
+    return res.status(500).json({ error: "Merge-all failed" });
   }
 });
 
+/* -------------------------------------
+  Set Conflict files
+  -----------------------------------*/
 router.get("/conflict-file", async (req, res) => {
   const { workspace, file } = req.query;
 
@@ -367,6 +406,9 @@ router.get("/conflict-file", async (req, res) => {
   res.json({ workspace: workspaceText, upstream: upstreamText });
 });
 
+/* -------------------------------------
+  Resolve Conflict files
+  -----------------------------------*/
 router.post("/resolve-conflict", async (req, res) => {
   const { workspace, file, resolution, content } = req.body;
 
