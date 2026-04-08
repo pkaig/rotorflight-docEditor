@@ -34,7 +34,7 @@ export function PRDescriptionModal({
 
             // 🔧 Trigger backend rebase
             const reb = await fetch(
-              `/api/reset-mirror/rebase-workspace?login=${encodeURIComponent(
+              `/api/reset-mirror/rebase-all-workspace?login=${encodeURIComponent(
                 login,
               )}&workspace=${encodeURIComponent(workspace)}`,
               { method: "POST" },

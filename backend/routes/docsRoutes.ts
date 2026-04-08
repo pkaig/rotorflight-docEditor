@@ -495,29 +495,35 @@ router.post("/create-workspace", async (req, res) => {
     // 1. Ensure global mirror is current
     await ensureMirrorUpToDate(token);
 
-    // 2. Copy mirror into workspace
-    const globalMirror = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+    // 2. Create workspace root
     const workspaceRoot = path.join(
       process.cwd(),
       "workspaces",
       login,
       workspace,
     );
-
-    const workspaceMirror = path.join(workspaceRoot, "mirror");
-    const workspaceDocs = path.join(workspaceRoot, "docs");
-    const workspaceVersioned = path.join(workspaceRoot, "versioned_docs");
-
     await fs.ensureDir(workspaceRoot);
 
-    await fs.copy(
-      path.join(globalMirror, "docs"),
-      path.join(workspaceMirror, "docs"),
+    // 3. Load workspace mirror (baseline)
+    const loadRes = await fetch(
+      `http://localhost:${process.env.PORT || 4000}/api/reset-mirror/load-workspace-mirror?login=${encodeURIComponent(
+        login,
+      )}&workspace=${encodeURIComponent(workspace)}`,
+      { method: "POST" },
     );
-    await fs.copy(
-      path.join(globalMirror, "versioned_docs"),
-      path.join(workspaceMirror, "versioned_docs"),
-    );
+
+    const loadJson = await loadRes.json();
+    if (!loadJson.ok) {
+      return res.status(500).json({
+        error: "Failed to load workspace mirror",
+        details: loadJson,
+      });
+    }
+
+    // 4. Copy docs + versioned_docs into editable workspace
+    const globalMirror = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+    const workspaceDocs = path.join(workspaceRoot, "docs");
+    const workspaceVersioned = path.join(workspaceRoot, "versioned_docs");
 
     await fs.copy(path.join(globalMirror, "docs"), workspaceDocs);
     await fs.copy(
@@ -525,11 +531,12 @@ router.post("/create-workspace", async (req, res) => {
       workspaceVersioned,
     );
 
-    // 3. Store the upstream hash used for this workspace
+    // 5. Store upstream hash
     const upstreamSha = await fs.readFile(
       path.join(globalMirror, ".upstream-hash"),
       "utf8",
     );
+
     await fs.writeFile(
       path.join(workspaceRoot, "mirror-hash.txt"),
       upstreamSha,

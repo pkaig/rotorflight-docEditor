@@ -7,7 +7,7 @@ import simpleGit from "simple-git";
 import path from "path";
 import fetch from "node-fetch";
 import { getTokenForUser } from "./authRoutes";
-import { computeUpstreamDiff } from "../merge/computeUpstreamDiff";
+//import { computeUpstreamDiff } from "../merge/computeUpstreamDiff";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -288,7 +288,35 @@ router.post("/", async (req, res) => {
       "utf8",
     );
 
-    console.log("RESET-MIRROR: complete.");
+    console.log("RESET-MIRROR: global mirror updated.");
+
+    // ---------------------------------------------
+    // REBASE ALL WORKSPACES
+    // ---------------------------------------------
+    console.log("RESET-MIRROR: rebasing all workspaces...");
+
+    const workspacesRoot = path.join(process.cwd(), "workspaces");
+    if (await fs.pathExists(workspacesRoot)) {
+      const users = await fs.readdir(workspacesRoot);
+
+      for (const user of users) {
+        const userPath = path.join(workspacesRoot, user);
+        const workspaceNames = await fs.readdir(userPath);
+
+        for (const name of workspaceNames) {
+          console.log(`Rebasing workspace ${user}/${name}...`);
+
+          await fetch(
+            `http://localhost:${process.env.PORT || 4000}/api/reset-mirror/rebase-all-workspace?login=${encodeURIComponent(
+              user,
+            )}&workspace=${encodeURIComponent(name)}`,
+            { method: "POST" },
+          );
+        }
+      }
+    }
+
+    console.log("RESET-MIRROR: all workspaces rebased.");
     return res.json({ ok: true });
   } catch (err) {
     console.error("RESET-MIRROR ERROR:", err);
@@ -330,64 +358,134 @@ router.post("/load-workspace-mirror", async (req, res) => {
 });
 
 /* -------------------------------------
-  MERGE ALL WORKSPACES
+  REBASE WORKSPACE
   -----------------------------------*/
-router.post("/merge-all-workspaces", async (req, res) => {
+router.post("/rebase-all-workspace", async (req, res) => {
+  const login = req.query.login as string;
+  const workspace = req.query.workspace as string;
+
+  if (!login || !workspace) {
+    return res.status(400).json({ error: "Missing login or workspace" });
+  }
+
   try {
-    const workspacesRoot = path.join(process.cwd(), "workspaces");
-    const users = await fs.readdir(workspacesRoot);
+    const workspaceRoot = path.join(
+      process.cwd(),
+      "workspaces",
+      login,
+      workspace,
+    );
 
-    const results = [];
+    const baseline = path.join(workspaceRoot, "mirror"); // old upstream snapshot
+    const upstream = path.join(process.cwd(), "Rotorflight-docs", "mirror"); // new upstream snapshot
 
-    for (const user of users) {
-      const userPath = path.join(workspacesRoot, user);
-      const workspaceNames = await fs.readdir(userPath);
+    const docsPath = path.join(workspaceRoot, "docs");
+    const versionedPath = path.join(workspaceRoot, "versioned_docs");
 
-      for (const name of workspaceNames) {
-        console.log(`MERGE-ALL: processing ${user}/${name}`);
+    // 1. Compute diff between old baseline and new upstream
+    const diff = await computeUpstreamDiff(baseline, upstream);
 
-        // 1. Refresh workspace mirror
-        const loadRes = await fetch(
-          `http://localhost:${process.env.PORT || 4000}/api/reset-mirror/load-workspace-mirror?login=${encodeURIComponent(
-            user,
-          )}&workspace=${encodeURIComponent(name)}`,
-          { method: "POST" },
+    const result: any = {
+      docs: [],
+      versioned: [],
+      diffCount: diff.length,
+    };
+
+    // 2. Apply upstream changes to docs/
+    let docsResult: WorkspaceMergeResult | null = null;
+    if (await fs.pathExists(docsPath)) {
+      const docsDiff = diff
+        .filter((c) => c.file.startsWith("docs/"))
+        .map((c) => ({
+          ...c,
+          file: c.file.slice("docs/".length),
+        }));
+
+      if (docsDiff.length > 0) {
+        docsResult = await applyUpstreamToWorkspace(
+          docsPath,
+          path.join(baseline, "docs"),
+          path.join(upstream, "docs"),
+          docsDiff,
         );
-
-        const loadJson = await loadRes.json();
-
-        // If mirror load failed, record and continue
-        if (!loadJson.ok) {
-          results.push({
-            workspace: `${user}/${name}`,
-            error: "Failed to load workspace mirror",
-            load: loadJson,
-          });
-          continue;
-        }
-
-        // 2. Rebase workspace
-        const rebaseRes = await fetch(
-          `http://localhost:${process.env.PORT || 4000}/api/reset-mirror/rebase-all-workspace?login=${encodeURIComponent(
-            user,
-          )}&workspace=${encodeURIComponent(name)}`,
-          { method: "POST" },
-        );
-
-        const rebaseJson = await rebaseRes.json();
-
-        results.push({
-          workspace: `${user}/${name}`,
-          load: loadJson,
-          rebase: rebaseJson,
-        });
+        result.docs = docsResult;
       }
     }
 
-    return res.json({ ok: true, results });
+    // 3. Apply upstream changes to versioned_docs/
+    let versionedResult: WorkspaceMergeResult | null = null;
+    if (await fs.pathExists(versionedPath)) {
+      const versionedDiff = diff
+        .filter((c) => c.file.startsWith("versioned_docs/"))
+        .map((c) => ({
+          ...c,
+          file: c.file.slice("versioned_docs/".length),
+        }));
+
+      if (versionedDiff.length > 0) {
+        versionedResult = await applyUpstreamToWorkspace(
+          versionedPath,
+          path.join(baseline, "versioned_docs"),
+          path.join(upstream, "versioned_docs"),
+          versionedDiff,
+        );
+        result.versioned = versionedResult;
+      }
+    }
+
+    // 4. Incrementally update baseline to match new upstream
+    //    - clean merges: baseline = upstream
+    //    - deletes: remove from baseline
+    //    - conflicts: leave baseline as-is (Option C)
+
+    // docs/
+    if (docsResult) {
+      const baselineDocs = path.join(baseline, "docs");
+      const upstreamDocs = path.join(upstream, "docs");
+
+      // applied → copy from upstream into baseline
+      for (const rel of docsResult.applied) {
+        const src = path.join(upstreamDocs, rel);
+        const dst = path.join(baselineDocs, rel);
+        await fs.ensureDir(path.dirname(dst));
+        await fs.copy(src, dst);
+      }
+
+      // deleted → remove from baseline
+      for (const rel of docsResult.deleted) {
+        const dst = path.join(baselineDocs, rel);
+        await fs.remove(dst);
+      }
+
+      // conflicts → do nothing in baseline (keep old snapshot)
+    }
+
+    // versioned_docs/
+    if (versionedResult) {
+      const baselineVersioned = path.join(baseline, "versioned_docs");
+      const upstreamVersioned = path.join(upstream, "versioned_docs");
+
+      // applied → copy from upstream into baseline
+      for (const rel of versionedResult.applied) {
+        const src = path.join(upstreamVersioned, rel);
+        const dst = path.join(baselineVersioned, rel);
+        await fs.ensureDir(path.dirname(dst));
+        await fs.copy(src, dst);
+      }
+
+      // deleted → remove from baseline
+      for (const rel of versionedResult.deleted) {
+        const dst = path.join(baselineVersioned, rel);
+        await fs.remove(dst);
+      }
+
+      // conflicts → do nothing in baseline
+    }
+
+    return res.json({ ok: true, result });
   } catch (err) {
-    console.error("MERGE-ALL ERROR:", err);
-    return res.status(500).json({ error: "Merge-all failed" });
+    console.error("REBASE ERROR:", err);
+    return res.status(500).json({ error: "Rebase failed" });
   }
 });
 
@@ -395,80 +493,95 @@ router.post("/merge-all-workspaces", async (req, res) => {
   Set Conflict files
   -----------------------------------*/
 router.get("/conflict-file", async (req, res) => {
-  const { workspace, file } = req.query;
+  const login = req.query.login as string;
+  const workspace = req.query.workspace as string;
+  const file = req.query.file as string;
 
-  const wsPath = path.join("workspaces", workspace, "workspace", file);
+  const wsPath = path.join(
+    process.cwd(),
+    "workspaces",
+    login,
+    workspace,
+    "docs",
+    file,
+  );
+
   const conflictPath = wsPath + ".conflict";
 
-  const workspaceText = await fs.readFile(wsPath, "utf8");
-  const upstreamText = await fs.readFile(conflictPath, "utf8");
+  try {
+    const workspaceText = await fs.readFile(wsPath, "utf8");
+    const upstreamText = await fs.readFile(conflictPath, "utf8");
 
-  res.json({ workspace: workspaceText, upstream: upstreamText });
+    return res.json({ workspace: workspaceText, upstream: upstreamText });
+  } catch (err) {
+    console.error("conflict-file error:", err);
+    return res.status(500).json({ error: "Failed to load conflict file" });
+  }
 });
 
 /* -------------------------------------
   Resolve Conflict files
   -----------------------------------*/
 router.post("/resolve-conflict", async (req, res) => {
-  const { workspace, file, resolution, content } = req.body;
+  const { login, workspace, file, resolution, content } = req.body;
 
-  const wsPath = path.join("workspaces", workspace, "workspace", file);
-  const conflictPath = wsPath + ".conflict";
-
-  if (resolution === "workspace") {
-    await fs.remove(conflictPath);
+  if (!login || !workspace || !file) {
+    return res.status(400).json({ error: "Missing login, workspace, or file" });
   }
 
-  if (resolution === "upstream") {
-    const upstream = await fs.readFile(conflictPath);
-    await fs.writeFile(wsPath, upstream);
-    await fs.remove(conflictPath);
-  }
-
-  if (resolution === "manual") {
-    await fs.writeFile(wsPath, content);
-    await fs.remove(conflictPath);
-  }
-
-  res.json({ ok: true });
-});
-
-router.post("/rebase-workspace", async (req, res) => {
-  const { login, workspace } = req.query;
-
-  const workspacePath = path.join(
+  const wsPath = path.join(
     process.cwd(),
     "workspaces",
-    login as string,
-    workspace as string,
+    login,
+    workspace,
+    "docs",
+    file,
   );
 
-  const baseline = path.join(workspacePath, "mirror");
-  console.log("REBASE: baseline path", baseline);
-  const upstream = path.join(process.cwd(), "Rotorflight-docs", "mirror");
-  console.log("REBASE: upstream path", upstream);
+  const conflictPath = wsPath + ".conflict";
 
   try {
-    console.log("REBASE: computing diff...");
-    const diff = await computeUpstreamDiff(baseline, upstream);
+    if (resolution === "workspace") {
+      await fs.remove(conflictPath);
+    }
 
-    console.log("REBASE: applying upstream changes...");
-    const result = await applyUpstreamToWorkspace(
-      workspacePath,
-      baseline,
-      upstream,
-      diff,
-    );
+    if (resolution === "upstream") {
+      const upstream = await fs.readFile(conflictPath);
+      await fs.writeFile(wsPath, upstream);
+      await fs.remove(conflictPath);
+    }
 
-    console.log("REBASE: updating baseline mirror...");
-    await fs.remove(baseline);
-    await fs.copy(upstream, baseline);
+    if (resolution === "manual") {
+      await fs.writeFile(wsPath, content);
+      await fs.remove(conflictPath);
+    }
 
-    return res.json({ ok: true, result });
+    return res.json({ ok: true });
   } catch (err) {
-    console.error("REBASE ERROR:", err);
-    return res.status(500).json({ error: "Rebase failed" });
+    console.error("resolve-conflict error:", err);
+    return res.status(500).json({ error: "Failed to resolve conflict" });
   }
+});
+
+/* ---------------------------------------------
+ The file has a conflict
+ ---------------------------------------------*/
+router.get("/has-conflict", async (req, res) => {
+  const { login, workspace, file } = req.query;
+
+  const wsPath = path.join(
+    process.cwd(),
+    "workspaces",
+    login,
+    workspace,
+    "docs",
+    file,
+  );
+
+  const conflictPath = wsPath + ".conflict";
+
+  const exists = await fs.pathExists(conflictPath);
+  return res.json({ conflict: exists });
 });
 
 /* ---------------------------------------------

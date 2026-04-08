@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 
 export default function ConflictResolver({
-  workspace,
   file,
-  onResolved,
+  workspace,
+  //workspaceText,
+  //upstreamText,
+  login,
   onMergedChange,
+  onClose,
+  onResolved,
 }) {
   const [workspaceText, setWorkspaceText] = useState("");
   const [upstreamText, setUpstreamText] = useState("");
@@ -13,7 +17,7 @@ export default function ConflictResolver({
   useEffect(() => {
     async function load() {
       const res = await fetch(
-        `/api/docs/conflict-file?workspace=${workspace}&file=${file}`,
+        `/api/reset-mirror/conflict-file?login=${login}&workspace=${workspace}&file=${file}`,
       );
       const json = await res.json();
 
@@ -55,9 +59,11 @@ export default function ConflictResolver({
   /* -------------------------------------------------------
     notify parent (App.tsx) so preview updates live
     ------------------------------------------------------- */
-  useEffect(() => {
-    if (onMergedChange) onMergedChange(mergedText);
-  }, [mergedText]);
+  // Only notify parent when user explicitly changes merged text
+  function handleMergeChange(text: string) {
+    setMergedText(text);
+    if (onMergedChange) onMergedChange(text);
+  }
 
   /* -------------------------------------------------------
     RESOLUTION LOGIC
@@ -65,10 +71,10 @@ export default function ConflictResolver({
   async function resolve(type) {
     const body =
       type === "manual"
-        ? { workspace, file, resolution: "manual", content: mergedText }
-        : { workspace, file, resolution: type };
+        ? { login, workspace, file, resolution: "manual", content: mergedText }
+        : { login, workspace, file, resolution: type };
 
-    await fetch("/api/docs/resolve-conflict", {
+    await fetch("/api/reset-mirror/resolve-conflict", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -121,16 +127,18 @@ export default function ConflictResolver({
         className="merge-actions"
         style={{ display: "flex", gap: "0.5rem", margin: "1rem 0" }}
       >
-        <button onClick={() => setMergedText(workspaceText)}>
+        <button onClick={() => handleMergeChange(workspaceText)}>
           Accept Workspace
         </button>
 
-        <button onClick={() => setMergedText(upstreamText)}>
+        <button onClick={() => handleMergeChange(upstreamText)}>
           Accept Upstream
         </button>
 
         <button
-          onClick={() => setMergedText(workspaceText + "\n\n" + upstreamText)}
+          onClick={() =>
+            handleMergeChange(workspaceText + "\n\n" + upstreamText)
+          }
         >
           Accept Both
         </button>
@@ -140,7 +148,7 @@ export default function ConflictResolver({
       <h4>Merged Result</h4>
       <textarea
         value={mergedText}
-        onChange={(e) => setMergedText(e.target.value)}
+        onChange={(e) => handleMergeChange(e.target.value)}
         style={{
           width: "100%",
           height: "200px",

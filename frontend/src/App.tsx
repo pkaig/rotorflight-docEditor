@@ -100,6 +100,9 @@ export default function App() {
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
   const { checking, stale, updating } = useUpstreamStatus(login);
 
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictData, setConflictData] = useState(null);
+
   const [openWorkspaces, setOpenWorkspaces] = useState<Record<string, boolean>>(
     {},
   );
@@ -296,12 +299,79 @@ export default function App() {
   }
 
   /* FILE SELECTION */
-  const onSelect = (ws: string, path: string) => {
+  // const onSelect = (ws: string, path: string) => {
+  //   if (workspace !== ws) {
+  //     setWorkspace(ws);
+  //     localStorage.setItem("rf_workspace", ws);
+  //   }
+
+  //   if (!/\.[a-z0-9]+$/i.test(path)) return;
+
+  //   const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
+  //   if (isImage) {
+  //     setCurrentDocPath(path);
+  //     setContent("");
+  //     return;
+  //   }
+
+  //   loadDoc(path, ws);
+  // };
+
+  const onSelect = async (ws: string, path: string) => {
+    // -----------------------------------------------------
+    // 0. Switch workspace if needed
+    // -----------------------------------------------------
     if (workspace !== ws) {
       setWorkspace(ws);
       localStorage.setItem("rf_workspace", ws);
     }
 
+    // -----------------------------------------------------
+    // 1. Normalize the path (Tree uses virtual paths)
+    // -----------------------------------------------------
+    let cleanPath = path;
+
+    const prefix = `local-workspace/${ws}/`;
+    if (cleanPath.startsWith(prefix)) {
+      cleanPath = cleanPath.slice(prefix.length);
+    }
+
+    // Only strip docs/ if the tree path actually includes it
+    if (path.includes(`/docs/`)) {
+      cleanPath = cleanPath.replace(/^.*?docs\//, "");
+    }
+
+    // -----------------------------------------------------
+    // 2. Check if a conflict file exists
+    // -----------------------------------------------------
+    const check = await fetch(
+      `/api/reset-mirror/has-conflict?login=${login}&workspace=${ws}&file=${cleanPath}`,
+    );
+
+    const { conflict } = await check.json();
+
+    if (conflict) {
+      // Load the actual conflict content
+      const conflictRes = await fetch(
+        `/api/reset-mirror/conflict-file?login=${login}&workspace=${ws}&file=${cleanPath}`,
+      );
+
+      const conflictData = await conflictRes.json();
+
+      setShowConflictModal(true);
+      setConflictData({
+        file: cleanPath,
+        workspace: ws,
+        workspaceText: conflictData.workspace,
+        upstreamText: conflictData.upstream,
+      });
+
+      return; // stop normal file loading
+    }
+
+    // -----------------------------------------------------
+    // 3. Normal file selection
+    // -----------------------------------------------------
     if (!/\.[a-z0-9]+$/i.test(path)) return;
 
     const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
@@ -690,6 +760,26 @@ export default function App() {
             {/*<PRPanel slug={currentDocPath} />*/}
           </div>
         </div>{" "}
+        {showConflictModal && (
+          <ConflictResolver
+            file={conflictData.file}
+            workspace={conflictData.workspace}
+            workspaceText={conflictData.workspaceText}
+            upstreamText={conflictData.upstreamText}
+            login={login}
+            onMergedChange={(merged) => {
+              setContent(merged);
+              saveDocument(conflictData.file, merged, conflictData.workspace);
+              refreshLocalWorkspace(conflictData.workspace);
+              setShowConflictModal(false);
+            }}
+            onClose={() => setShowConflictModal(false)}
+            onResolved={() => {
+              setShowConflictModal(false);
+              refreshLocalWorkspace(workspace);
+            }}
+          />
+        )}
         {/* MAIN EDITOR + PREVIEW AREA */}
         <div
           style={{
@@ -730,18 +820,6 @@ export default function App() {
               newDocTemplate={newDocTemplate}
             />
           </div>
-
-          {/* DRAG HANDLE */}
-          {/*<div onMouseDown={startDrag} className="drag-handle" />*/}
-
-          {/* PREVIEW COLUMN */}
-          {/*<div
-            style={{
-              flex: 1,
-              padding: "1rem",
-              overflowY: "auto",
-            }}
-          >*/}
           <div
             className="preview-panel"
             style={{
