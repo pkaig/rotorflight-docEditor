@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
+import { diffLines } from "diff";
 
 export default function ConflictResolver({
   file,
   workspace,
-  //workspaceText,
-  //upstreamText,
   login,
   onMergedChange,
   onClose,
@@ -14,6 +13,9 @@ export default function ConflictResolver({
   const [upstreamText, setUpstreamText] = useState("");
   const [mergedText, setMergedText] = useState("");
 
+  // -------------------------------------------------------
+  // Load conflict data ONCE when modal opens
+  // -------------------------------------------------------
   useEffect(() => {
     async function load() {
       const res = await fetch(
@@ -23,61 +25,59 @@ export default function ConflictResolver({
 
       setWorkspaceText(json.workspace);
       setUpstreamText(json.upstream);
-      setMergedText(json.workspace); // start with workspace version
+
+      // Start with workspace version, but DO NOT notify parent yet
+      setMergedText(json.workspace);
     }
 
     load();
   }, [workspace, file]);
 
-  /* -------------------------------------------------------
-    line-by-line diff for display purposes
-    ------------------------------------------------------- */
-
-  function diffLines(a: string, b: string) {
-    const aLines = a.split("\n");
-    const bLines = b.split("\n");
-
-    const max = Math.max(aLines.length, bLines.length);
-    const result = [];
-
-    for (let i = 0; i < max; i++) {
-      const left = aLines[i] ?? "";
-      const right = bLines[i] ?? "";
-
-      if (left === right) {
-        result.push({ type: "same", left, right });
-      } else {
-        result.push({ type: "diff", left, right });
-      }
-    }
-
-    return result;
-  }
-
-  const diffs = diffLines(workspaceText, upstreamText);
-
-  /* -------------------------------------------------------
-    notify parent (App.tsx) so preview updates live
-    ------------------------------------------------------- */
-  // Only notify parent when user explicitly changes merged text
-  function handleMergeChange(text: string) {
+  // -------------------------------------------------------
+  // Only notify parent when user explicitly edits merged text
+  // -------------------------------------------------------
+  function updateMerged(text: string) {
     setMergedText(text);
     if (onMergedChange) onMergedChange(text);
   }
 
-  /* -------------------------------------------------------
-    RESOLUTION LOGIC
-    ------------------------------------------------------- */
-  async function resolve(type) {
-    const body =
-      type === "manual"
-        ? { login, workspace, file, resolution: "manual", content: mergedText }
-        : { login, workspace, file, resolution: type };
+  // -------------------------------------------------------
+  // Proper diff using diffLines()
+  // -------------------------------------------------------
+  const diffs = diffLines(workspaceText, upstreamText);
 
+  // -------------------------------------------------------
+  // Save current merged text WITHOUT resolving conflict
+  // -------------------------------------------------------
+  async function saveCurrent() {
     await fetch("/api/reset-mirror/resolve-conflict", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        login,
+        workspace,
+        file,
+        resolution: "manual",
+        content: mergedText,
+        keepConflict: true, // backend ignores this unless you add support
+      }),
+    });
+  }
+
+  // -------------------------------------------------------
+  // Final resolution (delete .conflict)
+  // -------------------------------------------------------
+  async function resolve() {
+    await fetch("/api/reset-mirror/resolve-conflict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        login,
+        workspace,
+        file,
+        resolution: "manual",
+        content: mergedText,
+      }),
     });
 
     onResolved();
@@ -85,60 +85,45 @@ export default function ConflictResolver({
 
   return (
     <div className="merge-container" style={{ padding: "1rem" }}>
+      <h3>Merge Conflict</h3>
+      <p>
+        <strong>{file}</strong> has changes in both your workspace and upstream.
+      </p>
+
       {/* DIFF VIEW */}
       <h4>Differences</h4>
-      <div className="diff-container" style={{ fontFamily: "monospace" }}>
-        {diffs.map((d, i) => (
+      <div style={{ fontFamily: "monospace", border: "1px solid #ccc" }}>
+        {diffs.map((part, i) => (
           <div
             key={i}
             style={{
-              display: "flex",
-              borderBottom: "1px solid #eee",
-              background:
-                d.type === "diff"
-                  ? "linear-gradient(to right, #ffe6e6 50%, #e6f0ff 50%)"
+              background: part.added
+                ? "#e6f7ff"
+                : part.removed
+                  ? "#ffe6e6"
                   : "white",
+              padding: "4px 8px",
+              whiteSpace: "pre-wrap",
+              borderBottom: "1px solid #eee",
             }}
           >
-            <div
-              style={{
-                flex: 1,
-                padding: "4px 8px",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {d.left}
-            </div>
-            <div
-              style={{
-                flex: 1,
-                padding: "4px 8px",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {d.right}
-            </div>
+            {part.value}
           </div>
         ))}
       </div>
 
       {/* MERGE ACTIONS */}
-      <div
-        className="merge-actions"
-        style={{ display: "flex", gap: "0.5rem", margin: "1rem 0" }}
-      >
-        <button onClick={() => handleMergeChange(workspaceText)}>
+      <div style={{ display: "flex", gap: "0.5rem", margin: "1rem 0" }}>
+        <button onClick={() => updateMerged(workspaceText)}>
           Accept Workspace
         </button>
 
-        <button onClick={() => handleMergeChange(upstreamText)}>
+        <button onClick={() => updateMerged(upstreamText)}>
           Accept Upstream
         </button>
 
         <button
-          onClick={() =>
-            handleMergeChange(workspaceText + "\n\n" + upstreamText)
-          }
+          onClick={() => updateMerged(workspaceText + "\n\n" + upstreamText)}
         >
           Accept Both
         </button>
@@ -148,7 +133,7 @@ export default function ConflictResolver({
       <h4>Merged Result</h4>
       <textarea
         value={mergedText}
-        onChange={(e) => handleMergeChange(e.target.value)}
+        onChange={(e) => updateMerged(e.target.value)}
         style={{
           width: "100%",
           height: "200px",
@@ -160,9 +145,11 @@ export default function ConflictResolver({
         }}
       />
 
-      {/* FINAL RESOLUTION BUTTON */}
-      <div style={{ marginTop: "1rem" }}>
-        <button onClick={() => resolve("manual")}>Save Merge</button>
+      {/* SAVE + RESOLVE BUTTONS */}
+      <div style={{ marginTop: "1rem", display: "flex", gap: "1rem" }}>
+        <button onClick={saveCurrent}>Save Current</button>
+        <button onClick={resolve}>Resolve Merge</button>
+        <button onClick={onClose}>Cancel</button>
       </div>
     </div>
   );

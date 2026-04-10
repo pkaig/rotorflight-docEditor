@@ -10,6 +10,8 @@ import { useAutosave } from "./hooks/useAutosave";
 import { useGitPR } from "./hooks/useGitPR";
 import { PRPanel } from "./components/PRPanel";
 import { ChangesPanel } from "./components/ChangesPanel";
+import DiffViewer from "./components/DiffViewer";
+import UnifiedDiffViewer from "./components/UnifiedDiffViewer";
 import ConflictResolver from "./components/ConflictResolver";
 import { isConflictFile, baseFileName } from "./components/conflictUtils";
 
@@ -99,6 +101,10 @@ export default function App() {
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
   const { checking, stale, updating } = useUpstreamStatus(login);
+  const [showDiffViewer, setShowDiffViewer] = useState(false);
+  const [diffFile, setDiffFile] = useState("");
+  const [showDiff, setShowDiff] = useState(false);
+  const [currentFile, setCurrentFile] = useState("");
 
   const [showConflictModal, setShowConflictModal] = useState(false);
   const [conflictData, setConflictData] = useState(null);
@@ -369,6 +375,13 @@ export default function App() {
       return; // stop normal file loading
     }
 
+    // 2. If file is changed but not conflicted → show diff viewer
+    if (changes[path]) {
+      setShowDiffViewer(true);
+      setDiffFile(cleanPath);
+      return;
+    }
+
     // -----------------------------------------------------
     // 3. Normal file selection
     // -----------------------------------------------------
@@ -380,7 +393,8 @@ export default function App() {
       setContent("");
       return;
     }
-
+    setCurrentFile(cleanPath);
+    setShowDiff(false);
     loadDoc(path, ws);
   };
 
@@ -500,11 +514,19 @@ export default function App() {
   }
 
   /* MAIN UI */
+  /* MAIN UI */
   return (
-    <>
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {editorStatus.type === "updateAvailable" && (
         <UpdateBanner {...editorStatus} />
       )}
+
       {saving && (
         <div
           style={{
@@ -542,15 +564,19 @@ export default function App() {
       )}
 
       {/* MAIN LAYOUT */}
-      <div style={{ display: "flex", height: "100vh" }}>
+      <div
+        style={{
+          display: "flex",
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
         {/* SIDEBAR */}
         <div className="sidebar">
           {/* SIDEBAR TOP */}
           <div className="sidebar-top">
             <h3>Docs</h3>
 
-            {/* UPSTREAM BANNER */}
-            {/* UPSTREAM BANNER */}
             {(checking || updating) && (
               <div
                 className={
@@ -684,9 +710,6 @@ export default function App() {
               <button
                 className="clear-selected-btn"
                 onClick={async (e) => {
-                  console.log("CLICK START");
-                  setTimeout(() => console.log("ASYNC TICK"), 0);
-
                   e.stopPropagation();
 
                   const selected = Object.keys(selectedChanges).filter(
@@ -696,27 +719,43 @@ export default function App() {
 
                   if (
                     !confirm(
-                      `Restore ${selected.length} file(s) from Rotorflight docs?`,
+                      `Restore ${selected.length} file(s) from baseline?`,
                     )
                   )
                     return;
 
                   const ws = workspace;
-                  for (const path of selected) {
-                    const clean = path.replace(/^local-workspace\/[^/]+\//, "");
 
-                    await fetch(
-                      `/api/docs/restore-file?login=${login}&workspace=${ws}`,
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ path: clean }),
-                      },
-                    );
-                  }
+                  const cleanPaths = selected.map((p) => {
+                    let clean = p.replace(/^local-workspace\/[^/]+\//, "");
+
+                    if (clean.startsWith("docs/"))
+                      clean = clean.slice("docs/".length);
+                    if (clean.startsWith("versioned_docs/"))
+                      clean = clean.slice("versioned_docs/".length);
+
+                    return clean;
+                  });
+
+                  await fetch("/api/reset-mirror/clear-selected", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      login,
+                      workspace: ws,
+                      files: cleanPaths,
+                    }),
+                  });
 
                   await refreshLocalWorkspace(ws);
-                  await clearSelectedChanges(ws, selected);
+
+                  if (
+                    cleanPaths.includes(currentDocPath.replace(/^docs\//, ""))
+                  ) {
+                    loadDoc(currentDocPath, ws);
+                  }
+
+                  setSelectedChanges({});
                 }}
               >
                 Clear selected
@@ -725,22 +764,27 @@ export default function App() {
               <button
                 className="clear-all-btn"
                 onClick={async () => {
-                  if (!confirm("This will delete ALL local changes. Continue?"))
+                  if (
+                    !confirm(
+                      "This will restore ALL files from baseline. Continue?",
+                    )
+                  )
                     return;
 
-                  const first = Object.keys(changes)[0];
-                  const wsMatch = first?.match(/^local-workspace\/([^/]+)\//);
-                  const ws = wsMatch ? wsMatch[1] : null;
-                  if (!ws) return;
+                  const ws = workspace;
 
-                  await fetch(
-                    `/api/docs/reset-local?login=${encodeURIComponent(
-                      login || "",
-                    )}&workspace=${ws}`,
-                    { method: "POST" },
-                  );
+                  await fetch("/api/reset-mirror/clear-all", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ login, workspace: ws }),
+                  });
 
                   await refreshLocalWorkspace(ws);
+
+                  if (currentDocPath) {
+                    loadDoc(currentDocPath, ws);
+                  }
+
                   clearAllChanges();
                 }}
               >
@@ -756,10 +800,9 @@ export default function App() {
               />
             </div>
             <PRPanel login={login} workspace={workspace} />
-
-            {/*<PRPanel slug={currentDocPath} />*/}
           </div>
-        </div>{" "}
+        </div>
+
         {showConflictModal && (
           <ConflictResolver
             file={conflictData.file}
@@ -780,46 +823,73 @@ export default function App() {
             }}
           />
         )}
+
         {/* MAIN EDITOR + PREVIEW AREA */}
         <div
           style={{
             flex: 1,
             display: "flex",
             overflow: "hidden",
-            height: "100vh",
           }}
         >
           {/* EDITOR COLUMN */}
           <div
             className="editor-container"
             style={{
-              width: "50%",
+              width: "49%",
               minWidth: 0,
               display: "flex",
               flexDirection: "column",
               height: "100%",
+              overflow: "hidden",
             }}
           >
-            <EditorPanel
-              content={content}
-              setContent={setContent}
-              currentDocPath={currentDocPath}
-              conflict={conflict}
-              errorLine={errorLine}
-              saveState={saveState}
-              workspace={workspace}
-              refreshLocalWorkspace={refreshLocalWorkspace}
-              onSelect={onSelect}
-              showNewFileModal={showNewFileModal}
-              setShowNewFileModal={setShowNewFileModal}
-              newFileName={newFileName}
-              setNewFileName={setNewFileName}
-              newFileFolder={newFileFolder}
-              setNewFileFolder={setNewFileFolder}
-              notifyFileCreated={notifyFileCreated}
-              newDocTemplate={newDocTemplate}
-            />
+            <div className="editor-toolbar">
+              {!showDiff && (
+                <button onClick={() => setShowDiff(true)}>Show Diff</button>
+              )}
+
+              {showDiff && (
+                <button onClick={() => setShowDiff(false)}>Close Diff</button>
+              )}
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {showDiff ? (
+                <UnifiedDiffViewer
+                  key={currentFile}
+                  login={login}
+                  workspace={workspace}
+                  file={currentFile
+                    .replace(/^local-workspace\/[^/]+\//, "")
+                    .replace(/^docs\//, "")
+                    .replace(/^versioned_docs\//, "")}
+                  onClose={() => setShowDiff(false)}
+                />
+              ) : (
+                <EditorPanel
+                  content={content}
+                  setContent={setContent}
+                  currentDocPath={currentDocPath}
+                  conflict={conflict}
+                  errorLine={errorLine}
+                  saveState={saveState}
+                  workspace={workspace}
+                  refreshLocalWorkspace={refreshLocalWorkspace}
+                  onSelect={onSelect}
+                  showNewFileModal={showNewFileModal}
+                  setShowNewFileModal={setShowNewFileModal}
+                  newFileName={newFileName}
+                  setNewFileName={setNewFileName}
+                  newFileFolder={newFileFolder}
+                  setNewFileFolder={setNewFileFolder}
+                  notifyFileCreated={notifyFileCreated}
+                  newDocTemplate={newDocTemplate}
+                />
+              )}
+            </div>
           </div>
+
           <div
             className="preview-panel"
             style={{
@@ -838,6 +908,6 @@ export default function App() {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

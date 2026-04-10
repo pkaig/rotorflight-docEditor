@@ -668,4 +668,120 @@ router.get("/upstream-status", async (req, res) => {
   }
 });
 
+/* -------------------------------------------------------
+   CLEAR ALL CHANGES (restore everything from baseline)
+------------------------------------------------------- */
+router.post("/clear-all", async (req, res) => {
+  const { login, workspace } = req.body;
+
+  if (!login || !workspace) {
+    return res.status(400).json({ error: "Missing login or workspace" });
+  }
+
+  const root = path.join(process.cwd(), "workspaces", login, workspace);
+  const docs = path.join(root, "docs");
+  const versioned = path.join(root, "versioned_docs");
+  const baseline = path.join(root, "mirror");
+
+  try {
+    // restore docs/
+    if (await fs.pathExists(path.join(baseline, "docs"))) {
+      await fs.rm(docs, { recursive: true, force: true });
+      await fs.copy(path.join(baseline, "docs"), docs);
+    }
+
+    // restore versioned_docs/
+    if (await fs.pathExists(path.join(baseline, "versioned_docs"))) {
+      await fs.rm(versioned, { recursive: true, force: true });
+      await fs.copy(path.join(baseline, "versioned_docs"), versioned);
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("clear-all error:", err);
+    return res.status(500).json({ error: "Failed to clear all changes" });
+  }
+});
+
+/* -------------------------------------------------------
+   CLEAR SELECTED CHANGES (restore only listed files)
+------------------------------------------------------- */
+router.post("/clear-selected", async (req, res) => {
+  const { login, workspace, files } = req.body;
+
+  if (!login || !workspace || !Array.isArray(files)) {
+    return res
+      .status(400)
+      .json({ error: "Missing login, workspace, or files" });
+  }
+
+  const root = path.join(process.cwd(), "workspaces", login, workspace);
+  const docs = path.join(root, "docs");
+  const versioned = path.join(root, "versioned_docs");
+  const baseline = path.join(root, "mirror");
+
+  try {
+    for (const rel of files) {
+      const isVersioned = rel.startsWith("versioned_docs/");
+      const cleanRel = isVersioned ? rel.slice("versioned_docs/".length) : rel;
+
+      const wsPath = isVersioned
+        ? path.join(versioned, cleanRel)
+        : path.join(docs, cleanRel);
+
+      const basePath = isVersioned
+        ? path.join(baseline, "versioned_docs", cleanRel)
+        : path.join(baseline, "docs", cleanRel);
+
+      if (await fs.pathExists(basePath)) {
+        // restore file from baseline
+        await fs.ensureDir(path.dirname(wsPath));
+        await fs.copy(basePath, wsPath);
+      } else {
+        // file deleted in baseline → remove from workspace
+        await fs.remove(wsPath);
+      }
+
+      // remove conflict file if present
+      await fs.remove(wsPath + ".conflict");
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("clear-selected error:", err);
+    return res.status(500).json({ error: "Failed to clear selected changes" });
+  }
+});
+
+/* -------------------------------------------------------
+   GET DIFF FOR ANY FILE (workspace vs baseline)
+------------------------------------------------------- */
+router.get("/diff-file", async (req, res) => {
+  const { login, workspace, file } = req.query;
+
+  if (!login || !workspace || !file) {
+    return res.status(400).json({ error: "Missing login, workspace, or file" });
+  }
+
+  const root = path.join(process.cwd(), "workspaces", login, workspace);
+
+  const wsPath = path.join(root, "docs", file);
+  const basePath = path.join(root, "mirror", "docs", file);
+
+  try {
+    const workspaceText = (await fs.pathExists(wsPath))
+      ? await fs.readFile(wsPath, "utf8")
+      : "";
+
+    const baselineText = (await fs.pathExists(basePath))
+      ? await fs.readFile(basePath, "utf8")
+      : "";
+
+    return res.json({ workspace: workspaceText, baseline: baselineText });
+  } catch (err) {
+    console.error("diff-file error:", err);
+    return res.status(500).json({ error: "Failed to load diff" });
+  }
+});
+
 export default router;
