@@ -763,6 +763,15 @@ export default function App() {
                 changes={changes}
                 selectedChanges={selectedChanges}
                 setSelectedChanges={setSelectedChanges}
+                onOpenFile={(rawPath) => {
+                  const ws = workspace;
+
+                  // Build the full path exactly like the tree uses
+                  const fullPath = `local-workspace/${ws}/${rawPath}`;
+
+                  setWorkspace(ws);
+                  onSelect(ws, fullPath); // ← this already loads the file into the editor
+                }}
               />
             </div>
             <div className="pr-panel">
