@@ -541,7 +541,7 @@ export default function App() {
         {/* SIDEBAR */}
         <div className="sidebar">
           <div className="sidebar-top">
-            <h3>Docs</h3>
+            {/* <h3>Docs</h3> */}
 
             {(checking || updating) && (
               <div

@@ -1223,7 +1223,7 @@
   background: white;
 }
 
-/* Make the sidebar a proper column */
+/* Sidebar stays a column */
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -1236,13 +1236,15 @@
   flex-shrink: 0;
 }
 
-/* Changes panel fills remaining space */
+/* Changes panel grows but stops at 40% of viewport */
 .changes-panel {
-  flex: 1;
+  flex-shrink: 0; /* do NOT stretch to fill sidebar */
+  max-height: 40vh; /* ← the key requirement */
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-top: 1px solid #ddd;
+  background: #fafafa;
 }
 
 /* Buttons stay fixed */
@@ -1253,14 +1255,14 @@
   background: #fafafa;
 }
 
-/* The list scrolls */
+/* The list expands naturally but scrolls when needed */
 .changes-list-container {
   flex: 1;
   overflow-y: auto;
   padding: 0.5rem;
 }
 
-/* PR panel stays visible at bottom */
+/* PR panel stays fixed at bottom of the changes panel */
 .pr-panel {
   flex-shrink: 0;
   padding: 0.5rem;
