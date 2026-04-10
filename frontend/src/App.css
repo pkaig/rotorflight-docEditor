@@ -1100,3 +1100,125 @@
   border: 1px solid #bcd9ff;
   color: #1a4d8f;
 }
+
+.app-root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* header + saving */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #f0f0f0;
+  border-bottom: 1px solid #ccc;
+  flex-shrink: 0;
+}
+
+.app-header-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.saving-indicator {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+/* main layout */
+.main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* editor + preview row */
+.editor-preview-row {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  padding-top: 0.5rem; /* lift the whole window slightly */
+}
+
+/* editor column */
+.editor-column {
+  width: 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid #ddd;
+}
+
+/* toolbar */
+.editor-toolbar {
+  padding: 0.5rem;
+  border-bottom: 1px solid #ccc;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+
+/* scrollable editor/diff area */
+.editor-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  padding-bottom: 2rem; /* inner margin from bottom */
+}
+
+/* preview column */
+.preview-panel {
+  width: 50%;
+  min-width: 0;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+/* diff viewer */
+.diff-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.diff-header {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #ccc;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+
+.diff-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  padding-bottom: 2rem;
+  font-family: monospace;
+}
+
+.diff-line {
+  padding: 2px 8px;
+  white-space: pre-wrap;
+  border-bottom: 1px solid #eee;
+}
+
+.diff-added {
+  background: #e6ffed;
+}
+
+.diff-removed {
+  background: #ffeef0;
+}
+
+.diff-neutral {
+  background: white;
+}

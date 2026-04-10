@@ -40,91 +40,33 @@ export default function UnifiedDiffViewer({ login, workspace, file, onClose }) {
   const diffs = diffLines(baselineText || "", workspaceText || "");
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <h3>Changes in {file}</h3>
+    <div className="diff-root">
+      <div className="diff-header">
+        <strong>Changes in {file}</strong>
+        <button onClick={onClose} style={{ marginLeft: "1rem" }}>
+          Close Diff
+        </button>
+      </div>
 
-      <div
-        style={{
-          fontFamily: "monospace",
-          border: "1px solid #ccc",
-          borderRadius: 4,
-          overflow: "hidden",
-        }}
-      >
+      <div className="diff-scroll">
         {diffs.map((part, i) => {
-          const bg = part.added
-            ? "#e6ffed" // green
+          const cls = part.added
+            ? "diff-line diff-added"
             : part.removed
-              ? "#ffeef0" // red
-              : "white";
+              ? "diff-line diff-removed"
+              : "diff-line diff-neutral";
 
           const prefix = part.added ? "+" : part.removed ? "-" : " ";
 
           return (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                height: "100%",
-                overflow: "hidden",
-              }}
-            >
-              {/* Fixed toolbar */}
-              <div
-                style={{
-                  padding: "0.5rem 1rem",
-                  borderBottom: "1px solid #ccc",
-                  background: "#fafafa",
-                  flexShrink: 0,
-                }}
-              >
-                <strong>Changes in {file}</strong>
-                <button onClick={onClose} style={{ marginLeft: "1rem" }}>
-                  Close Diff
-                </button>
-              </div>
-
-              {/* Scrollable diff content */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: "1rem",
-                  paddingBottom: "1rem",
-                  fontFamily: "monospace",
-                }}
-              >
-                {diffs.map((part, i) => {
-                  const bg = part.added
-                    ? "#e6ffed"
-                    : part.removed
-                      ? "#ffeef0"
-                      : "white";
-
-                  const prefix = part.added ? "+" : part.removed ? "-" : " ";
-
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        background: bg,
-                        padding: "2px 8px",
-                        whiteSpace: "pre-wrap",
-                        borderBottom: "1px solid #eee",
-                      }}
-                    >
-                      {part.value.split("\n").map((line, idx) =>
-                        line.length > 0 ? (
-                          <div key={idx}>
-                            <span style={{ opacity: 0.6 }}>{prefix}</span>{" "}
-                            {line}
-                          </div>
-                        ) : null,
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            <div key={i} className={cls}>
+              {part.value.split("\n").map((line, idx) =>
+                line.length > 0 ? (
+                  <div key={idx}>
+                    <span style={{ opacity: 0.6 }}>{prefix}</span> {line}
+                  </div>
+                ) : null,
+              )}
             </div>
           );
         })}

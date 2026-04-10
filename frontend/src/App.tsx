@@ -516,46 +516,19 @@ export default function App() {
   /* MAIN UI */
   /* MAIN UI */
   return (
-    <div
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <div className="app-root">
       {editorStatus.type === "updateAvailable" && (
         <UpdateBanner {...editorStatus} />
       )}
 
-      {saving && (
-        <div
-          style={{
-            position: "absolute",
-            top: "8px",
-            right: "12px",
-            fontSize: "0.85rem",
-            color: "#666",
-          }}
-        >
-          Saving…
-        </div>
-      )}
+      {saving && <div className="saving-indicator">Saving…</div>}
 
       {user && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            padding: "0.5rem 1rem",
-            background: "#f0f0f0",
-            borderBottom: "1px solid #ccc",
-          }}
-        >
+        <div className="app-header">
           <img
             src={user.avatar_url}
             alt="avatar"
-            style={{ width: "32px", height: "32px", borderRadius: "50%" }}
+            className="app-header-avatar"
           />
           <span>
             Signed in as <strong>{user.login}</strong>
@@ -564,16 +537,9 @@ export default function App() {
       )}
 
       {/* MAIN LAYOUT */}
-      <div
-        style={{
-          display: "flex",
-          flex: 1,
-          overflow: "hidden",
-        }}
-      >
+      <div className="main-layout">
         {/* SIDEBAR */}
         <div className="sidebar">
-          {/* SIDEBAR TOP */}
           <div className="sidebar-top">
             <h3>Docs</h3>
 
@@ -825,25 +791,9 @@ export default function App() {
         )}
 
         {/* MAIN EDITOR + PREVIEW AREA */}
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            overflow: "hidden",
-          }}
-        >
+        <div className="editor-preview-row">
           {/* EDITOR COLUMN */}
-          <div
-            className="editor-container"
-            style={{
-              width: "49%",
-              minWidth: 0,
-              display: "flex",
-              flexDirection: "column",
-              height: "100%",
-              overflow: "hidden",
-            }}
-          >
+          <div className="editor-column">
             <div className="editor-toolbar">
               {!showDiff && (
                 <button onClick={() => setShowDiff(true)}>Show Diff</button>
@@ -854,7 +804,7 @@ export default function App() {
               )}
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto" }}>
+            <div className="editor-scroll-area">
               {showDiff ? (
                 <UnifiedDiffViewer
                   key={currentFile}
@@ -890,15 +840,8 @@ export default function App() {
             </div>
           </div>
 
-          <div
-            className="preview-panel"
-            style={{
-              width: "50%",
-              minWidth: 0,
-              padding: "1rem",
-              overflowY: "auto",
-            }}
-          >
+          {/* PREVIEW COLUMN */}
+          <div className="preview-panel">
             <h3>Preview</h3>
             <PreviewErrorBoundary onError={setErrorLine}>
               {currentDocPath && content.length > 0 && (
