@@ -1222,3 +1222,48 @@
 .diff-neutral {
   background: white;
 }
+
+/* Make the sidebar a proper column */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Workspace tree stays natural height */
+.sidebar-top {
+  flex-shrink: 0;
+}
+
+/* Changes panel fills remaining space */
+.changes-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 1px solid #ddd;
+}
+
+/* Buttons stay fixed */
+.changes-actions {
+  flex-shrink: 0;
+  padding: 0.5rem;
+  border-bottom: 1px solid #ccc;
+  background: #fafafa;
+}
+
+/* The list scrolls */
+.changes-list-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+/* PR panel stays visible at bottom */
+.pr-panel {
+  flex-shrink: 0;
+  padding: 0.5rem;
+  border-top: 1px solid #ccc;
+  background: #fafafa;
+}

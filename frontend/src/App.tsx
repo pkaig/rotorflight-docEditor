@@ -765,7 +765,9 @@ export default function App() {
                 setSelectedChanges={setSelectedChanges}
               />
             </div>
-            <PRPanel login={login} workspace={workspace} />
+            <div className="pr-panel">
+              <PRPanel login={login} workspace={workspace} />
+            </div>
           </div>
         </div>
 
