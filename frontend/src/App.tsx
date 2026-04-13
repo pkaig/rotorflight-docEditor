@@ -856,7 +856,12 @@ export default function App() {
             <h3>Preview</h3>
             <PreviewErrorBoundary onError={setErrorLine}>
               {currentDocPath && content.length > 0 && (
-                <Preview content={content} currentDocPath={currentDocPath} />
+                //
+                <Preview
+                  content={content}
+                  currentDocPath={currentDocPath}
+                  onError={(line) => setErrorLine(line)}
+                />
               )}
             </PreviewErrorBoundary>
           </div>
