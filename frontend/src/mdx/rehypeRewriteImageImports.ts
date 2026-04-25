@@ -1,67 +1,73 @@
 console.log("rehypeRewriteImageImports loaded");
 import { visit } from "unist-util-visit";
-import path from "path";
 
-export default function rehypeImportedImages(tree, file) {
-  console.log("rehypeImportedImages running");
-  if (!file || typeof file.path !== "string") return;
+function resolveImportPath(currentDocPath, relPath) {
+  const baseDir = currentDocPath.replace(/[^/]+$/, "");
 
-  let currentDocPath;
-
-  // Local workspace file
-  if (file.path.includes("/local-workspace/")) {
-    const after = file.path.split("/local-workspace/")[1];
-    currentDocPath = "local-workspace/" + after;
-    console.log("Detected local workspace file:", currentDocPath);
+  if (relPath.startsWith("/")) {
+    return relPath.replace(/^\//, "");
   }
 
-  // GitHub docs file
-  else if (file.path.includes("/Rotorflight-docs/")) {
-    const after = file.path.split("/Rotorflight-docs/")[1];
-    currentDocPath = "Rotorflight-docs/" + after;
-  }
+  const combined = `${baseDir}${relPath}`;
 
-  // Fallback
-  else {
-    currentDocPath = file.path;
-  }
+  const parts = combined.split("/").reduce((acc, part) => {
+    if (part === "" || part === ".") return acc;
+    if (part === "..") {
+      acc.pop();
+      return acc;
+    }
+    acc.push(part);
+    return acc;
+  }, []);
 
-  visit(tree, "mdxjsEsm", (node) => {
-    if (!node || typeof node.value !== "string") return;
+  return parts.join("/");
+}
 
-    const match = node.value.match(
-      /import\s+(\w+)\s+from\s+["'](.+\.(png|jpg|jpeg|gif|svg))["']/,
-    );
+export default function rehypeImportedImages() {
+  return (tree, file) => {
+    if (!file || typeof file.path !== "string") return;
 
-    if (!match) return;
+    let currentDocPath;
 
-    const [, varName, importPath] = match;
-
-    const resolved = path
-      .join(path.dirname(currentDocPath), importPath)
-      .replace(/\\/g, "/");
-
-    const login =
-      typeof window !== "undefined" ? localStorage.getItem("rf_login") : "";
-
-    let rewritten;
-
-    if (resolved.startsWith("local-workspace/")) {
-      // LOCAL WORKSPACE
-      const clean = resolved.replace(/^local-workspace\//, "");
-      rewritten = `/api/docs/images/local?path=${clean}&login=${encodeURIComponent(login)}`;
-      console.log("Resolved local workspace image:", {
-        resolved,
-        clean,
-        rewritten,
-      });
+    if (file.path.includes("/docs/")) {
+      const after = file.path.split("/docs/")[1];
+      currentDocPath = "docs/" + after;
     } else {
-      // GITHUB
-      rewritten = `/api/docs/image?path=${resolved}&login=${encodeURIComponent(login)}`;
+      currentDocPath = file.path;
     }
 
-    console.log("IMPORT REWRITE HIT:", { importPath, resolved, rewritten });
+    visit(tree, "mdxjsEsm", (node) => {
+      const estree = node.data?.estree;
+      if (!estree || !Array.isArray(estree.body)) return;
 
-    node.value = `export const ${varName} = "${rewritten}";`;
-  });
+      for (const stmt of estree.body) {
+        if (stmt.type !== "ImportDeclaration") continue;
+
+        const importPath = stmt.source?.value;
+        const varName = stmt.specifiers?.[0]?.local?.name;
+
+        if (!importPath || !varName) continue;
+
+        const resolved = resolveImportPath(currentDocPath, importPath);
+
+        const login =
+          typeof window !== "undefined" ? localStorage.getItem("rf_login") : "";
+
+        let rewritten;
+
+        if (resolved.startsWith("local-workspace/")) {
+          const clean = resolved.replace(/^local-workspace\//, "");
+          rewritten = `/api/docs/images/local?path=${clean}&login=${encodeURIComponent(
+            login,
+          )}`;
+        } else {
+          rewritten = `/api/images?path=${resolved}&login=${encodeURIComponent(
+            login,
+          )}`;
+        }
+
+        node.value = `export const ${varName} = "${rewritten}";`;
+      }
+    });
+  };
 }
