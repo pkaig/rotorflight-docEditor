@@ -1,24 +1,17 @@
-import { useEffect, useMemo } from "react";
-import { unified } from "unified";
+import { useEffect, useState } from "react";
 import { VFile } from "vfile";
-import { visit } from "unist-util-visit";
+
+import { compile } from "@mdx-js/mdx/lib/compile.js";
+import * as realRuntime from "react/jsx-runtime";
 
 import remarkParse from "remark-parse";
+import remarkMdx from "remark-mdx";
 import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
 import remarkAdmonitions from "../remarkAdmonitions";
-import remarkRehype from "remark-rehype";
-import remarkMdx from "remark-mdx";
-import remarkFrontmatter from "remark-frontmatter";
-import remarkMdxFrontmatter from "remark-mdx-frontmatter";
-
-import rehypeImages from "../mdx/rehypeImagesPlugin";
 import remarkImportedImages from "../mdx/remarkImportedImages";
 
-import { mdxjs } from "micromark-extension-mdxjs";
-import { mdxFromMarkdown, mdxToMarkdown } from "mdast-util-mdx";
-
-import rehypeStringify from "rehype-stringify";
+import rehypeImages from "../mdx/rehypeImagesPlugin";
 
 export default function Preview({
   content,
@@ -43,66 +36,97 @@ export default function Preview({
     );
   }
 
-  // MARKDOWN / MDX MODE
-  const { html, error } = useMemo(() => {
-    if (!content) return { html: "", error: null };
+  const [MDXContent, setMDXContent] = useState<any>(null);
+  const [error, setError] = useState<any>(null);
 
-    try {
-      const vfile = new VFile({
-        value: content,
-        path: currentDocPath,
-      });
+  useEffect(() => {
+    let cancelled = false;
 
-      const file = unified()
-        .use(remarkParse)
-        .use(remarkFrontmatter, ["yaml"]) // ⭐ parse YAML
-        .use(remarkMdxFrontmatter) // ⭐ convert YAML → MDX ESM
-        .use(remarkMdx) // ⭐ now MDX imports are parsed correctly
-        .use({
-          settings: {
-            extensions: [mdxjs()],
-            mdastExtensions: [mdxFromMarkdown()],
-          },
-        })
-        .use(remarkGfm)
-        .use(remarkDirective)
-        .use(remarkAdmonitions)
-        .use(() => (tree, file) => {
-          console.log("🟦 PRE-PLUGIN AST NODES:");
-          let count = 0;
-          visit(tree, (node) => {
-            if (node.type === "mdxjsEsm") {
-              console.log("Found mdxjsEsm node:", node);
-              count++;
-            }
-          });
-          console.log("Total mdxjsEsm nodes:", count);
-        })
-        .use(remarkImportedImages) // ⭐ now sees mdxjsEsm nodes
-        .use(remarkRehype, { allowDangerousHtml: true })
-        .use(rehypeImages, currentDocPath)
-        .use(rehypeStringify)
-        .processSync(vfile);
+    async function compileMdx() {
+      if (!content) {
+        setMDXContent(null);
+        return;
+      }
 
-      return { html: String(file), error: null };
-    } catch (err) {
-      const msg = err.message || String(err);
-      const match = msg.match(/line (\d+)/i);
-      const line = match ? parseInt(match[1], 10) : null;
+      try {
+        const vfile = new VFile({
+          value: content,
+          path: currentDocPath,
+        });
 
-      return {
-        html: "",
-        error: { message: msg, line },
-      };
+        const isMdx = currentDocPath.endsWith(".mdx");
+
+        // ⭐ FINAL PIPELINE SPLIT
+        const remarkPlugins = isMdx
+          ? [
+              remarkParse,
+              remarkMdx,
+              remarkGfm,
+              remarkDirective,
+              remarkAdmonitions,
+              remarkImportedImages, // MDX: rewrite imports
+            ]
+          : [
+              remarkParse,
+              remarkImportedImages, // MD: rewrite imports only
+            ];
+
+        const rehypePlugins = [
+          [rehypeImages, currentDocPath], // MD + MDX: rewrite <img>
+        ];
+
+        const compiled = await compile(vfile, {
+          jsx: isMdx,
+          jsxImportSource: isMdx ? "react" : undefined,
+          providerImportSource: isMdx ? "react" : undefined,
+          useDynamicImport: isMdx,
+          outputFormat: "function-body",
+          development: false,
+          allowDangerousHtml: true,
+          remarkPlugins,
+          rehypePlugins,
+        });
+
+        const wrapped = `
+          export default function(runtime) {
+            const { Fragment, jsx, jsxs } = runtime;
+            ${compiled.value}
+          }
+        `;
+
+        const blob = new Blob([wrapped], { type: "text/javascript" });
+        const url = URL.createObjectURL(blob);
+
+        const mod = await import(url);
+        const evaluated = mod.default(realRuntime);
+
+        if (!cancelled) {
+          setMDXContent(() => evaluated.default);
+          setError(null);
+        }
+
+        URL.revokeObjectURL(url);
+      } catch (err: any) {
+        if (!cancelled) {
+          const msg = err.message || String(err);
+          const match = msg.match(/line (\d+)/i);
+          const line = match ? parseInt(match[1], 10) : null;
+
+          setError({ message: msg, line });
+          setMDXContent(null);
+        }
+      }
     }
+
+    compileMdx();
+    return () => {
+      cancelled = true;
+    };
   }, [content, currentDocPath]);
 
   useEffect(() => {
-    if (error && onError) {
-      onError(error.line || null);
-    } else if (onError) {
-      onError(null);
-    }
+    if (error && onError) onError(error.line || null);
+    else onError(null);
   }, [error, onError]);
 
   if (error) {
@@ -128,7 +152,13 @@ export default function Preview({
     );
   }
 
+  if (!MDXContent) {
+    return <div className="markdown-body" />;
+  }
+
   return (
-    <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+    <div className="markdown-body">
+      <MDXContent components={{}} />
+    </div>
   );
 }

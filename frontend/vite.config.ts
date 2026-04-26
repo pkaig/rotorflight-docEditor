@@ -8,18 +8,17 @@ import remarkImportedImages from "./src/mdx/remarkImportedImages";
 export default defineConfig({
   plugins: [
     react(),
-    {
-      ...mdx({
-        remarkPlugins: [remarkImportedImages],
-        rehypePlugins: [rehypeImages],
-        mdxOptions: {
-          providerImportSource: "@mdx-js/react",
-          development: true,
-          filePath: true,
-        },
-      }),
-      enforce: "pre",
-    },
+    mdx({
+      include: ["src/**/*.mdx"], // ONLY compile real MDX files
+      exclude: ["src/Preview.tsx"], // DO NOT touch your preview compiler
+      remarkPlugins: [remarkImportedImages],
+      rehypePlugins: [rehypeImages],
+      mdxOptions: {
+        providerImportSource: "@mdx-js/react",
+        development: true,
+        filePath: true,
+      },
+    }),
   ],
   server: {
     proxy: {
