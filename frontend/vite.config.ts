@@ -1,25 +1,29 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import mdx from "@mdx-js/rollup";
 
-import rehypeImages from "./src/mdx/rehypeImagesPlugin";
-import remarkImportedImages from "./src/mdx/remarkImportedImages";
+// IMPORTANT: do NOT import @mdx-js/rollup here
+// Your Preview.tsx handles MDX manually.
 
 export default defineConfig({
   plugins: [
     react(),
-    mdx({
-      include: ["src/**/*.mdx"], // ONLY compile real MDX files
-      exclude: ["src/Preview.tsx"], // DO NOT touch your preview compiler
-      remarkPlugins: [remarkImportedImages],
-      rehypePlugins: [rehypeImages],
-      mdxOptions: {
-        providerImportSource: "@mdx-js/react",
-        development: true,
-        filePath: true,
+
+    // Prevent Vite from transforming MDX files
+    {
+      name: "disable-mdx-transform",
+      enforce: "pre",
+      transform(code, id) {
+        if (id.endsWith(".mdx")) {
+          // Return raw MDX content untouched
+          return {
+            code: `export default ${JSON.stringify(code)}`,
+            map: null,
+          };
+        }
       },
-    }),
+    },
   ],
+
   server: {
     proxy: {
       "/api": {

@@ -10,8 +10,19 @@ import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
 import remarkAdmonitions from "../remarkAdmonitions";
 import remarkImportedImages from "../mdx/remarkImportedImages";
+import remarkStripImports from "../mdx/remarkStripImports";
 
 import rehypeImages from "../mdx/rehypeImagesPlugin";
+
+import Tabs from "../mdx/Tabs";
+import TabItem from "../mdx/TabItem";
+import tabStyles from "../css/tabs.module.css";
+
+// debug toggles
+const debug = true;
+const debugTimer = true;
+const debugAst = true;
+const debugEval = true;
 
 export default function Preview({
   content,
@@ -49,44 +60,74 @@ export default function Preview({
       }
 
       try {
+        const isMdx = currentDocPath.endsWith(".mdx");
+
+        if (debug) {
+          console.group("📄 MDX DEBUG");
+          console.log("File:", currentDocPath);
+          console.log("Type:", isMdx ? "MDX" : "Markdown");
+          console.log("debugTimer:", debugTimer);
+          console.log("debugAst:", debugAst);
+          console.log("debugEval:", debugEval);
+        }
+
         const vfile = new VFile({
           value: content,
           path: currentDocPath,
         });
 
-        const isMdx = currentDocPath.endsWith(".mdx");
-
         // ⭐ FINAL PIPELINE SPLIT
         const remarkPlugins = isMdx
           ? [
-              remarkParse,
-              remarkMdx,
+              remarkStripImports,
               remarkGfm,
               remarkDirective,
               remarkAdmonitions,
-              remarkImportedImages, // MDX: rewrite imports
+              remarkImportedImages,
             ]
-          : [
-              remarkParse,
-              remarkImportedImages, // MD: rewrite imports only
-            ];
+          : [remarkGfm, remarkImportedImages];
 
-        const rehypePlugins = [
-          [rehypeImages, currentDocPath], // MD + MDX: rewrite <img>
-        ];
+        const rehypePlugins = [[rehypeImages, currentDocPath]];
 
-        const compiled = await compile(vfile, {
-          jsx: isMdx,
-          jsxImportSource: isMdx ? "react" : undefined,
-          providerImportSource: isMdx ? "react" : undefined,
-          useDynamicImport: isMdx,
-          outputFormat: "function-body",
-          development: false,
-          allowDangerousHtml: true,
-          remarkPlugins,
-          rehypePlugins,
-        });
+        // ⭐ TIMING PROFILER
+        let timing = {};
+        const time = (label, fn) => {
+          if (!debugTimer) return fn();
+          const start = performance.now();
+          const result = fn();
+          const end = performance.now();
+          timing[label] = (end - start).toFixed(2) + "ms";
+          return result;
+        };
 
+        // ⭐ Compile with timing
+        const compiled = await time("compile", () =>
+          compile(vfile, {
+            jsx: isMdx,
+            jsxImportSource: isMdx ? "react" : undefined,
+            providerImportSource: isMdx ? "react" : undefined,
+            useDynamicImport: isMdx,
+            outputFormat: "function-body",
+            development: false,
+            allowDangerousHtml: true,
+            remarkPlugins,
+            rehypePlugins,
+          }),
+        );
+
+        if (debugTimer) {
+          console.group("⏱️ MDX Plugin Timing");
+          console.table(timing);
+          console.groupEnd();
+        }
+
+        if (debugEval) {
+          console.group("🧩 Compiled Output");
+          console.log(compiled.value);
+          console.groupEnd();
+        }
+
+        // ⭐ Wrap module
         const wrapped = `
           export default function(runtime) {
             const { Fragment, jsx, jsxs } = runtime;
@@ -94,11 +135,32 @@ export default function Preview({
           }
         `;
 
+        if (debugEval) {
+          console.group("📦 Wrapped Module");
+          console.log(wrapped);
+          console.groupEnd();
+        }
+
         const blob = new Blob([wrapped], { type: "text/javascript" });
         const url = URL.createObjectURL(blob);
 
+        if (debugEval) console.log("Blob URL:", url);
+
         const mod = await import(url);
+
+        if (debugEval) {
+          console.group("📥 Imported Module");
+          console.log(mod);
+          console.groupEnd();
+        }
+
         const evaluated = mod.default(realRuntime);
+
+        if (debugEval) {
+          console.group("⚙️ Evaluated MDX");
+          console.log(evaluated);
+          console.groupEnd();
+        }
 
         if (!cancelled) {
           setMDXContent(() => evaluated.default);
@@ -107,6 +169,20 @@ export default function Preview({
 
         URL.revokeObjectURL(url);
       } catch (err: any) {
+        if (debugAst) {
+          console.group("🌳 AST Dump (on error)");
+          try {
+            console.log("Tree:", err.tree || "(no tree available)");
+          } catch {}
+          console.groupEnd();
+        }
+
+        if (debugEval || debugTimer || debugAst) {
+          console.group("❌ MDX ERROR");
+          console.error(err);
+          console.groupEnd();
+        }
+
         if (!cancelled) {
           const msg = err.message || String(err);
           const match = msg.match(/line (\d+)/i);
@@ -158,7 +234,7 @@ export default function Preview({
 
   return (
     <div className="markdown-body">
-      <MDXContent components={{}} />
+      <MDXContent components={{ Tabs, TabItem, tabStyles }} />
     </div>
   );
 }
