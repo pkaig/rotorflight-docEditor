@@ -4,8 +4,6 @@ import { VFile } from "vfile";
 import { compile } from "@mdx-js/mdx/lib/compile.js";
 import * as realRuntime from "react/jsx-runtime";
 
-import remarkParse from "remark-parse";
-import remarkMdx from "remark-mdx";
 import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
 import remarkAdmonitions from "../remarkAdmonitions";
@@ -103,11 +101,8 @@ export default function Preview({
         // ⭐ Compile with timing
         const compiled = await time("compile", () =>
           compile(vfile, {
-            jsx: isMdx,
-            jsxImportSource: isMdx ? "react" : undefined,
-            providerImportSource: isMdx ? "react" : undefined,
-            useDynamicImport: isMdx,
-            outputFormat: "function-body",
+            jsx: false, // ⭐ emit runtime-ready JS
+            outputFormat: "function-body", // ⭐ works with our wrapper
             development: false,
             allowDangerousHtml: true,
             remarkPlugins,
@@ -127,10 +122,10 @@ export default function Preview({
           console.groupEnd();
         }
 
-        // ⭐ Wrap module
+        // ⭐ Wrap module — inject tabStyles into JS scope
         const wrapped = `
           export default function(runtime) {
-            const { Fragment, jsx, jsxs } = runtime;
+            const tabStyles = runtime.tabStyles;
             ${compiled.value}
           }
         `;
@@ -154,7 +149,11 @@ export default function Preview({
           console.groupEnd();
         }
 
-        const evaluated = mod.default(realRuntime);
+        // ⭐ Inject runtime + tabStyles
+        const evaluated = mod.default({
+          ...realRuntime,
+          tabStyles,
+        });
 
         if (debugEval) {
           console.group("⚙️ Evaluated MDX");
@@ -234,7 +233,7 @@ export default function Preview({
 
   return (
     <div className="markdown-body">
-      <MDXContent components={{ Tabs, TabItem, tabStyles }} />
+      <MDXContent components={{ Tabs, TabItem }} />
     </div>
   );
 }
