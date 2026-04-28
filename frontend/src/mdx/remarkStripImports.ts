@@ -25,6 +25,7 @@ export default function remarkStripImports() {
     visit(
       tree,
       (node) => {
+        // Track table entry/exit
         if (
           node.type === "table" ||
           node.type === "tableRow" ||
@@ -32,10 +33,16 @@ export default function remarkStripImports() {
         ) {
           return true;
         }
-        return node.type === "mdxjsEsm";
+
+        // ⭐ Handle ALL import node types
+        return (
+          node.type === "mdxjsEsm" ||
+          node.type === "import" ||
+          node.type === "export"
+        );
       },
       (node, index, parent) => {
-        // Track table entry/exit
+        // Track table depth
         if (
           node.type === "table" ||
           node.type === "tableRow" ||
@@ -54,49 +61,68 @@ export default function remarkStripImports() {
           tableDepth++;
         }
 
-        // ⭐ Skip mdxjsEsm inside tables
-        if (tableDepth > 0) {
+        // ⭐ Skip imports inside tables
+        if (tableDepth > 0) return;
+
+        // --- Case 1: mdxjsEsm (string-based) ---
+        if (node.type === "mdxjsEsm") {
+          const value = String(node.value || "").trim();
+          if (!value.startsWith("import ")) return;
+
+          const match = value.match(/^import\s+(.+?)\s+from\s+['"](.*)['"]/);
+          if (!match) return;
+
+          const [, identifiers, importPath] = match;
+          rewriteImport(node, identifiers, importPath, file);
           return;
         }
 
-        // --- Normal mdxjsEsm import rewriting ---
-        const value = String(node.value || "").trim();
-        if (!value.startsWith("import ")) return;
+        // --- Case 2: import/export nodes (ESTree-based) ---
+        if (node.type === "import" || node.type === "export") {
+          const importPath = node.source?.value;
+          if (!importPath) return;
 
-        const match = value.match(/^import\s+(.+?)\s+from\s+['"](.*)['"]/);
-        if (!match) return;
-
-        const [, identifiers, importPath] = match;
-        const resolved = joinPath(file.path, importPath);
-
-        const names = [];
-
-        if (identifiers.startsWith("{")) {
-          identifiers
-            .replace(/[{}]/g, "")
-            .split(",")
-            .map((s) => s.trim())
+          const identifiers = node.specifiers
+            ?.map((s) => s.local?.name)
             .filter(Boolean)
-            .forEach((n) => names.push(n));
-        } else if (identifiers.startsWith("*")) {
-          const ns = identifiers.split("as")[1]?.trim();
-          if (ns) names.push(ns);
-        } else {
-          names.push(identifiers.trim());
+            .join(", ");
+
+          if (!identifiers) return;
+
+          rewriteImport(node, identifiers, importPath, file);
         }
-
-        const isMedia = /\.(png|jpe?g|gif|svg|webp|mp4)$/i.test(resolved);
-
-        const decls = names
-          .map((name) =>
-            isMedia
-              ? `const ${name} = "/api/docs/images/local?path=${encodeURIComponent(resolved)}";`
-              : `const ${name} = null;`,
-          )
-          .join("\n");
-
-        node.value = decls;
       },
     );
   };
+}
+
+// ⭐ Shared import rewriting logic
+function rewriteImport(node, identifiers, importPath, file) {
+  const resolved = joinPath(file.path, importPath);
+
+  const names = identifiers
+    .replace(/[{}]/g, "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const isMedia = /\.(png|jpe?g|gif|svg|webp|mp4)$/i.test(resolved);
+
+  const decls = names
+    .map((name) =>
+      isMedia
+        ? `const ${name} = "/api/docs/images/local?path=${encodeURIComponent(
+            resolved,
+          )}";`
+        : `const ${name} = null;`,
+    )
+    .join("\n");
+
+  // Force mdxjsEsm output
+  node.type = "mdxjsEsm";
+  node.value = decls;
+
+  // Remove ESTree fields if present
+  delete node.source;
+  delete node.specifiers;
 }
