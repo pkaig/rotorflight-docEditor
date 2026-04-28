@@ -74,16 +74,17 @@ export default function Preview({
           path: currentDocPath,
         });
 
-        // ⭐ FINAL PIPELINE SPLIT
         const remarkPlugins = isMdx
           ? [
-              remarkStripImports,
-              remarkGfm,
               remarkDirective,
               remarkAdmonitions,
               remarkImportedImages,
+              remarkStripImports, // guarded by .mdx path
             ]
-          : [remarkGfm, remarkImportedImages];
+          : [
+              // No remarkGfm here – avoids inTable crash
+              remarkImportedImages,
+            ];
 
         const rehypePlugins = [[rehypeImages, currentDocPath]];
 

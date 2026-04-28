@@ -18,58 +18,85 @@ function joinPath(base, relative) {
 
 export default function remarkStripImports() {
   return (tree, file) => {
-    const imports = new Map();
+    if (!file.path.endsWith(".mdx")) return;
 
-    // 1. Capture ALL imports and remove them
-    visit(tree, "mdxjsEsm", (node, index, parent) => {
-      if (!parent) return;
+    let tableDepth = 0;
 
-      const value = node.value.trim();
+    visit(
+      tree,
+      (node) => {
+        if (
+          node.type === "table" ||
+          node.type === "tableRow" ||
+          node.type === "tableCell"
+        ) {
+          return true;
+        }
+        return node.type === "mdxjsEsm";
+      },
+      (node, index, parent) => {
+        // Track table entry/exit
+        if (
+          node.type === "table" ||
+          node.type === "tableRow" ||
+          node.type === "tableCell"
+        ) {
+          tableDepth++;
+          return;
+        }
 
-      // Match ANY import: import X from "..."
-      const match = value.match(/^import\s+(\w+)\s+from\s+['"](.*)['"]/);
+        if (
+          parent &&
+          (parent.type === "table" ||
+            parent.type === "tableRow" ||
+            parent.type === "tableCell")
+        ) {
+          tableDepth++;
+        }
 
-      if (match) {
-        const [, identifier, importPath] = match;
+        // ⭐ Skip mdxjsEsm inside tables
+        if (tableDepth > 0) {
+          return;
+        }
 
+        // --- Normal mdxjsEsm import rewriting ---
+        const value = String(node.value || "").trim();
+        if (!value.startsWith("import ")) return;
+
+        const match = value.match(/^import\s+(.+?)\s+from\s+['"](.*)['"]/);
+        if (!match) return;
+
+        const [, identifiers, importPath] = match;
         const resolved = joinPath(file.path, importPath);
 
-        imports.set(identifier, resolved);
+        const names = [];
 
-        parent.children.splice(index, 1);
-      }
-    });
-
-    // 2. Rewrite references to imported identifiers
-    visit(tree, (node) => {
-      // <Component prop={IDENTIFIER}>
-      if (node.type === "mdxJsxExpressionAttribute") {
-        const id = node.value?.trim();
-        if (imports.has(id)) {
-          const resolved = imports.get(id);
-
-          // Image import → rewrite to API URL
-          if (/\.(png|jpg|jpeg|gif|svg|webp)$/i.test(resolved)) {
-            node.value = `"${`/api/docs/images/local?path=${encodeURIComponent(
-              resolved,
-            )}`}"`;
-          } else {
-            // Non-image import → replace with null
-            node.value = "null";
-          }
-        }
-      }
-
-      // <Component IDENTIFIER={...}>
-      if (node.type === "mdxJsxAttribute" && imports.has(node.value)) {
-        const resolved = imports.get(node.value);
-
-        if (/\.(png|jpg|jpeg|gif|svg|webp)$/i.test(resolved)) {
-          node.value = `/api/docs/images/local?path=${encodeURIComponent(resolved)}`;
+        if (identifiers.startsWith("{")) {
+          identifiers
+            .replace(/[{}]/g, "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .forEach((n) => names.push(n));
+        } else if (identifiers.startsWith("*")) {
+          const ns = identifiers.split("as")[1]?.trim();
+          if (ns) names.push(ns);
         } else {
-          node.value = null;
+          names.push(identifiers.trim());
         }
-      }
-    });
+
+        const isMedia = /\.(png|jpe?g|gif|svg|webp|mp4)$/i.test(resolved);
+
+        const decls = names
+          .map((name) =>
+            isMedia
+              ? `const ${name} = "/api/docs/images/local?path=${encodeURIComponent(resolved)}";`
+              : `const ${name} = null;`,
+          )
+          .join("\n");
+
+        node.value = decls;
+      },
+    );
   };
 }
