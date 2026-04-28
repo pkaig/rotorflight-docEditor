@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { VFile } from "vfile";
 
 import { compile } from "@mdx-js/mdx/lib/compile.js";
-import * as realRuntime from "react/jsx-runtime";
+import * as jsxRuntime from "react/jsx-runtime";
 
-import remarkMdx from "remark-mdx";
 import remarkDirective from "remark-directive";
 import remarkAdmonitions from "../remarkAdmonitions";
 import remarkImportedImages from "../mdx/remarkImportedImages";
@@ -72,7 +71,6 @@ export default function Preview({
 
       let compiled;
 
-      // ⭐ Attempt MDX compile
       try {
         compiled = await compile(vfile, {
           jsx: false,
@@ -81,9 +79,10 @@ export default function Preview({
           allowDangerousHtml: true,
           remarkPlugins,
           rehypePlugins,
+          useDynamicImport: false,
+          providerImportSource: false,
         });
       } catch (err: any) {
-        // ⭐ Parse error → fallback
         const msg = err?.message || String(err);
         const match = msg.match(/line (\d+)/i);
         const line = match ? parseInt(match[1], 10) : null;
@@ -95,21 +94,37 @@ export default function Preview({
         return;
       }
 
-      // ⭐ Evaluate compiled MDX
+      if (typeof compiled.value === "string") {
+        const code = compiled.value as string;
+        if (code.includes("import ") || code.includes("export ")) {
+          console.error(
+            "❌ RAW IMPORT/EXPORT STILL IN COMPILED OUTPUT for",
+            currentDocPath,
+          );
+          console.error(code);
+        }
+      }
+
       try {
         const wrapped = `
-          export default function(runtime) {
-            const tabStyles = runtime.tabStyles;
-            ${compiled.value}
-          }
-        `;
+export default function(runtime) {
+  const { Fragment, jsx, jsxs } = runtime;
+  const Tabs = runtime.Tabs;
+  const TabItem = runtime.TabItem;
+  const tabStyles = runtime.tabStyles;
+
+  ${compiled.value}
+}
+`;
 
         const blob = new Blob([wrapped], { type: "text/javascript" });
         const url = URL.createObjectURL(blob);
         const mod = await import(url);
 
         const evaluated = mod.default({
-          ...realRuntime,
+          ...jsxRuntime,
+          Tabs,
+          TabItem,
           tabStyles,
         });
 
@@ -120,7 +135,6 @@ export default function Preview({
 
         URL.revokeObjectURL(url);
       } catch (err: any) {
-        // ⭐ Eval error → fallback
         const msg = err?.message || String(err);
         const match = msg.match(/line (\d+)/i);
         const line = match ? parseInt(match[1], 10) : null;
@@ -138,34 +152,33 @@ export default function Preview({
     };
   }, [content, currentDocPath]);
 
-  // Notify editor for line highlighting
   useEffect(() => {
     if (error && onError) onError(error.line || null);
     else onError(null);
   }, [error, onError]);
 
-  // if (error) {
-  //   return (
-  //     <div
-  //       style={{
-  //         borderLeft: "6px solid #e53935",
-  //         background: "#ffebee",
-  //         padding: "1rem",
-  //         borderRadius: 6,
-  //         margin: "1rem 0",
-  //         fontFamily: "system-ui, sans-serif",
-  //       }}
-  //     >
-  //       <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>
-  //         Preview Error
-  //       </div>
-  // <div style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
-  //   {error.message}
-  //   {error.line && `\n\nPossible issue near line ${error.line}.`}
-  // </div>;
-  //     </div>
-  //   );
-  // }
+  if (error) {
+    return (
+      <div
+        style={{
+          borderLeft: "6px solid #e53935",
+          background: "#ffebee",
+          padding: "1rem",
+          borderRadius: 6,
+          margin: "1rem 0",
+          fontFamily: "system-ui, sans-serif",
+        }}
+      >
+        <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>
+          Preview Error
+        </div>
+        <div style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+          {error.message}
+          {error.line && `\n\nPossible issue near line ${error.line}.`}
+        </div>
+      </div>
+    );
+  }
 
   if (!MDXContent) {
     return <div className="markdown-body" />;
@@ -190,18 +203,14 @@ export default function Preview({
       {rawMode ? (
         renderFallback(content, error?.line, error?.message)
       ) : (
-        <MDXContent key={currentDocPath} components={{ Tabs, TabItem }} />
+        <MDXContent components={{ Tabs, TabItem }} />
       )}
     </div>
   );
 }
 
 /* -------------------------------------------------------------
-   ⭐ Fallback Renderer
-   - line numbers
-   - error line highlight
-   - tooltip on hover
-   - lightweight syntax highlighting
+   Fallback Renderer
 ------------------------------------------------------------- */
 
 function renderFallback(
@@ -257,16 +266,12 @@ function renderFallback(
   );
 }
 
-/* -------------------------------------------------------------
-   ⭐ Minimal syntax highlighter (no dependencies)
-------------------------------------------------------------- */
-
 function syntaxColor(line: string) {
-  if (line.trim().startsWith("#")) return "#005cc5"; // headings
-  if (line.trim().startsWith("import")) return "#d73a49"; // imports
+  if (line.trim().startsWith("#")) return "#005cc5";
+  if (line.trim().startsWith("import")) return "#d73a49";
   if (line.trim().startsWith("export")) return "#d73a49";
-  if (line.includes(":::")) return "#6f42c1"; // admonitions
-  if (line.trim().startsWith("* ")) return "#22863a"; // lists
-  if (line.includes("`")) return "#e36209"; // inline code
+  if (line.includes(":::")) return "#6f42c1";
+  if (line.trim().startsWith("* ")) return "#22863a";
+  if (line.includes("`")) return "#e36209";
   return "inherit";
 }
