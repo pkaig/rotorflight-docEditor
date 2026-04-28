@@ -233,7 +233,7 @@ export default function Preview({
 
   return (
     <div className="markdown-body">
-      <MDXContent components={{ Tabs, TabItem }} />
+      <MDXContent key={currentDocPath} components={{ Tabs, TabItem }} />
     </div>
   );
 }
