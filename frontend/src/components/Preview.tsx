@@ -6,7 +6,6 @@ import * as jsxRuntime from "react/jsx-runtime";
 
 import remarkDirective from "remark-directive";
 import remarkAdmonitions from "../remarkAdmonitions";
-import remarkImportedImages from "../mdx/remarkImportedImages";
 import remarkStripImports from "../mdx/remarkStripImports";
 
 import rehypeImages from "../mdx/rehypeImagesPlugin";
@@ -20,6 +19,11 @@ export default function Preview({
   currentDocPath,
   onError = () => {},
 }) {
+  console.log("🧭 Preview render:", {
+    path: currentDocPath,
+    contentLen: content?.length ?? 0,
+  });
+
   const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath);
 
   // IMAGE MODE
@@ -43,11 +47,22 @@ export default function Preview({
   const [rawMode, setRawMode] = useState(false);
 
   useEffect(() => {
+    console.log("🔁 useEffect fired:", { path: currentDocPath });
+
     let cancelled = false;
+
+    // hard reset on file/content change to avoid latching
+    setError(null);
+    setMDXContent(null);
+    setRawMode(false);
 
     async function compileMdx() {
       if (!content) {
-        setMDXContent(null);
+        console.log("⚪ no content for", currentDocPath);
+        if (!cancelled) {
+          setMDXContent(null);
+          setError(null);
+        }
         return;
       }
 
@@ -60,16 +75,16 @@ export default function Preview({
 
       const remarkPlugins = isMdx
         ? [
+            // must be first
             remarkDirective,
             remarkAdmonitions,
-            remarkImportedImages,
             remarkStripImports,
           ]
-        : [remarkImportedImages];
+        : [];
 
       const rehypePlugins = [[rehypeImages, currentDocPath]];
 
-      let compiled;
+      let compiled: any;
 
       try {
         compiled = await compile(vfile, {
@@ -82,20 +97,17 @@ export default function Preview({
           useDynamicImport: false,
           providerImportSource: false,
         });
-      } catch (err: any) {
-        const msg = err?.message || String(err);
-        const match = msg.match(/line (\d+)/i);
-        const line = match ? parseInt(match[1], 10) : null;
 
-        if (!cancelled) {
-          setError({ message: msg, line });
-          setMDXContent(() => () => renderFallback(content, line, msg));
-        }
-        return;
-      }
+        console.log("📦 COMPILED OK:", currentDocPath);
 
-      if (typeof compiled.value === "string") {
-        const code = compiled.value as string;
+        const code = String(compiled.value || "");
+        console.log(
+          "🧾 COMPILED CODE (first 400 chars) for",
+          currentDocPath,
+          ":\n",
+          code.slice(0, 400),
+        );
+
         if (code.includes("import ") || code.includes("export ")) {
           console.error(
             "❌ RAW IMPORT/EXPORT STILL IN COMPILED OUTPUT for",
@@ -103,51 +115,77 @@ export default function Preview({
           );
           console.error(code);
         }
-      }
 
-      try {
-        const wrapped = `
+        try {
+          const wrapped = `
 export default function(runtime) {
   const { Fragment, jsx, jsxs } = runtime;
   const Tabs = runtime.Tabs;
   const TabItem = runtime.TabItem;
   const tabStyles = runtime.tabStyles;
 
-  ${compiled.value}
+  ${code}
 }
 `;
 
-        const blob = new Blob([wrapped], { type: "text/javascript" });
-        const url = URL.createObjectURL(blob);
-        const mod = await import(url);
+          const blob = new Blob([wrapped], { type: "text/javascript" });
+          const url =
+            URL.createObjectURL(blob) + `#${currentDocPath}-${Date.now()}`;
+          console.log("🧩 importing module URL:", url);
 
-        const evaluated = mod.default({
-          ...jsxRuntime,
-          Tabs,
-          TabItem,
-          tabStyles,
-        });
+          const mod = await import(url);
+          console.log("📥 imported module keys:", Object.keys(mod));
 
-        if (!cancelled) {
-          setMDXContent(() => evaluated.default);
-          setError(null);
+          const evaluated = mod.default({
+            ...jsxRuntime,
+            Tabs,
+            TabItem,
+            tabStyles,
+          });
+
+          console.log("🧱 evaluated result type:", typeof evaluated, evaluated);
+
+          if (!cancelled) {
+            const Component =
+              evaluated && evaluated.default ? evaluated.default : evaluated;
+            console.log("🧱 setting MDXContent for", currentDocPath, {
+              hasDefault: !!evaluated?.default,
+            });
+            setMDXContent(() => Component);
+            setError(null);
+          }
+
+          URL.revokeObjectURL(url);
+        } catch (err: any) {
+          const msg = err?.message || String(err);
+          const match = msg.match(/line (\d+)/i);
+          const line = match ? parseInt(match[1], 10) : null;
+
+          console.error("💥 EVAL ERROR for", currentDocPath, msg);
+
+          if (!cancelled) {
+            setError({ message: msg, line, path: currentDocPath });
+            setMDXContent(() => () => renderFallback(content, line, msg));
+          }
         }
-
-        URL.revokeObjectURL(url);
       } catch (err: any) {
         const msg = err?.message || String(err);
         const match = msg.match(/line (\d+)/i);
         const line = match ? parseInt(match[1], 10) : null;
 
+        console.error("💥 COMPILE ERROR for", currentDocPath, msg);
+
         if (!cancelled) {
-          setError({ message: msg, line });
+          setError({ message: msg, line, path: currentDocPath });
           setMDXContent(() => () => renderFallback(content, line, msg));
         }
       }
     }
 
     compileMdx();
+
     return () => {
+      console.log("🧹 cleanup for", currentDocPath);
       cancelled = true;
     };
   }, [content, currentDocPath]);
@@ -156,6 +194,13 @@ export default function(runtime) {
     if (error && onError) onError(error.line || null);
     else onError(null);
   }, [error, onError]);
+
+  console.log("🎛 render state:", {
+    path: currentDocPath,
+    hasMDXContent: !!MDXContent,
+    errorPath: error?.path,
+    errorMsg: error?.message,
+  });
 
   if (error) {
     return (
@@ -203,7 +248,7 @@ export default function(runtime) {
       {rawMode ? (
         renderFallback(content, error?.line, error?.message)
       ) : (
-        <MDXContent components={{ Tabs, TabItem }} />
+        <MDXContent key={currentDocPath} components={{ Tabs, TabItem }} />
       )}
     </div>
   );
