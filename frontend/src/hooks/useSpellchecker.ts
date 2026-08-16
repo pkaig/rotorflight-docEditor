@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   addProjectWord,
+  getSuggestions,
   isCorrect,
   isProjectWord,
   loadProjectWords,
@@ -33,6 +34,7 @@ export function useSpellchecker(login: string | null, workspace: string | null) 
   }, [key, login, workspace]);
 
   const checkWord = useCallback((word: string) => isCorrect(word), []);
+  const suggest = useCallback((word: string) => getSuggestions(word), []);
 
   const addWord = useCallback(
     async (word: string) => {
@@ -42,5 +44,5 @@ export function useSpellchecker(login: string | null, workspace: string | null) 
     [login, workspace],
   );
 
-  return { ready, checkWord, isProjectWord, addWord };
+  return { ready, checkWord, isProjectWord, suggest, addWord };
 }

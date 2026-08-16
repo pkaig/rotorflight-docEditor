@@ -96,6 +96,11 @@ export async function isCorrect(word: string): Promise<boolean> {
   return speller.correct(word);
 }
 
+export async function getSuggestions(word: string): Promise<string[]> {
+  const speller = await getSpeller();
+  return speller.suggest(word);
+}
+
 export function isProjectWord(word: string): boolean {
   return projectWords.has(word.toLowerCase());
 }

@@ -1318,13 +1318,50 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   padding: 0.6rem 0.75rem;
   font-size: 0.85rem;
-  max-width: 260px;
+  min-width: 160px;
+  max-width: 280px;
+}
+
+.spellcheck-popover-word {
+  font-weight: 600;
+  text-decoration: underline wavy #e53935;
+  margin-bottom: 0.4rem;
+}
+
+.spellcheck-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.spellcheck-suggestions button {
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #2b6cb0;
+  background: #ebf4ff;
+  color: #2b6cb0;
+}
+
+.spellcheck-suggestions button:hover {
+  background: #2b6cb0;
+  color: white;
+}
+
+.spellcheck-suggestions-empty {
+  color: #777;
+  font-style: italic;
+  margin-bottom: 0.5rem;
 }
 
 .spellcheck-popover-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #eee;
 }
 
 .spellcheck-popover-actions button {

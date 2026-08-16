@@ -3,11 +3,12 @@ import { useSpellchecker } from "../hooks/useSpellchecker";
 import { tokenizeMarkdown, type WordToken } from "../spellcheck/tokenizeMarkdown";
 
 // Drop-in replacement for a plain <textarea> that highlights misspelled
-// words (wavy red underline) and offers to add them to the project's
-// cspell word list on click. Implemented as a transparent-text textarea
-// stacked on top of a backdrop <div> that mirrors the same text with
-// misspelled words wrapped in <mark> — the classic "highlighted textarea"
-// technique, since a native textarea can't style substrings itself.
+// words (wavy red underline) and right-click offers suggested corrections
+// plus "add to dictionary" — same interaction model as Word/Google Docs/
+// most IDEs. Implemented as a transparent-text textarea stacked on top of
+// a backdrop <div> that mirrors the same text with misspelled words
+// wrapped in <mark> — the classic "highlighted textarea" technique, since
+// a native textarea can't style substrings itself.
 export function SpellcheckTextarea({
   value,
   onChange,
@@ -21,10 +22,8 @@ export function SpellcheckTextarea({
   login: string | null;
   workspace: string | null;
 }) {
-  const { ready, checkWord, isProjectWord, addWord } = useSpellchecker(
-    login,
-    workspace,
-  );
+  const { ready, checkWord, isProjectWord, suggest, addWord } =
+    useSpellchecker(login, workspace);
 
   const [misspelled, setMisspelled] = useState<WordToken[]>([]);
   const [popover, setPopover] = useState<{
@@ -33,6 +32,7 @@ export function SpellcheckTextarea({
     end: number;
     x: number;
     y: number;
+    suggestions: string[] | null; // null while still loading
   } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -85,7 +85,12 @@ export function SpellcheckTextarea({
     }
   }
 
-  function handleClick(e: React.MouseEvent<HTMLTextAreaElement>) {
+  // Right-click on a misspelled word already moves the caret there (native
+  // browser behavior), so selectionStart at contextmenu time is the click
+  // position. Only intercept (preventDefault) when it's actually on a
+  // flagged word — otherwise let the normal browser context menu through
+  // so cut/copy/paste etc. keep working everywhere else.
+  function handleContextMenu(e: React.MouseEvent<HTMLTextAreaElement>) {
     const el = e.currentTarget;
     const offset = el.selectionStart;
 
@@ -96,14 +101,43 @@ export function SpellcheckTextarea({
       return;
     }
 
+    e.preventDefault();
+
     const rect = containerRef.current.getBoundingClientRect();
+    const word = value.slice(hit.start, hit.end);
+
     setPopover({
-      word: value.slice(hit.start, hit.end),
+      word,
       start: hit.start,
       end: hit.end,
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
+      suggestions: null,
     });
+
+    suggest(word).then((suggestions) => {
+      setPopover((prev) =>
+        prev && prev.start === hit.start && prev.word === word
+          ? { ...prev, suggestions: suggestions.slice(0, 5) }
+          : prev,
+      );
+    });
+  }
+
+  // Replaces the flagged word in place using the textarea's own native
+  // setRangeText + a dispatched "input" event, rather than computing a new
+  // string in JS — this keeps the browser's native undo stack consistent
+  // (Ctrl+Z undoes the correction as one step) the way directly setting
+  // React state wouldn't.
+  function applySuggestion(replacement: string) {
+    if (!popover || !textareaRef.current) return;
+    const el = textareaRef.current;
+
+    el.focus();
+    el.setRangeText(replacement, popover.start, popover.end, "end");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+
+    setPopover(null);
   }
 
   async function handleAddWord() {
@@ -205,7 +239,8 @@ export function SpellcheckTextarea({
         value={value}
         onChange={onChange}
         onScroll={syncScroll}
-        onClick={handleClick}
+        onClick={() => setPopover(null)}
+        onContextMenu={handleContextMenu}
         onKeyUp={() => setPopover(null)}
         spellCheck={false}
         style={{
@@ -227,12 +262,29 @@ export function SpellcheckTextarea({
           className="spellcheck-popover"
           style={{ left: popover.x, top: popover.y }}
         >
-          <span>
-            Add <strong>{popover.word}</strong> to project dictionary?
-          </span>
+          <div className="spellcheck-popover-word">{popover.word}</div>
+
+          {popover.suggestions === null ? (
+            <div className="spellcheck-suggestions-empty">Loading suggestions…</div>
+          ) : popover.suggestions.length > 0 ? (
+            <div className="spellcheck-suggestions">
+              {popover.suggestions.map((s) => (
+                <button
+                  key={s}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applySuggestion(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="spellcheck-suggestions-empty">No suggestions</div>
+          )}
+
           <div className="spellcheck-popover-actions">
             <button onMouseDown={(e) => e.preventDefault()} onClick={handleAddWord}>
-              Add
+              Add to dictionary
             </button>
             <button
               onMouseDown={(e) => e.preventDefault()}
