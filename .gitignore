@@ -138,7 +138,7 @@ dist
 # directories
 backend/workspaces/
 backend/cache/
-backend/tokens/
+backend/routes/tokens/
 backend/Rotorflight-docs/ 
 
 

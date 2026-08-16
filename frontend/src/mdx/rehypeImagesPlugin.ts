@@ -24,9 +24,14 @@ export default function rehypeImages(currentDocPath: string) {
 
       const login = localStorage.getItem("rf_login") || "";
 
-      const resolved = path
-        .normalize(path.join(docDir, src))
-        .replace(/\\/g, "/");
+      const resolved = workspace
+        ? `local-workspace/${workspace}/` +
+          path
+            .normalize(
+              path.join(docDir.replace(/^local-workspace\/[^/]+\//, ""), src),
+            )
+            .replace(/\\/g, "/")
+        : path.normalize(path.join(docDir, src)).replace(/\\/g, "/");
 
       const params = new URLSearchParams({
         path: resolved,

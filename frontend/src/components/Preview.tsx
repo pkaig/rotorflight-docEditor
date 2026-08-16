@@ -4,6 +4,7 @@ import { VFile } from "vfile";
 import { compile } from "@mdx-js/mdx/lib/compile.js";
 import * as jsxRuntime from "react/jsx-runtime";
 
+import remarkFrontmatter from "remark-frontmatter";
 import remarkDirective from "remark-directive";
 import remarkAdmonitions from "../remarkAdmonitions";
 import remarkStripImports from "../mdx/remarkStripImports";
@@ -14,41 +15,21 @@ import Tabs from "../mdx/Tabs";
 import TabItem from "../mdx/TabItem";
 import tabStyles from "../css/tabs.module.css";
 
+// Compiles the current doc's MDX/Markdown source in-browser (no build step)
+// and renders it. On compile/eval failure, falls back to a line-numbered
+// raw view highlighting the offending line.
 export default function Preview({
   content,
   currentDocPath,
   onError = () => {},
 }) {
-  console.log("🧭 Preview render:", {
-    path: currentDocPath,
-    contentLen: content?.length ?? 0,
-  });
-
   const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath);
-
-  // IMAGE MODE
-  if (isImage) {
-    const url = `/api/docs/images/local?path=${encodeURIComponent(
-      currentDocPath,
-    )}`;
-    return (
-      <div className="markdown-body">
-        <img
-          src={url}
-          alt={currentDocPath}
-          style={{ maxWidth: "100%", height: "auto", display: "block" }}
-        />
-      </div>
-    );
-  }
 
   const [MDXContent, setMDXContent] = useState<any>(null);
   const [error, setError] = useState<any>(null);
   const [rawMode, setRawMode] = useState(false);
 
   useEffect(() => {
-    console.log("🔁 useEffect fired:", { path: currentDocPath });
-
     let cancelled = false;
 
     // hard reset on file/content change to avoid latching
@@ -57,8 +38,10 @@ export default function Preview({
     setRawMode(false);
 
     async function compileMdx() {
+      // Images are rendered directly via <img>, not compiled as MDX.
+      if (isImage) return;
+
       if (!content) {
-        console.log("⚪ no content for", currentDocPath);
         if (!cancelled) {
           setMDXContent(null);
           setError(null);
@@ -71,11 +54,14 @@ export default function Preview({
       const vfile = new VFile({
         value: content,
         path: currentDocPath,
+        cwd: "/",
       });
 
       const remarkPlugins = isMdx
         ? [
-            // must be first
+            // frontmatter must be first so later plugins never see the
+            // leading "---" block as markdown content
+            remarkFrontmatter,
             remarkDirective,
             remarkAdmonitions,
             remarkStripImports,
@@ -98,22 +84,17 @@ export default function Preview({
           providerImportSource: false,
         });
 
-        console.log("📦 COMPILED OK:", currentDocPath);
-
         const code = String(compiled.value || "");
-        console.log(
-          "🧾 COMPILED CODE (first 400 chars) for",
-          currentDocPath,
-          ":\n",
-          code.slice(0, 400),
-        );
 
         if (code.includes("import ") || code.includes("export ")) {
+          // remarkStripImports should have rewritten/removed every
+          // import/export node by this point; surviving ones will throw
+          // a SyntaxError when wrapped in a function body below.
           console.error(
-            "❌ RAW IMPORT/EXPORT STILL IN COMPILED OUTPUT for",
+            "Unresolved import/export survived MDX compilation for",
             currentDocPath,
+            code,
           );
-          console.error(code);
         }
 
         try {
@@ -131,10 +112,8 @@ export default function(runtime) {
           const blob = new Blob([wrapped], { type: "text/javascript" });
           const url =
             URL.createObjectURL(blob) + `#${currentDocPath}-${Date.now()}`;
-          console.log("🧩 importing module URL:", url);
 
           const mod = await import(url);
-          console.log("📥 imported module keys:", Object.keys(mod));
 
           const evaluated = mod.default({
             ...jsxRuntime,
@@ -143,14 +122,9 @@ export default function(runtime) {
             tabStyles,
           });
 
-          console.log("🧱 evaluated result type:", typeof evaluated, evaluated);
-
           if (!cancelled) {
             const Component =
               evaluated && evaluated.default ? evaluated.default : evaluated;
-            console.log("🧱 setting MDXContent for", currentDocPath, {
-              hasDefault: !!evaluated?.default,
-            });
             setMDXContent(() => Component);
             setError(null);
           }
@@ -161,7 +135,7 @@ export default function(runtime) {
           const match = msg.match(/line (\d+)/i);
           const line = match ? parseInt(match[1], 10) : null;
 
-          console.error("💥 EVAL ERROR for", currentDocPath, msg);
+          console.error("MDX eval error for", currentDocPath, msg);
 
           if (!cancelled) {
             setError({ message: msg, line, path: currentDocPath });
@@ -173,7 +147,7 @@ export default function(runtime) {
         const match = msg.match(/line (\d+)/i);
         const line = match ? parseInt(match[1], 10) : null;
 
-        console.error("💥 COMPILE ERROR for", currentDocPath, msg);
+        console.error("MDX compile error for", currentDocPath, msg);
 
         if (!cancelled) {
           setError({ message: msg, line, path: currentDocPath });
@@ -185,22 +159,29 @@ export default function(runtime) {
     compileMdx();
 
     return () => {
-      console.log("🧹 cleanup for", currentDocPath);
       cancelled = true;
     };
-  }, [content, currentDocPath]);
+  }, [content, currentDocPath, isImage]);
 
   useEffect(() => {
     if (error && onError) onError(error.line || null);
     else onError(null);
   }, [error, onError]);
 
-  console.log("🎛 render state:", {
-    path: currentDocPath,
-    hasMDXContent: !!MDXContent,
-    errorPath: error?.path,
-    errorMsg: error?.message,
-  });
+  if (isImage) {
+    const url = `/api/docs/images/local?path=${encodeURIComponent(
+      currentDocPath,
+    )}`;
+    return (
+      <div className="markdown-body">
+        <img
+          src={url}
+          alt={currentDocPath}
+          style={{ maxWidth: "100%", height: "auto", display: "block" }}
+        />
+      </div>
+    );
+  }
 
   if (error) {
     return (

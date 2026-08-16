@@ -40,9 +40,10 @@ export function useDocEditor(login, workspace) {
 
     const storedLogin = login || localStorage.getItem("rf_login");
 
+    // Always produce: local-workspace/<workspace>/...
     const canonical = inputPath.startsWith("local-workspace/")
       ? inputPath
-      : `local-workspace/${inputPath}`;
+      : `local-workspace/${ws}/${inputPath}`;
 
     setCurrentDocPath(canonical);
 
