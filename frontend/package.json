@@ -16,6 +16,7 @@
     "@types/mdx": "^2.0.13",
     "acorn": "^8.15.0",
     "mdast-util-mdxjs-esm": "^2.0.1",
+    "nspell": "^2.1.5",
     "path-browserify": "^1.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -30,7 +31,9 @@
     "remark-mdx": "^3.1.1",
     "remark-mdx-frontmatter": "^5.2.0",
     "remark-parse": "^11.0.0",
-    "remark-rehype": "^11.1.2"
+    "remark-rehype": "^11.1.2",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

@@ -835,6 +835,7 @@ export default function App() {
                   conflict={conflict}
                   errorLine={errorLine}
                   saveState={saveState}
+                  login={login}
                   workspace={workspace}
                   refreshLocalWorkspace={refreshLocalWorkspace}
                   onSelect={onSelect}
@@ -855,14 +856,15 @@ export default function App() {
           <div className="preview-panel">
             <h3>Preview</h3>
             <PreviewErrorBoundary onError={setErrorLine}>
-              {currentDocPath && content.length > 0 && (
-                //
-                <Preview
-                  content={content}
-                  currentDocPath={currentDocPath}
-                  onError={(line) => setErrorLine(line)}
-                />
-              )}
+              {currentDocPath &&
+                (content.length > 0 ||
+                  /\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath)) && (
+                  <Preview
+                    content={content}
+                    currentDocPath={currentDocPath}
+                    onError={(line) => setErrorLine(line)}
+                  />
+                )}
             </PreviewErrorBoundary>
           </div>
         </div>

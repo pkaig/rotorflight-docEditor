@@ -1,5 +1,6 @@
 // EditorPanel.tsx
 import React from "react";
+import { SpellcheckTextarea } from "./SpellcheckTextarea";
 
 export const EditorPanel = React.memo(function EditorPanel({
   content,
@@ -8,6 +9,7 @@ export const EditorPanel = React.memo(function EditorPanel({
   conflict,
   errorLine,
   saveState,
+  login,
   workspace,
   refreshLocalWorkspace,
   onSelect,
@@ -56,13 +58,12 @@ export const EditorPanel = React.memo(function EditorPanel({
           }}
         />
       ) : (
-        <textarea
+        <SpellcheckTextarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          login={login}
+          workspace={workspace}
           style={{
-            flex: 1,
-            width: "100%",
-            minHeight: 0,
             fontFamily: "monospace",
             fontSize: "14px",
             padding: "1rem",

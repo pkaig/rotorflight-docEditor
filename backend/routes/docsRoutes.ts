@@ -14,6 +14,11 @@ import multer from "multer";
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Root-level file (sibling of docs/, versioned_docs/) holding cspell's
+// custom project dictionary. Tracked specially so spell-checker additions
+// can flow through the same scan/commit/PR pipeline as doc edits.
+const PROJECT_WORDS_FILE = "project-words.txt";
+
 /* ============================================================
    1. AUTH + WORKSPACE ROOT
    ============================================================ */
@@ -75,7 +80,8 @@ async function walkLocalTree(rootPath: string): Promise<string[]> {
       if (entry.isFile()) {
         const isDoc = entry.name.endsWith(".md") || entry.name.endsWith(".mdx");
         const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(entry.name);
-        if (isDoc || isImage) results.push(rel);
+        const isProjectWords = rel === PROJECT_WORDS_FILE;
+        if (isDoc || isImage || isProjectWords) results.push(rel);
       }
     }
 
@@ -431,7 +437,9 @@ router.get("/scan-local-changes", async (req, res) => {
     const deleted = [];
 
     const filterDocs = (f: string) =>
-      f.startsWith("docs/") || f.startsWith("versioned_docs/");
+      f.startsWith("docs/") ||
+      f.startsWith("versioned_docs/") ||
+      f === PROJECT_WORDS_FILE;
 
     const localSet = new Set(localFiles.filter(filterDocs));
     const mirrorSet = new Set(mirrorFiles.filter(filterDocs));
@@ -692,6 +700,107 @@ router.get("/workspace-upstream-status", async (req, res) => {
   } catch (err) {
     console.error("workspace-upstream-status error:", err);
     return res.status(500).json({ error: "Failed to check workspace status" });
+  }
+});
+
+/* ============================================================
+   16. SPELL-CHECK PROJECT DICTIONARY (project-words.txt)
+   ============================================================ */
+
+function parseWordList(text: string): string[] {
+  return text
+    .split("\n")
+    .map((w) => w.trim())
+    .filter(Boolean);
+}
+
+// cspell.json carries its own small inline "words" allowlist (commit
+// prefixes, tool names, etc.) separate from project-words.txt. It's the
+// real repo's own config, so it's always read from the mirror baseline —
+// there's no per-workspace editable copy of it to bootstrap.
+async function readCspellInlineWords(workspaceRoot: string): Promise<string[]> {
+  const cspellPath = path.join(workspaceRoot, "mirror", "cspell.json");
+
+  if (!(await fs.pathExists(cspellPath))) return [];
+
+  try {
+    const config = JSON.parse(await fs.readFile(cspellPath, "utf8"));
+    return Array.isArray(config.words) ? config.words : [];
+  } catch (err) {
+    console.error("Failed to parse cspell.json:", err);
+    return [];
+  }
+}
+
+// Effective word list: the workspace's own project-words.txt (or the
+// baseline if no edits yet) merged with cspell.json's own inline words —
+// both are sources the real project already treats as "not a typo".
+router.get("/project-words", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, workspace } = auth;
+  const workspaceRoot = path.join(process.cwd(), "workspaces", login, workspace);
+  const localPath = path.join(workspaceRoot, PROJECT_WORDS_FILE);
+  const baselinePath = path.join(workspaceRoot, "mirror", PROJECT_WORDS_FILE);
+
+  try {
+    const source = (await fs.pathExists(localPath)) ? localPath : baselinePath;
+
+    const fileWords = (await fs.pathExists(source))
+      ? parseWordList(await fs.readFile(source, "utf8"))
+      : [];
+    const cspellWords = await readCspellInlineWords(workspaceRoot);
+
+    const words = [...new Set([...fileWords, ...cspellWords])];
+    return res.json({ words });
+  } catch (err) {
+    console.error("project-words error:", err);
+    return res.status(500).json({ error: "Failed to read project word list" });
+  }
+});
+
+router.post("/project-words/add", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, workspace } = auth;
+  const { word } = req.body;
+
+  if (!word || typeof word !== "string" || !word.trim()) {
+    return res.status(400).json({ error: "Missing word" });
+  }
+
+  const clean = word.trim();
+  const workspaceRoot = path.join(process.cwd(), "workspaces", login, workspace);
+  const localPath = path.join(workspaceRoot, PROJECT_WORDS_FILE);
+  const baselinePath = path.join(workspaceRoot, "mirror", PROJECT_WORDS_FILE);
+
+  try {
+    // Bootstrap the editable copy from the workspace baseline the first
+    // time a word is added here, same as docs/versioned_docs do on first edit.
+    if (!(await fs.pathExists(localPath))) {
+      if (await fs.pathExists(baselinePath)) {
+        await fs.copy(baselinePath, localPath);
+      } else {
+        await fs.ensureDir(path.dirname(localPath));
+        await fs.writeFile(localPath, "", "utf8");
+      }
+    }
+
+    const words = parseWordList(await fs.readFile(localPath, "utf8"));
+
+    // Append rather than re-sort: keeps the PR diff to a single added
+    // line instead of reshuffling the whole existing list.
+    if (!words.some((w) => w.toLowerCase() === clean.toLowerCase())) {
+      words.push(clean);
+      await fs.writeFile(localPath, words.join("\n") + "\n", "utf8");
+    }
+
+    return res.json({ words });
+  } catch (err) {
+    console.error("project-words/add error:", err);
+    return res.status(500).json({ error: "Failed to add word" });
   }
 });
 

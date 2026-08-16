@@ -57,16 +57,13 @@ export default function Preview({
         cwd: "/",
       });
 
+      // frontmatter must be first so later plugins never see the leading
+      // "---" block as markdown content; directive must precede admonitions
+      // so ":::note" blocks are parsed before being turned into HTML.
+      const commonPlugins = [remarkFrontmatter, remarkDirective, remarkAdmonitions];
       const remarkPlugins = isMdx
-        ? [
-            // frontmatter must be first so later plugins never see the
-            // leading "---" block as markdown content
-            remarkFrontmatter,
-            remarkDirective,
-            remarkAdmonitions,
-            remarkStripImports,
-          ]
-        : [];
+        ? [...commonPlugins, remarkStripImports]
+        : commonPlugins;
 
       const rehypePlugins = [[rehypeImages, currentDocPath]];
 
@@ -169,11 +166,19 @@ export default function(runtime) {
   }, [error, onError]);
 
   if (isImage) {
-    const url = `/api/docs/images/local?path=${encodeURIComponent(
-      currentDocPath,
-    )}`;
+    // /api/docs/images/local requires login + workspace (see docsRoutes.ts
+    // requireToken), same as rehypeImagesPlugin.ts's in-content <img> src.
+    const login = localStorage.getItem("rf_login") || "";
+    const wsMatch = currentDocPath.match(/^local-workspace\/([^/]+)\//);
+    const workspace = wsMatch ? wsMatch[1] : "";
+    const params = new URLSearchParams({
+      path: currentDocPath,
+      login,
+      workspace,
+    });
+    const url = `/api/docs/images/local?${params.toString()}`;
     return (
-      <div className="markdown-body">
+      <div className="rf-preview">
         <img
           src={url}
           alt={currentDocPath}
@@ -207,11 +212,11 @@ export default function(runtime) {
   }
 
   if (!MDXContent) {
-    return <div className="markdown-body" />;
+    return <div className="rf-preview" />;
   }
 
   return (
-    <div className="markdown-body">
+    <div className="rf-preview">
       <div style={{ marginBottom: "0.5rem" }}>
         <button
           onClick={() => setRawMode(!rawMode)}
