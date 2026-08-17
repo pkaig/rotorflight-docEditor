@@ -127,6 +127,7 @@ export default function App() {
     userCode,
     verificationUri,
     startGitHubLogin,
+    logout,
   } = useAuth();
 
   /* WORKSPACE SELECTION */
@@ -584,11 +585,20 @@ export default function App() {
           </div>
 
           <div className="app-header-user">
-            <img
-              src={user.avatar_url}
-              alt="avatar"
-              className="app-header-avatar"
-            />
+            <button
+              type="button"
+              className="app-header-avatar-btn"
+              title="Log out"
+              onClick={() => {
+                if (confirm("Do you want to logout?")) logout();
+              }}
+            >
+              <img
+                src={user.avatar_url}
+                alt="avatar"
+                className="app-header-avatar"
+              />
+            </button>
             <span>
               Signed in as <strong>{user.login}</strong>
             </span>

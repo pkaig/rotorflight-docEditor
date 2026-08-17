@@ -119,6 +119,20 @@ export function useAuth() {
       .catch(() => {});
   }, [login]);
 
+  // Destroys the server-side session (the actual trust boundary) and clears
+  // every piece of local auth state, including rf_login — leaving it behind
+  // would make the next page load's restore-on-load effect briefly think a
+  // stale identity was still valid until /api/auth/session came back.
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+
+    localStorage.removeItem("rf_login");
+    setUser(null);
+    setLogin(null);
+    setIsAuthenticated(false);
+    setAuthStep("idle");
+  }
+
   return {
     user,
     login,
@@ -127,5 +141,6 @@ export function useAuth() {
     userCode,
     verificationUri,
     startGitHubLogin,
+    logout,
   };
 }
