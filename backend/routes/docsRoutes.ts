@@ -19,7 +19,7 @@
  *   doesn't carry the browser's session cookie, so those self-calls
  *   stopped working once every route required a session.
  */
-import express from "express";
+import express, { type Request, type Response } from "express";
 import { githubRequest } from "../githubClient";
 import { getTokenForUser } from "./authRoutes";
 import { ensureMirrorUpToDate, loadWorkspaceMirror } from "./resetMirror";
@@ -47,7 +47,7 @@ const PROJECT_WORDS_FILE = "project-words.txt";
    1. AUTH + WORKSPACE ROOT
    ============================================================ */
 
-function requireToken(req, res) {
+function requireToken(req: Request, res: Response) {
   // login comes from the session, not the request — a client-supplied
   // login query param would let anyone act as any GitHub username who has
   // ever authenticated with this app, since that's all getTokenForUser
@@ -126,8 +126,15 @@ async function walkLocalTree(rootPath: string): Promise<string[]> {
    3. LOCAL WORKSPACE TREE (SIDEBAR)
    ============================================================ */
 
-async function walkLocalWorkspaceTree(rootPath: string, prefix: string) {
-  const node = {
+type WorkspaceTreeNode =
+  | { type: "dir"; name: string; path: string; children: WorkspaceTreeNode[] }
+  | { type: "file"; name: string; path: string };
+
+async function walkLocalWorkspaceTree(
+  rootPath: string,
+  prefix: string,
+): Promise<WorkspaceTreeNode> {
+  const node: WorkspaceTreeNode = {
     type: "dir",
     name: path.basename(rootPath),
     path: prefix,
@@ -462,6 +469,17 @@ router.post("/create", async (req, res) => {
   }
 });
 
+// Minimal shapes for the two GitHub Git Data / Contents API responses used
+// below — just enough to narrow githubRequest()'s otherwise-unknown result.
+interface GitHubTreeResponse {
+  tree: Array<{ path: string; type: string; sha: string }>;
+}
+
+interface GitHubFileContentResponse {
+  content: string;
+  encoding: string;
+}
+
 /* ============================================================
    10. RESET LOCAL WORKSPACE (REBUILD FROM GLOBAL MIRROR)
    ============================================================ */
@@ -490,7 +508,7 @@ router.post("/reset-local", async (req, res) => {
     await fs.ensureDir(workspaceRoot);
     await fs.ensureDir(mirrorRoot);
 
-    const tree = await githubRequest(
+    const tree = await githubRequest<GitHubTreeResponse>(
       token,
       `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees/${GITHUB_DEFAULT_BRANCH}?recursive=1`,
     );
@@ -503,7 +521,7 @@ router.post("/reset-local", async (req, res) => {
       )
         continue;
 
-      const file = await githubRequest(
+      const file = await githubRequest<GitHubFileContentResponse>(
         token,
         `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${item.path}?ref=${GITHUB_DEFAULT_BRANCH}`,
       );

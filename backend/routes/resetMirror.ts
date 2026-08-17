@@ -18,7 +18,7 @@
  *   report the workspace stale again immediately after every rebase,
  *   forcing a full re-rebase on every single "Set up PR" open.
  */
-import express from "express";
+import express, { type Request, type Response } from "express";
 import * as fs from "fs-extra";
 import crypto from "crypto";
 import simpleGit from "simple-git";
@@ -133,8 +133,16 @@ async function applyUpstreamToWorkspace(
     if (change.type === "deleted") {
       // if user hasn't touched it, delete from workspace
       if (await fs.pathExists(wsFile)) {
+        // Missing `await` here made this condition always truthy (a
+        // Promise object, not its resolved value), so the "baseline file
+        // doesn't exist, use an empty buffer" fallback could never
+        // actually run — fs.readFile(baseFile) would throw ENOENT
+        // instead. Currently harmless in practice (computeUpstreamDiff
+        // only ever reports a file as "deleted" when it does exist in
+        // base), but real and worth fixing rather than leaving a
+        // fallback path that silently never engages.
         const [baseBuf, wsBuf] = await Promise.all([
-          fs.pathExists(baseFile)
+          (await fs.pathExists(baseFile))
             ? fs.readFile(baseFile)
             : Promise.resolve(Buffer.alloc(0)),
           fs.readFile(wsFile),
@@ -199,7 +207,7 @@ async function applyUpstreamToWorkspace(
 
 const router = express.Router();
 
-function requireToken(req, res) {
+function requireToken(req: Request, res: Response) {
   // Session-derived, not client-supplied — see the matching comment on
   // docsRoutes.ts's requireToken() for why.
   const login = req.session?.login;
@@ -218,7 +226,10 @@ function requireToken(req, res) {
   }
 }
 
-async function githubJson(url: string, token: string) {
+// Generic, defaulting to unknown — most callers narrow it explicitly
+// (githubJson<GitHubTreeResponse>(...) etc.); the few that don't only ever
+// pass the result straight into an `any`-typed parameter.
+async function githubJson<T = unknown>(url: string, token: string): Promise<T> {
   const res = await fetch(url, {
     headers: {
       "User-Agent": "mirror-refresh",
@@ -228,7 +239,15 @@ async function githubJson(url: string, token: string) {
   });
 
   if (!res.ok) throw new Error(`GitHub error ${res.status}: ${url}`);
-  return res.json();
+  return res.json() as Promise<T>;
+}
+
+interface GitHubTreeResponse {
+  tree: Array<{ path: string; type: string; url: string }>;
+}
+
+interface GitHubCommitResponse {
+  sha: string;
 }
 
 async function downloadGithubFile(file: any, token: string): Promise<Buffer> {
@@ -253,7 +272,7 @@ async function downloadGithubFile(file: any, token: string): Promise<Buffer> {
 }
 
 async function walkGithubTree(treeUrl: string, baseDir: string, token: string) {
-  const treeData = await githubJson(treeUrl, token);
+  const treeData = await githubJson<GitHubTreeResponse>(treeUrl, token);
 
   for (const item of treeData.tree) {
     const localPath = path.join(baseDir, item.path);
@@ -297,7 +316,7 @@ router.post("/", async (req, res) => {
     );
 
     // fetch upstream SHA
-    const commit = await githubJson(
+    const commit = await githubJson<GitHubCommitResponse>(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${GITHUB_DEFAULT_BRANCH}`,
       token,
     );
@@ -663,7 +682,7 @@ export async function ensureMirrorUpToDate(token: string) {
   const hashFile = path.join(mirrorPath, ".upstream-hash");
 
   // 1. Fetch latest upstream SHA
-  const commit = await githubJson(
+  const commit = await githubJson<GitHubCommitResponse>(
     `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${GITHUB_DEFAULT_BRANCH}`,
     token,
   );
@@ -719,7 +738,7 @@ router.get("/upstream-status", async (req, res) => {
     }
 
     // Fetch upstream SHA
-    const commit = await githubJson(
+    const commit = await githubJson<GitHubCommitResponse>(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${GITHUB_DEFAULT_BRANCH}`,
       token,
     );

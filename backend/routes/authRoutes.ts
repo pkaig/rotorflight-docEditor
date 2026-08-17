@@ -97,6 +97,23 @@ function saveToken(token: StoredToken) {
   console.log(`💾 Saved token for ${token.login}`);
 }
 
+// GitHub's own device-flow response shapes — narrows the two .json()
+// results below away from `unknown` instead of leaving them implicitly any.
+interface DeviceCodeResponse {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  interval: number;
+}
+
+interface AccessTokenResponse {
+  access_token?: string;
+  expires_in?: number;
+  scope?: string;
+  token_type?: string;
+  error?: string;
+}
+
 // ---------------------------------------------
 // Start Device Flow
 // ---------------------------------------------
@@ -116,7 +133,7 @@ router.post("/device/start", async (_req, res) => {
     body: params.toString(),
   });
 
-  const data = await resp.json();
+  const data = (await resp.json()) as DeviceCodeResponse;
   console.log("⬅️ GitHub /device/code:", data);
 
   res.json({
@@ -148,11 +165,19 @@ router.post("/device/poll", async (req, res) => {
     body: params.toString(),
   });
 
-  const data = await resp.json();
+  const data = (await resp.json()) as AccessTokenResponse;
   console.log("⬅️ GitHub /access_token:", data);
 
   if (data.error) {
     return res.json({ status: "pending", error: data.error });
+  }
+
+  // GitHub's contract is error-or-access_token, never neither — but that's
+  // not something the response's own type can prove, so this both narrows
+  // access_token to a definite string below and guards the case where it
+  // holds for some unexpected reason.
+  if (!data.access_token) {
+    return res.json({ status: "pending", error: "no_access_token" });
   }
 
   // Fetch user identity

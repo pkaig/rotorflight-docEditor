@@ -12,7 +12,7 @@
  *   gitRoutes.ts and resetMirror.ts each define their own separate
  *   GitHub request helper rather than importing this one.
  */
-import fetch from "node-fetch";
+import fetch, { type RequestInit } from "node-fetch";
 import {
   GITHUB_CLIENT_ID,
   GITHUB_CLIENT_SECRET,

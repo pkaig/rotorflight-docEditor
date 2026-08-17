@@ -474,7 +474,12 @@ router.post("/pr", async (req, res) => {
 /* ============================================================
    3. GITHUB REQUEST
    ============================================================ */
-export async function githubRequest(token, path, method = "GET", body?) {
+export async function githubRequest(
+  token: string,
+  path: string,
+  method = "GET",
+  body?: unknown,
+) {
   console.log("Github Request");
   const jsonBody = body ? JSON.stringify(body) : undefined;
   console.log("jsonBody", jsonBody);
