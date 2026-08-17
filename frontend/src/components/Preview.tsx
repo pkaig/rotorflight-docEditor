@@ -53,8 +53,16 @@ export default function Preview({
 
   useEffect(() => {
     let cancelled = false;
+    // loadDoc sets currentDocPath synchronously, then content lands
+    // separately once its fetch resolves — so opening a file fires this
+    // effect twice: once with the new path but the *previous* file's
+    // still-stale content, then again moments later with content caught
+    // up but currentDocPath unchanged. Only marking the ref "seen" once a
+    // compile actually fires (not eagerly here) means both fires still
+    // count as "new doc" and each one's short timer cancels the last, so
+    // whichever fire's content is still current when things settle is the
+    // one that actually compiles — never the stale intermediate one.
     const isNewDoc = lastPathRef.current !== currentDocPath;
-    lastPathRef.current = currentDocPath;
 
     async function compileMdx() {
       // Images are rendered directly via <img>, not compiled as MDX.
@@ -193,6 +201,7 @@ export default function(runtime) {
       // user is still typing in the same doc, the last successfully
       // compiled version stays on screen until the new one is ready, so
       // there's a single clean swap instead of a blank-then-refill flash.
+      if (isNewDoc) lastPathRef.current = currentDocPath;
       if (styleTagRef.current) styleTagRef.current.textContent = "";
       setError(null);
       setRawMode(false);
@@ -201,9 +210,14 @@ export default function(runtime) {
 
     if (isNewDoc) {
       setMDXContent(null);
-      runCompile();
+      // Short settle window, not a synchronous compile — coalesces the
+      // stale-content fire and the real-content fire described above into
+      // one compile using whichever content is still current 60ms later,
+      // while still feeling instant to the user.
+      const timer = setTimeout(runCompile, 60);
       return () => {
         cancelled = true;
+        clearTimeout(timer);
       };
     }
 
