@@ -12,7 +12,6 @@
  *   public info already, so it deliberately doesn't require a session.
  */
 import express from "express";
-import fetch from "node-fetch";
 
 const router = express.Router();
 

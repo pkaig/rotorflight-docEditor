@@ -24,7 +24,6 @@ import crypto from "crypto";
 import simpleGit from "simple-git";
 
 import path from "path";
-import fetch from "node-fetch";
 import { getTokenForUser } from "./authRoutes";
 import {
   GITHUB_OWNER,

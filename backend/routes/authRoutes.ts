@@ -20,7 +20,6 @@
  *   (ts-node-dev) or compiled dist/ output.
  */
 import express from "express";
-import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
 import { GITHUB_CLIENT_ID } from "../config/github";

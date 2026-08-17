@@ -11,8 +11,15 @@
  *   to auth headers or error handling only has to happen here. Note
  *   gitRoutes.ts and resetMirror.ts each define their own separate
  *   GitHub request helper rather than importing this one.
+ *
+ *   Uses the global fetch/RequestInit (built into Node 18+, ambient via
+ *   @types/node — no import needed) rather than the node-fetch package:
+ *   node-fetch v3 is ESM-only, and require()-ing an ESM package from
+ *   this file's compiled CommonJS output throws ERR_REQUIRE_ESM on any
+ *   Node runtime without require(esm) support — which includes the
+ *   older Node Electron bundles internally, even though it happened to
+ *   work under this project's own (much newer) dev-time Node version.
  */
-import fetch, { type RequestInit } from "node-fetch";
 
 export type GitHubToken = string;
 
