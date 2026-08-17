@@ -1,7 +1,9 @@
 import express from "express";
 import { githubRequest } from "../githubClient";
 import { getTokenForUser } from "./authRoutes";
-import { ensureMirrorUpToDate } from "./resetMirror";
+import { ensureMirrorUpToDate, loadWorkspaceMirror } from "./resetMirror";
+import { commitChanges, submitPullRequest } from "./gitRoutes";
+import { ForkError } from "../ensureFork";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -10,6 +12,7 @@ import {
 import path from "path";
 import * as fs from "fs-extra";
 import multer from "multer";
+import { isSafePathSegment, isSafeRelativePath } from "../safePath";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -24,16 +27,23 @@ const PROJECT_WORDS_FILE = "project-words.txt";
    ============================================================ */
 
 function requireToken(req, res) {
-  const login = req.query.login as string;
+  // login comes from the session, not the request — a client-supplied
+  // login query param would let anyone act as any GitHub username who has
+  // ever authenticated with this app, since that's all getTokenForUser
+  // needs to hand back their stored token.
+  const login = req.session?.login;
   const workspace = (req.query.workspace as string) || req.body?.workspace;
 
   if (!login) {
-    res.status(401).json({ error: "Missing login" });
+    res.status(401).json({ error: "Not signed in" });
     return null;
   }
 
-  if (!workspace) {
-    res.status(400).json({ error: "Missing workspace" });
+  // workspace is a single directory name (never contains "/"), unlike the
+  // doc-relative paths validated elsewhere — reject anything that could
+  // walk out of workspaces/<login>/ before it's ever joined into a path.
+  if (!isSafePathSegment(workspace)) {
+    res.status(400).json({ error: "Missing or invalid workspace" });
     return null;
   }
 
@@ -199,6 +209,9 @@ router.post("/local/upload", upload.single("file"), async (req, res) => {
   if (!folder || !file) {
     return res.status(400).json({ error: "Missing folder or file" });
   }
+  if (!isSafeRelativePath(folder) || !isSafePathSegment(file.originalname)) {
+    return res.status(400).json({ error: "Invalid folder or file name" });
+  }
 
   const dest = path.join(
     process.cwd(),
@@ -235,6 +248,10 @@ router.get("/load", async (req, res) => {
       filePath = rest.join("/");
     }
 
+    if (!isSafeRelativePath(filePath)) {
+      return res.status(400).json({ error: "Invalid path" });
+    }
+
     const fullPath = path.join(
       process.cwd(),
       "workspaces",
@@ -263,6 +280,10 @@ router.post("/restore-file", async (req, res) => {
 
   try {
     const clean = filePath.replace(/^local-workspace\/[^/]+\//, "");
+
+    if (!isSafeRelativePath(clean)) {
+      return res.status(400).json({ error: "Invalid path" });
+    }
 
     const workspaceRoot = path.join(
       process.cwd(),
@@ -304,6 +325,13 @@ router.get("/images/local", async (req, res) => {
   const ws = parts[1];
   const clean = parts.slice(2).join("/");
 
+  // ws and clean come straight from the query string, not from
+  // requireToken()'s already-validated workspace — validate them here too
+  // before either ever reaches path.join.
+  if (!isSafePathSegment(ws) || !isSafeRelativePath(clean)) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
   // Workspaces only ever sync docs/ and versioned_docs/ (the user-editable
   // surface) — everything else a doc can reference via the `@site/` alias
   // (e.g. `@site/src/components/...`) lives only in the shared upstream
@@ -344,6 +372,10 @@ router.post("/save", async (req, res) => {
       filePath = rest.join("/");
     }
 
+    if (!isSafeRelativePath(filePath)) {
+      return res.status(400).json({ error: "Invalid path" });
+    }
+
     const fullPath = path.join(
       process.cwd(),
       "workspaces",
@@ -382,6 +414,10 @@ router.post("/create", async (req, res) => {
     if (filePath.startsWith("local-workspace/")) {
       const [, , ...rest] = filePath.split("/");
       filePath = rest.join("/");
+    }
+
+    if (!isSafeRelativePath(filePath)) {
+      return res.status(400).json({ error: "Invalid path" });
     }
 
     const fullPath = path.join(
@@ -473,12 +509,10 @@ router.post("/reset-local", async (req, res) => {
    11. SCAN LOCAL CHANGES (MIRROR DIFF)
    ============================================================ */
 
-router.get("/scan-local-changes", async (req, res) => {
-  const auth = requireToken(req, res);
-  if (!auth) return;
-
-  const { login, workspace } = auth;
-
+// Plain function, not just the route handler below, so /submit-pr can call
+// it directly in-process instead of over an HTTP self-call (which stopped
+// carrying valid auth once this route started requiring a session).
+export async function scanLocalChanges(login: string, workspace: string) {
   const workspaceRoot = path.join(
     process.cwd(),
     "workspaces",
@@ -487,70 +521,80 @@ router.get("/scan-local-changes", async (req, res) => {
   );
   const mirrorRoot = path.join(workspaceRoot, "mirror");
 
-  try {
-    const localFiles = await walkLocalTree(workspaceRoot);
-    const mirrorFiles = await walkLocalTree(mirrorRoot);
+  const localFiles = await walkLocalTree(workspaceRoot);
+  const mirrorFiles = await walkLocalTree(mirrorRoot);
 
-    const added = [];
-    const modified = [];
-    const deleted = [];
+  const added: { path: string; type: string }[] = [];
+  const modified: { path: string; type: string }[] = [];
+  const deleted: { path: string; type: string }[] = [];
 
-    const filterDocs = (f: string) =>
-      f.startsWith("docs/") ||
-      f.startsWith("versioned_docs/") ||
-      f === PROJECT_WORDS_FILE;
+  const filterDocs = (f: string) =>
+    f.startsWith("docs/") ||
+    f.startsWith("versioned_docs/") ||
+    f === PROJECT_WORDS_FILE;
 
-    const localSet = new Set(localFiles.filter(filterDocs));
-    const mirrorSet = new Set(mirrorFiles.filter(filterDocs));
+  const localSet = new Set(localFiles.filter(filterDocs));
+  const mirrorSet = new Set(mirrorFiles.filter(filterDocs));
 
-    for (const file of localSet) {
-      if (!mirrorSet.has(file)) {
-        added.push({ path: file, type: "added" });
-        continue;
-      }
+  for (const file of localSet) {
+    if (!mirrorSet.has(file)) {
+      added.push({ path: file, type: "added" });
+      continue;
+    }
 
-      const localPath = path.join(workspaceRoot, file);
-      const mirrorPath = path.join(mirrorRoot, file);
+    const localPath = path.join(workspaceRoot, file);
+    const mirrorPath = path.join(mirrorRoot, file);
 
-      const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(file);
+    const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(file);
 
-      if (isImage) {
-        const localStat = await fs.stat(localPath);
-        const mirrorStat = await fs.stat(mirrorPath);
+    if (isImage) {
+      const localStat = await fs.stat(localPath);
+      const mirrorStat = await fs.stat(mirrorPath);
 
-        if (
-          localStat.size !== mirrorStat.size ||
-          localStat.mtimeMs !== mirrorStat.mtimeMs
-        ) {
-          modified.push({ path: file, type: "modified" });
-        }
-
-        continue;
-      }
-
-      const localContent = await fs.readFile(localPath, "utf8");
-      const mirrorContent = await fs.readFile(mirrorPath, "utf8");
-
-      if (localContent !== mirrorContent) {
+      if (
+        localStat.size !== mirrorStat.size ||
+        localStat.mtimeMs !== mirrorStat.mtimeMs
+      ) {
         modified.push({ path: file, type: "modified" });
       }
+
+      continue;
     }
 
-    for (const file of mirrorSet) {
-      if (!localSet.has(file)) {
-        // project-words.txt's editable local copy only gets created
-        // lazily, the first time a word is actually added via the
-        // spell-checker's "add to dictionary" action (see
-        // POST /project-words/add). Its absence here just means nothing's
-        // been added yet in this workspace — not that the user deleted
-        // the project's shared dictionary file, which this was otherwise
-        // reporting as a real deletion in every PR.
-        if (file === PROJECT_WORDS_FILE) continue;
-        deleted.push({ path: file, type: "deleted" });
-      }
-    }
+    const localContent = await fs.readFile(localPath, "utf8");
+    const mirrorContent = await fs.readFile(mirrorPath, "utf8");
 
-    return res.json({ added, modified, deleted, renamed: [] });
+    if (localContent !== mirrorContent) {
+      modified.push({ path: file, type: "modified" });
+    }
+  }
+
+  for (const file of mirrorSet) {
+    if (!localSet.has(file)) {
+      // project-words.txt's editable local copy only gets created
+      // lazily, the first time a word is actually added via the
+      // spell-checker's "add to dictionary" action (see
+      // POST /project-words/add). Its absence here just means nothing's
+      // been added yet in this workspace — not that the user deleted
+      // the project's shared dictionary file, which this was otherwise
+      // reporting as a real deletion in every PR.
+      if (file === PROJECT_WORDS_FILE) continue;
+      deleted.push({ path: file, type: "deleted" });
+    }
+  }
+
+  return { added, modified, deleted, renamed: [] };
+}
+
+router.get("/scan-local-changes", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, workspace } = auth;
+
+  try {
+    const result = await scanLocalChanges(login, workspace);
+    return res.json(result);
   } catch {
     return res.status(500).json({ error: "Failed to scan local changes" });
   }
@@ -561,8 +605,15 @@ router.get("/scan-local-changes", async (req, res) => {
    ============================================================ */
 
 router.post("/create-workspace", async (req, res) => {
-  const login = req.query.login as string;
+  const login = req.session?.login;
   const workspace = req.body.workspace as string;
+
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace)) {
+    return res.status(400).json({ error: "Invalid workspace" });
+  }
 
   try {
     const token = getTokenForUser(login);
@@ -579,20 +630,15 @@ router.post("/create-workspace", async (req, res) => {
     );
     await fs.ensureDir(workspaceRoot);
 
-    // 3. Load workspace mirror (baseline)
-    const loadRes = await fetch(
-      `http://localhost:${process.env.PORT || 4000}/api/reset-mirror/load-workspace-mirror?login=${encodeURIComponent(
-        login,
-      )}&workspace=${encodeURIComponent(workspace)}`,
-      { method: "POST" },
-    );
-
-    const loadJson = await loadRes.json();
-    if (!loadJson.ok) {
-      return res.status(500).json({
-        error: "Failed to load workspace mirror",
-        details: loadJson,
-      });
+    // 3. Load workspace mirror (baseline) — called directly rather than
+    // over the old HTTP self-call, which stopped carrying valid auth once
+    // that route started requiring a session (a server-to-server fetch()
+    // doesn't have the original browser's session cookie).
+    try {
+      await loadWorkspaceMirror(login, workspace);
+    } catch (err) {
+      console.error("Failed to load workspace mirror:", err);
+      return res.status(500).json({ error: "Failed to load workspace mirror" });
     }
 
     // 4. Copy docs + versioned_docs into editable workspace
@@ -635,58 +681,40 @@ router.post("/submit-pr", async (req, res) => {
   const { login, workspace } = auth;
   const { description } = req.body;
 
+  // Calls the same functions /docs/scan-local-changes, /git/commit, and
+  // /git/pr each use directly, in-process, rather than the HTTP
+  // self-calls this used to make — those relied on passing ?login= on
+  // the URL, which stopped being valid auth once every route started
+  // deriving identity from the session instead (a server-to-server
+  // fetch() doesn't carry the original browser's session cookie).
   try {
-    const scan = await fetch(
-      `http://localhost:4000/api/docs/scan-local-changes?login=${encodeURIComponent(
-        login,
-      )}&workspace=${encodeURIComponent(workspace)}`,
-    ).then((r) => r.json());
-
-    const commitRes = await fetch(
-      `http://localhost:4000/api/git/commit?login=${encodeURIComponent(
-        login,
-      )}&workspace=${encodeURIComponent(workspace)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ changes: scan }),
-      },
-    );
+    const scan = await scanLocalChanges(login, workspace);
 
     // Previously ignored: a failed commit (e.g. GitHub API/auth error)
     // still fell through to attempting a PR, either against stale content
     // or failing later with no clear signal of what actually went wrong.
-    if (!commitRes.ok) {
-      const commitErr = await commitRes.json().catch(() => ({}));
-      console.error("submit-pr: commit step failed:", commitErr);
-      return res.status(500).json({
+    try {
+      await commitChanges(login, workspace, scan);
+    } catch (err) {
+      console.error("submit-pr: commit step failed:", err);
+      const error =
+        err instanceof ForkError ? err.message : "Failed to commit changes";
+      return res.status(err instanceof ForkError ? 409 : 500).json({
         status: "error",
-        error: commitErr.error || "Failed to commit changes",
+        error,
       });
     }
 
-    const prFetchRes = await fetch(
-      `http://localhost:4000/api/git/pr?login=${encodeURIComponent(
-        login,
-      )}&workspace=${encodeURIComponent(workspace)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description }),
-      },
-    );
-
-    const prRes = await prFetchRes.json();
-
-    if (!prFetchRes.ok) {
-      console.error("submit-pr: PR step failed:", prRes);
+    try {
+      const prRes = await submitPullRequest(login, workspace, description);
+      return res.json(prRes);
+    } catch (err) {
+      console.error("submit-pr: PR step failed:", err);
       return res.status(500).json({
         status: "error",
-        error: prRes.error || "Failed to create/update PR",
+        error: "Failed to create/update PR",
       });
     }
-
-    return res.json(prRes);
   } catch (err) {
     console.error("submit-pr failed:", err);
     return res.status(500).json({ status: "error", error: "Failed to submit PR" });
@@ -698,10 +726,10 @@ router.post("/submit-pr", async (req, res) => {
    ============================================================ */
 
 router.get("/list-user-workspaces", async (req, res) => {
-  const login = req.query.login as string;
+  const login = req.session?.login;
 
   if (!login) {
-    return res.status(400).json({ error: "Missing login" });
+    return res.status(401).json({ error: "Not signed in" });
   }
 
   try {
@@ -726,12 +754,18 @@ router.get("/list-user-workspaces", async (req, res) => {
    15. DELETE USER WORKSPACES
    ============================================================ */
 router.delete("/delete-workspace", async (req, res) => {
-  const { login, workspace } = req.query;
+  const login = req.session?.login;
+  const workspace = req.query.workspace as string;
 
   console.log("Delete workspace request:", login, workspace);
 
-  if (!login || !workspace) {
-    return res.status(400).json({ error: "Missing login or workspace" });
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  // This recursively force-deletes whatever path it's given — validating
+  // workspace matters even more here than on read-only routes.
+  if (!isSafePathSegment(workspace)) {
+    return res.status(400).json({ error: "Invalid workspace" });
   }
 
   // Build the correct path
@@ -751,11 +785,15 @@ router.delete("/delete-workspace", async (req, res) => {
    16. CHECK UPSTREAM STATUS FOR CHANGES
    ============================================================ */
 router.get("/workspace-upstream-status", async (req, res) => {
-  const login = req.query.login as string;
+  const login = req.session?.login;
   const workspace = req.query.workspace as string;
 
-  if (!login || !workspace)
-    return res.status(400).json({ error: "Missing login or workspace" });
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace)) {
+    return res.status(400).json({ error: "Invalid workspace" });
+  }
 
   try {
     const token = getTokenForUser(login);

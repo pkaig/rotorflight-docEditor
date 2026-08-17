@@ -4,6 +4,7 @@ import path from "path";
 import mime from "mime-types";
 import fetch from "node-fetch";
 import multer from "multer";
+import { isSafePathSegment, isSafeRelativePath } from "../safePath";
 
 const router = express.Router();
 const upload = multer();
@@ -23,6 +24,9 @@ router.get("/", async (req, res) => {
 
   if (!relPath) {
     return res.status(400).send("Missing ?path=");
+  }
+  if (!isSafeRelativePath(relPath)) {
+    return res.status(400).send("Invalid path");
   }
 
   const localPath = path.join(CACHE_ROOT, relPath);
@@ -66,6 +70,9 @@ router.post("/upload", upload.single("file"), (req, res) => {
 
   if (!folder || !file) {
     return res.status(400).json({ error: "Missing folder or file" });
+  }
+  if (!isSafeRelativePath(folder) || !isSafePathSegment(file.originalname)) {
+    return res.status(400).json({ error: "Invalid folder or file name" });
   }
 
   const dest = path.join(CACHE_ROOT, folder, file.originalname);

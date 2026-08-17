@@ -16,16 +16,19 @@ export function useAuth() {
   const [userCode, setUserCode] = useState("");
   const [verificationUri, setVerificationUri] = useState("");
 
-  // restore login
+  // Restore login from the session cookie, not a client-asserted username —
+  // the backend derives identity from req.session.login for every request,
+  // so this just asks "who (if anyone) does my own session belong to?"
+  // rather than "is <name-I-remembered-locally> authenticated?", which
+  // would let anyone impersonate any GitHub username that had ever signed
+  // in by simply writing that name into their own localStorage.
   useEffect(() => {
-    const storedLogin = localStorage.getItem("rf_login");
-    if (!storedLogin) return;
-
-    fetch(`http://localhost:4000/api/auth/status/${storedLogin}`)
+    fetch("/api/auth/session")
       .then((res) => res.json())
       .then((data) => {
-        if (data.authenticated) {
-          setLogin(storedLogin);
+        if (data.authenticated && data.login) {
+          setLogin(data.login);
+          localStorage.setItem("rf_login", data.login);
           setIsAuthenticated(true);
         } else {
           localStorage.removeItem("rf_login");
@@ -35,7 +38,7 @@ export function useAuth() {
   }, []);
 
   async function startGitHubLogin() {
-    const res = await fetch("http://localhost:4000/api/auth/device/start", {
+    const res = await fetch("/api/auth/device/start", {
       method: "POST",
     });
     const data = await res.json();
@@ -49,7 +52,7 @@ export function useAuth() {
 
   async function pollForAuth(deviceCode: string, interval: number) {
     const poll = async () => {
-      const res = await fetch("http://localhost:4000/api/auth/device/poll", {
+      const res = await fetch("/api/auth/device/poll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ device_code: deviceCode }),

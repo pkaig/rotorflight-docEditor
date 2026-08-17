@@ -1,6 +1,7 @@
 // EditorPanel.tsx
 import React, { useState } from "react";
 import { SpellcheckTextarea } from "./SpellcheckTextarea";
+import ConflictResolver from "./ConflictResolver";
 
 // Docusaurus doc slugs are lowercase-hyphenated — matches spaces and
 // underscores the same way so "My New Page"/"my_new_page" both become
@@ -111,7 +112,9 @@ export const EditorPanel = React.memo(function EditorPanel({
         <ConflictResolver
           workspace={workspace}
           file={currentDocPath.split("/").pop()}
+          login={login}
           onMergedChange={(text) => setContent(text)}
+          onClose={() => onSelect(workspace, currentDocPath)}
           onResolved={async () => {
             await refreshLocalWorkspace(workspace);
             onSelect(workspace, currentDocPath);

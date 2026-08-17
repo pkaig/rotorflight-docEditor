@@ -13,6 +13,7 @@ import {
   GITHUB_REPO,
   GITHUB_DEFAULT_BRANCH,
 } from "../config/github";
+import { isSafePathSegment, isSafeRelativePath } from "../safePath";
 
 function hashFile(buf: Buffer | string) {
   return crypto.createHash("sha1").update(buf).digest("hex");
@@ -181,10 +182,12 @@ async function applyUpstreamToWorkspace(
 const router = express.Router();
 
 function requireToken(req, res) {
-  const login = req.query.login as string;
+  // Session-derived, not client-supplied — see the matching comment on
+  // docsRoutes.ts's requireToken() for why.
+  const login = req.session?.login;
 
   if (!login) {
-    res.status(401).json({ error: "Missing login" });
+    res.status(401).json({ error: "Not signed in" });
     return null;
   }
 
@@ -327,29 +330,35 @@ router.post("/", async (req, res) => {
 /* ---------------------------------------------
  Load the workspace mirror
  ---------------------------------------------*/
+// Plain function, not just the route handler below, so docsRoutes.ts's
+// /create-workspace can call it directly in-process instead of over an
+// HTTP self-call — same reasoning as commitChanges/submitPullRequest in
+// gitRoutes.ts: a server-to-server fetch() doesn't carry the original
+// browser's session cookie, so that self-call stopped working the moment
+// this route started requiring a session.
+export async function loadWorkspaceMirror(login: string, workspace: string) {
+  const globalMirror = path.join(process.cwd(), "Rotorflight-docs", "mirror");
+  const workspaceRoot = path.join(process.cwd(), "workspaces", login, workspace);
+  const workspaceMirror = path.join(workspaceRoot, "mirror");
+
+  await fs.rm(workspaceMirror, { recursive: true, force: true });
+  await fs.ensureDir(workspaceMirror);
+
+  await fs.copy(globalMirror, workspaceMirror);
+}
+
 router.post("/load-workspace-mirror", async (req, res) => {
-  const login = req.query.login as string;
+  const login = req.session?.login;
   const workspace = req.query.workspace as string;
 
-  if (!login || !workspace) {
-    return res.status(400).json({ error: "Missing login or workspace" });
+  if (!login || !isSafePathSegment(workspace)) {
+    return res.status(login ? 400 : 401).json({
+      error: login ? "Missing or invalid workspace" : "Not signed in",
+    });
   }
 
   try {
-    const globalMirror = path.join(process.cwd(), "Rotorflight-docs", "mirror");
-    const workspaceRoot = path.join(
-      process.cwd(),
-      "workspaces",
-      login,
-      workspace,
-    );
-    const workspaceMirror = path.join(workspaceRoot, "mirror");
-
-    await fs.rm(workspaceMirror, { recursive: true, force: true });
-    await fs.ensureDir(workspaceMirror);
-
-    await fs.copy(globalMirror, workspaceMirror);
-
+    await loadWorkspaceMirror(login, workspace);
     return res.json({ ok: true });
   } catch (err) {
     console.error("load-workspace-mirror error:", err);
@@ -361,11 +370,13 @@ router.post("/load-workspace-mirror", async (req, res) => {
   REBASE WORKSPACE
   -----------------------------------*/
 router.post("/rebase-all-workspace", async (req, res) => {
-  const login = req.query.login as string;
+  const login = req.session?.login;
   const workspace = req.query.workspace as string;
 
-  if (!login || !workspace) {
-    return res.status(400).json({ error: "Missing login or workspace" });
+  if (!login || !isSafePathSegment(workspace)) {
+    return res.status(login ? 400 : 401).json({
+      error: login ? "Missing or invalid workspace" : "Not signed in",
+    });
   }
 
   try {
@@ -515,9 +526,16 @@ router.post("/rebase-all-workspace", async (req, res) => {
   Set Conflict files
   -----------------------------------*/
 router.get("/conflict-file", async (req, res) => {
-  const login = req.query.login as string;
+  const login = req.session?.login;
   const workspace = req.query.workspace as string;
   const file = req.query.file as string;
+
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace) || !isSafeRelativePath(file)) {
+    return res.status(400).json({ error: "Invalid workspace or file" });
+  }
 
   const wsPath = path.join(
     process.cwd(),
@@ -545,10 +563,14 @@ router.get("/conflict-file", async (req, res) => {
   Resolve Conflict files
   -----------------------------------*/
 router.post("/resolve-conflict", async (req, res) => {
-  const { login, workspace, file, resolution, content } = req.body;
+  const login = req.session?.login;
+  const { workspace, file, resolution, content } = req.body;
 
-  if (!login || !workspace || !file) {
-    return res.status(400).json({ error: "Missing login, workspace, or file" });
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace) || !isSafeRelativePath(file)) {
+    return res.status(400).json({ error: "Invalid workspace or file" });
   }
 
   const wsPath = path.join(
@@ -589,7 +611,16 @@ router.post("/resolve-conflict", async (req, res) => {
  The file has a conflict
  ---------------------------------------------*/
 router.get("/has-conflict", async (req, res) => {
-  const { login, workspace, file } = req.query;
+  const login = req.session?.login;
+  const workspace = req.query.workspace as string;
+  const file = req.query.file as string;
+
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace) || !isSafeRelativePath(file)) {
+    return res.status(400).json({ error: "Invalid workspace or file" });
+  }
 
   const wsPath = path.join(
     process.cwd(),
@@ -650,8 +681,8 @@ export async function ensureMirrorUpToDate(token: string) {
  CHECK STATUS
  ---------------------------------------------*/
 router.get("/upstream-status", async (req, res) => {
-  const login = req.query.login as string;
-  if (!login) return res.status(400).json({ error: "Missing login" });
+  const login = req.session?.login;
+  if (!login) return res.status(401).json({ error: "Not signed in" });
 
   try {
     const token = getTokenForUser(login);
@@ -694,10 +725,13 @@ router.get("/upstream-status", async (req, res) => {
    CLEAR ALL CHANGES (restore everything from baseline)
 ------------------------------------------------------- */
 router.post("/clear-all", async (req, res) => {
-  const { login, workspace } = req.body;
+  const login = req.session?.login;
+  const { workspace } = req.body;
 
-  if (!login || !workspace) {
-    return res.status(400).json({ error: "Missing login or workspace" });
+  if (!login || !isSafePathSegment(workspace)) {
+    return res.status(login ? 400 : 401).json({
+      error: login ? "Missing or invalid workspace" : "Not signed in",
+    });
   }
 
   const root = path.join(process.cwd(), "workspaces", login, workspace);
@@ -729,12 +763,18 @@ router.post("/clear-all", async (req, res) => {
    CLEAR SELECTED CHANGES (restore only listed files)
 ------------------------------------------------------- */
 router.post("/clear-selected", async (req, res) => {
-  const { login, workspace, files } = req.body;
+  const login = req.session?.login;
+  const { workspace, files } = req.body;
 
-  if (!login || !workspace || !Array.isArray(files)) {
-    return res
-      .status(400)
-      .json({ error: "Missing login, workspace, or files" });
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (
+    !isSafePathSegment(workspace) ||
+    !Array.isArray(files) ||
+    !files.every((f) => isSafeRelativePath(f))
+  ) {
+    return res.status(400).json({ error: "Invalid workspace or files" });
   }
 
   const root = path.join(process.cwd(), "workspaces", login, workspace);
@@ -779,10 +819,15 @@ router.post("/clear-selected", async (req, res) => {
    GET DIFF FOR ANY FILE (workspace vs baseline)
 ------------------------------------------------------- */
 router.get("/diff-file", async (req, res) => {
-  const { login, workspace, file } = req.query;
+  const login = req.session?.login;
+  const workspace = req.query.workspace as string;
+  const file = req.query.file as string;
 
-  if (!login || !workspace || !file) {
-    return res.status(400).json({ error: "Missing login, workspace, or file" });
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace) || !isSafeRelativePath(file)) {
+    return res.status(400).json({ error: "Invalid workspace or file" });
   }
 
   const root = path.join(process.cwd(), "workspaces", login, workspace);

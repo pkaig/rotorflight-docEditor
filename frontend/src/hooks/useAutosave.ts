@@ -10,16 +10,19 @@ export function useAutosave(
   setSuppressNextAutosave: (v: boolean) => void,
   saveDocument: (content: string) => Promise<void> | void,
 ) {
-  if (!AUTOSAVE_ENABLED) return;
-
-  // Ignore invalid content
-  if (content === undefined || content === null) return;
-  if (typeof content !== "string") return;
-
   const [saving, setSaving] = useState(false);
   const timeout = useRef<number | null>(null);
 
   useEffect(() => {
+    // These used to be early returns before the hook calls above — fine
+    // while AUTOSAVE_ENABLED and the content checks never actually trip
+    // (they don't, today), but React requires the same hooks in the same
+    // order on every render, so a future change to any of these
+    // conditions would have been a real bug waiting to happen.
+    if (!AUTOSAVE_ENABLED) return;
+    if (content === undefined || content === null) return;
+    if (typeof content !== "string") return;
+
     if (!login || !workspace || !filePath) return;
 
     // Never autosave GitHub files

@@ -11,7 +11,12 @@ const router = express.Router();
 // ---------------------------------------------
 // Token Storage Directory
 // ---------------------------------------------
-const TOKENS_DIR = path.join(__dirname, "tokens");
+// process.cwd() rather than __dirname — matches how every other file-storage
+// path in this app is computed (workspaces/, mirror/), and unlike __dirname
+// it resolves to the same place whether this runs from source (ts-node-dev)
+// or from compiled dist/routes/authRoutes.js, so a production build doesn't
+// silently start looking for tokens in the wrong directory.
+const TOKENS_DIR = path.join(process.cwd(), "routes", "tokens");
 
 if (!fs.existsSync(TOKENS_DIR)) {
   fs.mkdirSync(TOKENS_DIR);
@@ -149,6 +154,12 @@ router.post("/device/poll", async (req, res) => {
 
   saveToken(token);
 
+  // This is the actual authentication boundary: everything downstream
+  // (docsRoutes/gitRoutes/resetMirror) identifies "who is making this
+  // request" from req.session.login, never from a client-supplied login
+  // field, so this is the one place that gets to set it.
+  req.session.login = token.login;
+
   // Fire-and-forget: starts fork creation as early as possible so it has
   // time to become usable before the user gets to submitting a PR, without
   // making login wait on it. ensureFork() is called again before any
@@ -162,20 +173,44 @@ router.post("/device/poll", async (req, res) => {
 });
 
 // ---------------------------------------------
-// Auth Status
+// Restore session on page load — the frontend can't ask "is <name>
+// authenticated?" anymore (that let anyone probe/impersonate any GitHub
+// username); it can only ask "who does my own session cookie belong to?".
 // ---------------------------------------------
-router.get("/status/:login", (req, res) => {
-  const login = req.params.login;
-  const token = loadToken(login);
-  res.json({ authenticated: !!token });
+router.get("/session", (req, res) => {
+  const login = req.session.login;
+  const authenticated = !!login && !!loadToken(login);
+
+  if (!authenticated) {
+    // Token expired/was revoked since the cookie was issued — don't keep
+    // asserting a session that no longer has a usable token behind it.
+    req.session.login = undefined;
+  }
+
+  res.json({ authenticated, login: authenticated ? login : null });
 });
 
 // ---------------------------------------------
-// Get User Info
+// Auth Status (legacy, param'd form) — only ever confirms the caller's OWN
+// session, not an arbitrary username, so this can't be used to check
+// whether someone else has authenticated with this app.
+// ---------------------------------------------
+router.get("/status/:login", (req, res) => {
+  const authenticated =
+    req.session.login === req.params.login && !!loadToken(req.params.login);
+  res.json({ authenticated });
+});
+
+// ---------------------------------------------
+// Get User Info — same restriction: only your own profile, derived from
+// your own session, never an arbitrary :login someone else supplied.
 // ---------------------------------------------
 router.get("/me/:login", async (req, res) => {
-  const login = req.params.login;
-  const token = loadToken(login);
+  if (req.session.login !== req.params.login) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const token = loadToken(req.params.login);
 
   if (!token) {
     return res.status(401).json({ error: "Not authenticated" });
@@ -192,6 +227,16 @@ router.get("/me/:login", async (req, res) => {
     console.error("Failed to fetch user:", err);
     res.status(500).json({ error: "Failed to fetch user" });
   }
+});
+
+// ---------------------------------------------
+// Logout
+// ---------------------------------------------
+router.post("/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("connect.sid");
+    res.json({ ok: true });
+  });
 });
 
 // ---------------------------------------------

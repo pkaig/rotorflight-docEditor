@@ -6,17 +6,14 @@ export default function UnifiedDiffViewer({ login, workspace, file, onClose }) {
   const [baselineText, setBaselineText] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Guard against missing file/workspace
-  if (!file || !workspace) {
-    return (
-      <div style={{ padding: "1rem" }}>
-        No file selected.
-        <button onClick={onClose}>Close Diff</button>
-      </div>
-    );
-  }
-
   useEffect(() => {
+    // Guard lives inside the effect, not before the hook calls above —
+    // React requires every hook to run in the same order on every render,
+    // so bailing out early up there (before useEffect ran) was a
+    // rules-of-hooks violation, even though file/workspace are already
+    // guaranteed non-empty by the time this actually mounts today.
+    if (!file || !workspace) return;
+
     async function load() {
       setLoading(true);
 
@@ -31,7 +28,17 @@ export default function UnifiedDiffViewer({ login, workspace, file, onClose }) {
     }
 
     load();
-  }, [file]);
+  }, [file, workspace, login]);
+
+  // Guard against missing file/workspace
+  if (!file || !workspace) {
+    return (
+      <div style={{ padding: "1rem" }}>
+        No file selected.
+        <button onClick={onClose}>Close Diff</button>
+      </div>
+    );
+  }
 
   if (loading) {
     return <div style={{ padding: "1rem" }}>Loading diff…</div>;

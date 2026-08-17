@@ -6,16 +6,10 @@ export default function DiffViewer({ login, workspace, file, onClose }) {
   const [baselineText, setBaselineText] = useState("");
 
   console.log(file, workspace);
-  if (!file || !workspace) {
-    return (
-      <div style={{ padding: "1rem" }}>
-        No file selected.
-        <button onClick={onClose}>Close</button>
-      </div>
-    );
-  }
 
   useEffect(() => {
+    if (!file || !workspace) return;
+
     async function load() {
       const res = await fetch(
         `/api/reset-mirror/diff-file?login=${login}&workspace=${workspace}&file=${file}`,
@@ -26,7 +20,16 @@ export default function DiffViewer({ login, workspace, file, onClose }) {
       setBaselineText(json.baseline || "");
     }
     load();
-  }, [file]);
+  }, [file, workspace, login]);
+
+  if (!file || !workspace) {
+    return (
+      <div style={{ padding: "1rem" }}>
+        No file selected.
+        <button onClick={onClose}>Close</button>
+      </div>
+    );
+  }
 
   const diffs = diffLines(baselineText || "", workspaceText || "");
 

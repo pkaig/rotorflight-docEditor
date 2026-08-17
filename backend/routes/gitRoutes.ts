@@ -10,6 +10,7 @@ import {
 } from "../config/github";
 import path from "path";
 import fs from "fs-extra";
+import { isSafePathSegment, isSafeRelativePath } from "../safePath";
 
 const router = express.Router();
 
@@ -209,119 +210,144 @@ async function ensureBranch(token: string, login: string, branch: string) {
    1. CREATE COMMIT (to user fork)
    ============================================================ */
 
+// Plain function, not just the route handler below, so docsRoutes.ts's
+// /submit-pr can call this directly in-process. It used to hit this route
+// over HTTP (localhost self-call) instead — which stopped working once
+// /commit started requiring a session, since a server-to-server fetch()
+// doesn't carry the original browser's session cookie.
+export async function commitChanges(
+  login: string,
+  workspace: string,
+  changes: any,
+) {
+  if (!isSafePathSegment(workspace)) {
+    throw new Error("Invalid workspace");
+  }
+  const allPaths = [
+    ...changes.added,
+    ...changes.modified,
+    ...changes.deleted,
+  ].map((item: any) => item.path);
+  if (!allPaths.every((p) => isSafeRelativePath(p))) {
+    throw new Error("Invalid file path in changes");
+  }
+
+  const token = getTokenForUser(login);
+  await assertRepoScope(token);
+  const branch = `${workspace}`;
+
+  console.log("🔧 Ensuring fork exists…");
+  await ensureFork(token, login);
+
+  console.log("🔧 Ensuring branch exists…");
+  const ref = await ensureBranch(token, login, branch);
+
+  console.log("📌 Branch head SHA:", ref.object.sha);
+
+  console.log("🔍 Fetching head commit object…");
+  const headCommit = await githubRequest(
+    token,
+    `/repos/${login}/${GITHUB_REPO}/git/commits/${ref.object.sha}`,
+  );
+
+  const baseTreeSha = headCommit.tree.sha;
+  console.log("📌 Base tree SHA:", baseTreeSha);
+
+  const workspaceRoot = path.join(
+    process.cwd(),
+    "workspaces",
+    login,
+    workspace,
+  );
+
+  console.log("📁 Workspace root:", workspaceRoot);
+
+  const treeItems: any[] = [];
+
+  console.log(
+    "📝 Added/Modified files:",
+    changes.added.length + changes.modified.length,
+  );
+  console.log("🗑 Deleted files:", changes.deleted.length);
+
+  for (const item of [...changes.added, ...changes.modified]) {
+    const fullPath = path.join(workspaceRoot, item.path);
+    console.log("📄 Adding file:", item.path);
+
+    const content = await fs.readFile(fullPath, "utf8");
+
+    treeItems.push({
+      path: item.path,
+      mode: "100644",
+      type: "blob",
+      content,
+    });
+  }
+
+  for (const item of changes.deleted) {
+    console.log("🗑 Deleting file:", item.path);
+
+    treeItems.push({
+      path: item.path,
+      mode: "100644",
+      type: "blob",
+      sha: null,
+    });
+  }
+
+  console.log("🌲 Creating new tree…");
+
+  const tree = await githubRequest(
+    token,
+    `/repos/${login}/${GITHUB_REPO}/git/trees`,
+    "POST",
+    {
+      base_tree: baseTreeSha,
+      tree: treeItems,
+    },
+  );
+
+  const commit = await githubRequest(
+    token,
+    `/repos/${login}/${GITHUB_REPO}/git/commits`,
+    "POST",
+    {
+      message: `Workspace update: ${workspace}`,
+      tree: tree.sha,
+      parents: [ref.object.sha],
+    },
+  );
+
+  await githubRequest(
+    token,
+    `/repos/${login}/${GITHUB_REPO}/git/refs/heads/${branch}`,
+    "PATCH",
+    { sha: commit.sha },
+  );
+
+  console.log("✅ Commit complete");
+}
+
 router.post("/commit", async (req, res) => {
-  const login = req.query.login as string;
+  const login = req.session?.login;
   const workspace = req.query.workspace as string;
   const { changes } = req.body;
+
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace)) {
+    return res.status(400).json({ error: "Invalid workspace" });
+  }
 
   console.log("============================================================");
   console.log("📥 /commit request");
   console.log("👤 User:", login);
   console.log("🗂 Workspace:", workspace);
-  console.log("🔀 Branch name:", workspace);
   console.log("============================================================");
 
   try {
-    const token = getTokenForUser(login);
-    await assertRepoScope(token);
-    const branch = `${workspace}`;
-
-    console.log("🔧 Ensuring fork exists…");
-    await ensureFork(token, login);
-
-    console.log("🔧 Ensuring branch exists…");
-    const ref = await ensureBranch(token, login, branch);
-
-    console.log("📌 Branch head SHA:", ref.object.sha);
-
-    console.log("🔍 Fetching head commit object…");
-    const headCommit = await githubRequest(
-      token,
-      `/repos/${login}/${GITHUB_REPO}/git/commits/${ref.object.sha}`,
-    );
-
-    const baseTreeSha = headCommit.tree.sha;
-    console.log("📌 Base tree SHA:", baseTreeSha);
-
-    const workspaceRoot = path.join(
-      process.cwd(),
-      "workspaces",
-      login,
-      workspace,
-    );
-
-    console.log("📁 Workspace root:", workspaceRoot);
-
-    const treeItems: any[] = [];
-
-    console.log(
-      "📝 Added/Modified files:",
-      changes.added.length + changes.modified.length,
-    );
-    console.log("🗑 Deleted files:", changes.deleted.length);
-
-    for (const item of [...changes.added, ...changes.modified]) {
-      const fullPath = path.join(workspaceRoot, item.path);
-      console.log("📄 Adding file:", item.path);
-
-      const content = await fs.readFile(fullPath, "utf8");
-
-      treeItems.push({
-        path: item.path,
-        mode: "100644",
-        type: "blob",
-        content,
-      });
-    }
-
-    for (const item of changes.deleted) {
-      console.log("🗑 Deleting file:", item.path);
-
-      treeItems.push({
-        path: item.path,
-        mode: "100644",
-        type: "blob",
-        sha: null,
-      });
-    }
-
-    console.log("🌲 Creating new tree…");
-
-    const tree = await githubRequest(
-      token,
-      `/repos/${login}/${GITHUB_REPO}/git/trees`,
-      "POST",
-      {
-        base_tree: baseTreeSha,
-        tree: treeItems,
-      },
-    );
-
-    //    console.log("📌 New tree SHA:", tree.sha);
-    //    console.log("🧱 Creating commit…");
-
-    const commit = await githubRequest(
-      token,
-      `/repos/${login}/${GITHUB_REPO}/git/commits`,
-      "POST",
-      {
-        message: `Workspace update: ${workspace}`,
-        tree: tree.sha,
-        parents: [ref.object.sha],
-      },
-    );
-
-    //    console.log("📌 New commit SHA:", commit.sha);
-    //    console.log("🔧 Updating branch ref…");
-
-    await githubRequest(
-      token,
-      `/repos/${login}/${GITHUB_REPO}/git/refs/heads/${branch}`,
-      "PATCH",
-      { sha: commit.sha },
-    );
-
-    console.log("✅ Commit complete");
+    await commitChanges(login, workspace, changes);
     res.json({ ok: true });
   } catch (err) {
     console.error("❌ Commit failed:", err);
@@ -336,10 +362,77 @@ router.post("/commit", async (req, res) => {
    2. CREATE OR UPDATE PR (fork → upstream)
    ============================================================ */
 
+// Same reasoning as commitChanges above — a plain function so
+// docsRoutes.ts's /submit-pr can call it in-process instead of over HTTP.
+export async function submitPullRequest(
+  login: string,
+  workspace: string,
+  description: string,
+) {
+  const token = getTokenForUser(login);
+  const branch = `${workspace}`;
+
+  console.log("🔍 Checking for existing PR…");
+
+  const prs = await githubRequest(
+    token,
+    `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls?head=${login}:${branch}&state=open`,
+  );
+
+  let pr;
+  let created: boolean;
+
+  if (prs.length > 0) {
+    console.log("✏️ Updating existing PR:", prs[0].number);
+
+    pr = await githubRequest(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls/${prs[0].number}`,
+      "PATCH",
+      { body: description },
+    );
+    created = false;
+  } else {
+    console.log("🆕 Creating new PR…");
+
+    pr = await githubRequest(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls`,
+      "POST",
+      {
+        title: `Docs updates from workspace "${workspace}"`,
+        head: `${login}:${branch}`,
+        base: GITHUB_DEFAULT_BRANCH,
+        body: description,
+      },
+    );
+    created = true;
+  }
+
+  console.log("✅ PR ready:", pr.html_url);
+
+  // Status uses the pr_created/pr_updated vocabulary the frontend's
+  // PRResponse type actually switches on — this used to send
+  // { number, url, state } instead, which the frontend's handler never
+  // matched, so a successful PR submission produced no visible banner.
+  return {
+    status: created ? "pr_created" : "pr_updated",
+    prNumber: pr.number,
+    url: pr.html_url,
+  };
+}
+
 router.post("/pr", async (req, res) => {
-  const login = req.query.login as string;
+  const login = req.session?.login;
   const workspace = req.query.workspace as string;
   const { description } = req.body;
+
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace)) {
+    return res.status(400).json({ error: "Invalid workspace" });
+  }
 
   console.log("============================================================");
   console.log("📥 /pr request");
@@ -348,57 +441,8 @@ router.post("/pr", async (req, res) => {
   console.log("============================================================");
 
   try {
-    const token = getTokenForUser(login);
-    const branch = `${workspace}`;
-
-    console.log("🔍 Checking for existing PR…");
-
-    const prs = await githubRequest(
-      token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls?head=${login}:${branch}&state=open`,
-    );
-
-    let pr;
-    let created: boolean;
-
-    if (prs.length > 0) {
-      console.log("✏️ Updating existing PR:", prs[0].number);
-
-      pr = await githubRequest(
-        token,
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls/${prs[0].number}`,
-        "PATCH",
-        { body: description },
-      );
-      created = false;
-    } else {
-      console.log("🆕 Creating new PR…");
-
-      pr = await githubRequest(
-        token,
-        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls`,
-        "POST",
-        {
-          title: `Docs updates from workspace "${workspace}"`,
-          head: `${login}:${branch}`,
-          base: GITHUB_DEFAULT_BRANCH,
-          body: description,
-        },
-      );
-      created = true;
-    }
-
-    console.log("✅ PR ready:", pr.html_url);
-
-    // Status uses the pr_created/pr_updated vocabulary the frontend's
-    // PRResponse type actually switches on — this used to send
-    // { number, url, state } instead, which the frontend's handler never
-    // matched, so a successful PR submission produced no visible banner.
-    res.json({
-      status: created ? "pr_created" : "pr_updated",
-      prNumber: pr.number,
-      url: pr.html_url,
-    });
+    const result = await submitPullRequest(login, workspace, description);
+    res.json(result);
   } catch (err) {
     console.error("❌ PR failed:", err);
     res.status(500).json({ status: "error", error: "Failed to create/update PR" });
