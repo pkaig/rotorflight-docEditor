@@ -75,6 +75,28 @@ export default function App() {
     isAuthenticated,
   );
 
+  /* CHANGE TRACKING + PR FLOW — must come before useDocEditor below, since
+     notifyFileSaved gets passed into it. This is the single useGitPR()
+     instance for the whole app; useDocEditor and PRPanel used to each
+     create their own independent one (hooks don't share state across call
+     sites), so notifying "a file was saved" never reached the instance
+     actually feeding the rendered Changes panel. */
+  const {
+    banner,
+    activePR,
+    submitPR,
+    submitting,
+    changes,
+    notifyFileSaved,
+    notifyFileRenamed,
+    notifyFileCreated,
+    clearBanner,
+    clearAllChanges,
+  } = useGitPR({
+    login: login || "",
+    workspace,
+  });
+
   /* EDITOR STATE */
   const {
     content,
@@ -89,7 +111,7 @@ export default function App() {
     setSuppressNextAutosave,
     saveState,
     saveDocument,
-  } = useDocEditor(login, workspace);
+  } = useDocEditor(login, workspace, notifyFileSaved);
 
   /* UI STATE */
   const { editorWidth, startDrag } = useDragResize(50);
@@ -101,8 +123,6 @@ export default function App() {
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
   const { checking, stale, updating } = useUpstreamStatus(login);
-  const [showDiffViewer, setShowDiffViewer] = useState(false);
-  const [diffFile, setDiffFile] = useState("");
   const [showDiff, setShowDiff] = useState(false);
   const [currentFile, setCurrentFile] = useState("");
 
@@ -115,25 +135,9 @@ export default function App() {
 
   const conflict = isConflictFile(currentDocPath);
 
-  /* CHANGE TRACKING + PR FLOW */
   const [selectedChanges, setSelectedChanges] = useState<
     Record<string, boolean>
   >({});
-
-  const {
-    banner,
-    activePR,
-    submitPR,
-    changes,
-    notifyFileSaved,
-    notifyFileRenamed,
-    notifyFileCreated,
-    clearBanner,
-    clearAllChanges,
-  } = useGitPR({
-    login: login || "",
-    workspace,
-  });
 
   const effectivePath = currentDocPath || "";
 
@@ -342,6 +346,11 @@ export default function App() {
       cleanPath = cleanPath.slice(prefix.length);
     }
 
+    // Workspace-relative, keeping the docs/ or versioned_docs/ prefix —
+    // matches the path format scan-local-changes returns in `changes`,
+    // and what the diff-file endpoint now expects.
+    const relPath = cleanPath;
+
     // Only strip docs/ if the tree path actually includes it
     if (path.includes(`/docs/`)) {
       cleanPath = cleanPath.replace(/^.*?docs\//, "");
@@ -375,10 +384,22 @@ export default function App() {
       return; // stop normal file loading
     }
 
-    // 2. If file is changed but not conflicted → show diff viewer
-    if (changes[path]) {
-      setShowDiffViewer(true);
-      setDiffFile(cleanPath);
+    // 3. If file is changed but not conflicted → show diff viewer
+    // `changes` is { added, modified, deleted, renamed } arrays of
+    // { path } entries (from scan-local-changes), not a path-keyed map —
+    // `changes[path]` was always undefined, so this branch never actually
+    // ran, and even when it did, it set state (showDiffViewer/diffFile)
+    // that nothing in the render tree ever read.
+    const isChangedFile = (
+      changes.added as { path: string }[]
+    )
+      .concat(changes.modified, changes.deleted, changes.renamed)
+      .some((c) => c.path === relPath);
+
+    if (isChangedFile) {
+      setCurrentFile(relPath);
+      setShowDiff(true);
+      loadDoc(path, ws);
       return;
     }
 
@@ -775,7 +796,15 @@ export default function App() {
               />
             </div>
             <div className="pr-panel">
-              <PRPanel login={login} workspace={workspace} />
+              <PRPanel
+                login={login}
+                workspace={workspace}
+                banner={banner}
+                activePR={activePR}
+                submitPR={submitPR}
+                submitting={submitting}
+                clearBanner={clearBanner}
+              />
             </div>
           </div>
         </div>
@@ -821,10 +850,11 @@ export default function App() {
                   key={currentFile}
                   login={login}
                   workspace={workspace}
-                  file={currentFile
-                    .replace(/^local-workspace\/[^/]+\//, "")
-                    .replace(/^docs\//, "")
-                    .replace(/^versioned_docs\//, "")}
+                  // currentFile already keeps the docs/ or versioned_docs/
+                  // prefix (see onSelect's relPath) — /diff-file needs that
+                  // prefix to resolve the right path on disk, so only the
+                  // local-workspace/<ws>/ virtual-tree prefix gets stripped.
+                  file={currentFile.replace(/^local-workspace\/[^/]+\//, "")}
                   onClose={() => setShowDiff(false)}
                 />
               ) : (

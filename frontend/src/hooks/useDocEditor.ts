@@ -1,7 +1,14 @@
 import { useState, useRef, useEffect } from "react";
-import { useGitPR } from "./useGitPR";
 
-export function useDocEditor(login, workspace) {
+// notifyFileSaved is passed in rather than obtained from its own
+// useGitPR(...) call here — every call to that hook creates an
+// independent state instance (React hooks don't share state across call
+// sites), so a separate instance's notifyFileSaved only ever refreshes
+// *that* instance's own `changes`, never the one actually feeding the
+// rendered Changes panel (App.tsx's instance). Saving a file updated
+// nothing visible because of exactly this: the notification went to an
+// orphaned instance nobody was looking at.
+export function useDocEditor(login, workspace, notifyFileSaved: () => void) {
   // export function useDocEditor(login: string | null, workspace: string | null) {
   const [content, setContent] = useState("");
   const [currentDocPath, setCurrentDocPath] = useState("");
@@ -12,11 +19,6 @@ export function useDocEditor(login, workspace) {
   const [editorImageFolder, setEditorImageFolder] = useState<string | null>(
     null,
   );
-
-  const { notifyFileSaved } = useGitPR({
-    login,
-    workspace,
-  });
 
   //Auto save state
   useEffect(() => {

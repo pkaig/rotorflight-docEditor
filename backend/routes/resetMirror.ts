@@ -787,8 +787,13 @@ router.get("/diff-file", async (req, res) => {
 
   const root = path.join(process.cwd(), "workspaces", login, workspace);
 
-  const wsPath = path.join(root, "docs", file);
-  const basePath = path.join(root, "mirror", "docs", file);
+  // `file` is the full workspace-relative path (e.g. "docs/foo.md" or
+  // "versioned_docs/version-2.1.0/foo.mdx") — this used to hardcode a
+  // "docs" prefix, which meant versioned_docs files could never resolve
+  // correctly here (always compared against the wrong path, or one/both
+  // sides silently read as empty).
+  const wsPath = path.join(root, file as string);
+  const basePath = path.join(root, "mirror", file as string);
 
   try {
     const workspaceText = (await fs.pathExists(wsPath))

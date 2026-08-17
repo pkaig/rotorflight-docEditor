@@ -1,8 +1,8 @@
 // PRPanel.tsx
 
 import { useState } from "react";
-import { useGitPR } from "../hooks/useGitPR";
 import { PRDescriptionModal } from "./PRDescriptionModal";
+import type { PRResponse, PRStatus } from "../hooks/useGitPR";
 
 // Module-level, not a default parameter: a default parameter value is a
 // fresh function on every render, which made PRDescriptionModal's
@@ -16,18 +16,39 @@ function warnNoConflictUI(conflicts: unknown[]) {
   );
 }
 
+interface PRPanelProps {
+  login: string | null;
+  workspace: string | null;
+  banner: {
+    type: PRStatus;
+    prNumber?: number;
+    url?: string;
+    error?: string;
+  } | null;
+  activePR: number | null;
+  submitPR: (description: string) => Promise<PRResponse | undefined>;
+  submitting: boolean;
+  clearBanner: () => void;
+  onConflictsDetected?: (conflicts: unknown[]) => void;
+}
+
+// banner/activePR/submitPR/submitting/clearBanner come from App.tsx's own
+// useGitPR() call rather than a separate one here — every call to that
+// hook is an independent state instance, and a second, PRPanel-owned
+// instance would fetch its own redundant, never-refreshed copy of
+// `changes` on mount for no reason (nothing here renders it), the same
+// class of bug that broke the Changes panel not updating after a save.
 export function PRPanel({
   login,
   workspace,
+  banner,
+  activePR,
+  submitPR,
+  submitting,
+  clearBanner,
   onConflictsDetected = warnNoConflictUI,
-}) {
+}: PRPanelProps) {
   const [modalOpen, setModalOpen] = useState(false);
-
-  // FIX: pass login + workspace into the hook
-  const { banner, activePR, submitPR, submitting, clearBanner } = useGitPR({
-    login,
-    workspace,
-  });
 
   const handleOpenModal = () => setModalOpen(true);
 
