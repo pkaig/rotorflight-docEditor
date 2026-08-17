@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@babel/standalone": "^8.0.4",
     "@mdx-js/mdx": "^2.3.0",
     "@mdx-js/react": "^2.3.0",
     "@mdx-js/rollup": "^3.1.1",
@@ -37,6 +38,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/babel__standalone": "^7.1.9",
     "@types/diff": "^7.0.2",
     "@types/node": "^24.10.1",
     "@types/path-browserify": "^1.0.3",

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { VFile } from "vfile";
+import * as React from "react";
 
 import { compile } from "@mdx-js/mdx/lib/compile.js";
 import * as jsxRuntime from "react/jsx-runtime";
@@ -8,12 +9,12 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkDirective from "remark-directive";
 import remarkAdmonitions from "../remarkAdmonitions";
 import remarkStripImports from "../mdx/remarkStripImports";
+import { createLoadContext, resolveDepsObject } from "../mdx/loadSiteModule";
 
 import rehypeImages from "../mdx/rehypeImagesPlugin";
 
 import Tabs from "../mdx/Tabs";
 import TabItem from "../mdx/TabItem";
-import tabStyles from "../css/tabs.module.css";
 
 // Compiles the current doc's MDX/Markdown source in-browser (no build step)
 // and renders it. On compile/eval failure, falls back to a line-numbered
@@ -29,10 +30,27 @@ export default function Preview({
   const [error, setError] = useState<any>(null);
   const [rawMode, setRawMode] = useState(false);
 
+  // Raw CSS pulled in via .module.css imports (see loadSiteModule) has no
+  // build step to scope it, so it's injected globally in a single tag that
+  // gets fully replaced (not appended to) on every compile — otherwise
+  // switching docs would leak one doc's styles into the next.
+  const styleTagRef = useRef<HTMLStyleElement | null>(null);
+  useEffect(() => {
+    const tag = document.createElement("style");
+    tag.setAttribute("data-rf-preview-css", "");
+    document.head.appendChild(tag);
+    styleTagRef.current = tag;
+    return () => {
+      tag.remove();
+      styleTagRef.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
     // hard reset on file/content change to avoid latching
+    if (styleTagRef.current) styleTagRef.current.textContent = "";
     setError(null);
     setMDXContent(null);
     setRawMode(false);
@@ -57,12 +75,17 @@ export default function Preview({
         cwd: "/",
       });
 
+      const login = localStorage.getItem("rf_login") || "";
+      const wsMatch = currentDocPath.match(/^local-workspace\/([^/]+)\//);
+      const workspace = wsMatch ? wsMatch[1] : "";
+      const loadCtx = createLoadContext(login, workspace);
+
       // frontmatter must be first so later plugins never see the leading
       // "---" block as markdown content; directive must precede admonitions
       // so ":::note" blocks are parsed before being turned into HTML.
       const commonPlugins = [remarkFrontmatter, remarkDirective, remarkAdmonitions];
       const remarkPlugins = isMdx
-        ? [...commonPlugins, remarkStripImports]
+        ? [...commonPlugins, [remarkStripImports, loadCtx]]
         : commonPlugins;
 
       const rehypePlugins = [[rehypeImages, currentDocPath]];
@@ -95,12 +118,21 @@ export default function Preview({
         }
 
         try {
+          const depsObj = await resolveDepsObject(loadCtx);
+
+          if (styleTagRef.current) {
+            styleTagRef.current.textContent = Array.from(
+              loadCtx.cssTexts.values(),
+            ).join("\n\n");
+          }
+
           const wrapped = `
 export default function(runtime) {
   const { Fragment, jsx, jsxs } = runtime;
   const Tabs = runtime.Tabs;
   const TabItem = runtime.TabItem;
-  const tabStyles = runtime.tabStyles;
+  const __deps__ = runtime.__deps__;
+  const __react__ = runtime.__react__;
 
   ${code}
 }
@@ -116,7 +148,8 @@ export default function(runtime) {
             ...jsxRuntime,
             Tabs,
             TabItem,
-            tabStyles,
+            __deps__: depsObj,
+            __react__: React,
           });
 
           if (!cancelled) {

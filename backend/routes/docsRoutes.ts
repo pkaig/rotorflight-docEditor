@@ -288,6 +288,9 @@ router.post("/restore-file", async (req, res) => {
    8. SERVE LOCAL IMAGES
    ============================================================ */
 
+// Also doubles as a generic "read any workspace file" endpoint — used by
+// the preview's MDX import resolver for CSS/JSON/component source text as
+// well as images (see frontend/src/mdx/fetchWorkspaceFile.ts).
 router.get("/images/local", async (req, res) => {
   const auth = requireToken(req, res);
   if (!auth) return;
@@ -301,7 +304,19 @@ router.get("/images/local", async (req, res) => {
   const ws = parts[1];
   const clean = parts.slice(2).join("/");
 
-  const fullPath = path.join(process.cwd(), "workspaces", login, ws, clean);
+  // Workspaces only ever sync docs/ and versioned_docs/ (the user-editable
+  // surface) — everything else a doc can reference via the `@site/` alias
+  // (e.g. `@site/src/components/...`) lives only in the shared upstream
+  // mirror, never copied per-workspace since users don't edit it here.
+  const isWorkspaceLocal =
+    clean === "docs" ||
+    clean.startsWith("docs/") ||
+    clean === "versioned_docs" ||
+    clean.startsWith("versioned_docs/");
+
+  const fullPath = isWorkspaceLocal
+    ? path.join(process.cwd(), "workspaces", login, ws, clean)
+    : path.join(process.cwd(), "Rotorflight-docs", "mirror", clean);
 
   try {
     return res.sendFile(fullPath);
