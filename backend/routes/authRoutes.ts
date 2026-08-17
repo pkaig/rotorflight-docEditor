@@ -40,7 +40,12 @@ const router = express.Router();
 const TOKENS_DIR = path.join(process.cwd(), "routes", "tokens");
 
 if (!fs.existsSync(TOKENS_DIR)) {
-  fs.mkdirSync(TOKENS_DIR);
+  // recursive: true — "routes" itself won't exist yet either the first
+  // time this runs against a brand-new cwd (e.g. a packaged Electron
+  // app's freshly created per-user data directory, see electron/main.ts).
+  // This always happened to work before because process.cwd() was
+  // always backend/, which already has a real routes/ folder in it.
+  fs.mkdirSync(TOKENS_DIR, { recursive: true });
   console.log("📁 Created tokens directory:", TOKENS_DIR);
 }
 

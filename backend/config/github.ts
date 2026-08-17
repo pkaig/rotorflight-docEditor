@@ -8,18 +8,16 @@
  *   them again.
  *
  * Info:
- *   GITHUB_OWNER/GITHUB_REPO are intentionally hardcoded rather than read
- *   from .env — this app only ever targets one fixed upstream repo, so
- *   there's no real configuration to vary. The startup console.log block
- *   is a deliberate boot-time sanity check: a missing client id would
- *   otherwise fail silently deep inside the device flow instead of at
- *   process start. There is deliberately no client secret here — this
- *   app is registered as a GitHub App (not a classic OAuth App)
- *   specifically so its device-flow token exchange needs no secret,
- *   since it's meant to run as software users download and run
- *   themselves, where a bundled secret couldn't stay secret.
+ *   Every value here is hardcoded rather than read from .env — this app
+ *   only ever targets one fixed upstream repo through one fixed GitHub
+ *   App, so there's no real configuration to vary between installs, and
+ *   the packaged desktop app (see electron/main.ts) doesn't ship an
+ *   .env file at all. None of these values are sensitive: GITHUB_CLIENT_ID
+ *   is a GitHub App's public client identifier, not a secret (unlike a
+ *   classic OAuth App's client_secret, which this app deliberately
+ *   avoids needing at all — see authRoutes.ts's device flow).
  */
-export const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
+export const GITHUB_CLIENT_ID = "Iv23liCxGT4tTeSRM4jT";
 export const GITHUB_OWNER = "rotorflight";
 export const GITHUB_REPO = "rotorflight-docs";
 export const GITHUB_DEFAULT_BRANCH = "main";

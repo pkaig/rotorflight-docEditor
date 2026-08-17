@@ -19,6 +19,15 @@
  *   same-origin anyway (the frontend is served by this same process), so
  *   CORS is a defensive no-op for the app's own traffic and only matters
  *   for FRONTEND_ORIGIN being set correctly, not for the app to work.
+ *
+ *   If SESSION_SECRET isn't set, a fresh random one is generated at boot
+ *   rather than falling back to a fixed literal — this app is packaged
+ *   and distributed (see electron/main.ts), so a hardcoded fallback
+ *   would mean every single install shares the same cookie-signing
+ *   secret. A secret that only lives in memory and changes every
+ *   restart is fine here: sessions are also only ever kept in memory
+ *   (MemoryStore), so they don't outlive a restart anyway — nothing is
+ *   lost by the secret not persisting either.
  */
 
 // Load env FIRST
@@ -31,6 +40,7 @@ import cors from "cors";
 import session from "express-session";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import authRoutes from "./routes/authRoutes";
 import docsRoutes from "./routes/docsRoutes";
 import resetMirrorRoutes from "./routes/resetMirror";
@@ -41,10 +51,13 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+
 if (!process.env.SESSION_SECRET) {
   console.warn(
-    "⚠️  SESSION_SECRET is not set — using an insecure development fallback. " +
-      "Set a real random value in .env before this is used by anyone but you.",
+    "⚠️  SESSION_SECRET is not set — generated a random one for this run. " +
+      "Sessions won't survive a restart. Set a real persistent value in " +
+      ".env for a hosted deployment; not needed for a per-user packaged install.",
   );
 }
 
@@ -64,7 +77,7 @@ app.use(express.json());
 // who knew (or guessed) another user's GitHub username could act as them.
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "dev-only-insecure-secret",
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -96,11 +109,18 @@ app.get("/api/health", (_req, res) => {
 
 // Serve the built frontend in production — dev mode keeps using Vite's own
 // dev server (localhost:5173) with its /api proxy, unaffected by this.
-// process.cwd() rather than __dirname so this resolves the same running
-// from source or from compiled dist/server.js, matching every other
-// file-storage path in this app (see authRoutes.ts's TOKENS_DIR).
 if (process.env.NODE_ENV === "production") {
-  const FRONTEND_DIST = path.join(process.cwd(), "..", "frontend", "dist");
+  // FRONTEND_DIST_PATH (set by electron/main.ts) takes priority: a
+  // packaged Electron app's own frontend build lives inside the app's
+  // installed resources, not somewhere reachable via a process.cwd()-
+  // relative path — and process.cwd() there points at the user's data
+  // directory anyway (see electron/main.ts), not this app's own install
+  // location. Falls back to the plain `node dist/server.js` layout
+  // (process.cwd() = backend/, frontend built as a sibling folder) when
+  // that env var isn't set.
+  const FRONTEND_DIST =
+    process.env.FRONTEND_DIST_PATH ||
+    path.join(process.cwd(), "..", "frontend", "dist");
 
   if (fs.existsSync(path.join(FRONTEND_DIST, "index.html"))) {
     app.use(express.static(FRONTEND_DIST));

@@ -139,6 +139,9 @@ dist
 backend/workspaces/
 backend/cache/
 backend/routes/tokens/
-backend/Rotorflight-docs/ 
+backend/Rotorflight-docs/
+
+# electron-builder output (packaged installers)
+release/
 
 
