@@ -8,7 +8,6 @@ import cors from "cors";
 import session from "express-session";
 import authRoutes from "./routes/authRoutes";
 import docsRoutes from "./routes/docsRoutes";
-import imagesRoutes from "./routes/imagesRoutes";
 import resetMirrorRoutes from "./routes/resetMirror";
 import versionRouter from "./routes/version";
 import git from "./routes/gitRoutes";
@@ -55,9 +54,6 @@ app.use(
 // Mount GitHub OAuth + Docs API
 app.use("/api/auth", authRoutes);
 app.use("/api/docs", docsRoutes);
-
-// Mount Images API (cache + proxy)
-app.use("/api/images", imagesRoutes);
 
 // Mirror Reset API
 app.use("/api/reset-mirror", resetMirrorRoutes);

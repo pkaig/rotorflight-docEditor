@@ -7,7 +7,6 @@ import simpleGit from "simple-git";
 import path from "path";
 import fetch from "node-fetch";
 import { getTokenForUser } from "./authRoutes";
-//import { computeUpstreamDiff } from "../merge/computeUpstreamDiff";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
