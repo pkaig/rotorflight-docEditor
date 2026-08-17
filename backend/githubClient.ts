@@ -13,12 +13,6 @@
  *   GitHub request helper rather than importing this one.
  */
 import fetch, { type RequestInit } from "node-fetch";
-import {
-  GITHUB_CLIENT_ID,
-  GITHUB_CLIENT_SECRET,
-  GITHUB_OWNER,
-  GITHUB_REPO,
-} from "./config/github";
 
 export type GitHubToken = string;
 

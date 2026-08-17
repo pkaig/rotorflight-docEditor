@@ -34,6 +34,7 @@ export function useAuth() {
   const [login, setLogin] = useState<string | null>(null);
   const [userCode, setUserCode] = useState("");
   const [verificationUri, setVerificationUri] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Restore login from the session cookie, not a client-asserted username —
   // the backend derives identity from req.session.login for every request,
@@ -57,10 +58,18 @@ export function useAuth() {
   }, []);
 
   async function startGitHubLogin() {
+    setAuthError(null);
+
     const res = await fetch("/api/auth/device/start", {
       method: "POST",
     });
     const data = await res.json();
+
+    if (!data.user_code || !data.device_code) {
+      setAuthError("Couldn't start GitHub sign-in. Please try again.");
+      setAuthStep("idle");
+      return;
+    }
 
     setUserCode(data.user_code);
     setVerificationUri(data.verification_uri);
@@ -71,30 +80,50 @@ export function useAuth() {
 
   async function pollForAuth(deviceCode: string, interval: number) {
     const poll = async () => {
-      const res = await fetch("/api/auth/device/poll", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ device_code: deviceCode }),
-      });
+      try {
+        const res = await fetch("/api/auth/device/poll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_code: deviceCode }),
+        });
 
-      const data = await res.json();
+        const data = await res.json();
 
-      if (data.status === "ok" && data.login) {
-        setLogin(data.login);
-        localStorage.setItem("rf_login", data.login);
-        setIsAuthenticated(true);
+        if (data.status === "ok" && data.login) {
+          setLogin(data.login);
+          localStorage.setItem("rf_login", data.login);
+          setIsAuthenticated(true);
+          setAuthStep("idle");
+          return;
+        }
+
+        if (data.error === "authorization_pending") {
+          setTimeout(poll, interval * 1000);
+          return;
+        }
+
+        if (data.error === "slow_down") {
+          setTimeout(poll, (interval + 2) * 1000);
+          return;
+        }
+
+        // Any other error (expired code, access denied, a backend failure)
+        // — stop polling and surface it instead of leaving the UI stuck on
+        // "Waiting for authorisation…" forever with no visible feedback.
+        setAuthError(
+          "GitHub sign-in failed (" +
+            (data.error || "unknown error") +
+            "). Please try again.",
+        );
         setAuthStep("idle");
-        return;
-      }
-
-      if (data.error === "authorization_pending") {
-        setTimeout(poll, interval * 1000);
-        return;
-      }
-
-      if (data.error === "slow_down") {
-        setTimeout(poll, (interval + 2) * 1000);
-        return;
+      } catch (err) {
+        // A network hiccup, or a non-JSON error response (e.g. an
+        // unhandled exception on the backend rendering an HTML error
+        // page) — same treatment: stop and let the user retry rather
+        // than fail silently mid-poll.
+        console.error("Device flow poll failed:", err);
+        setAuthError("GitHub sign-in failed. Please try again.");
+        setAuthStep("idle");
       }
     };
 
@@ -140,6 +169,7 @@ export function useAuth() {
     authStep,
     userCode,
     verificationUri,
+    authError,
     startGitHubLogin,
     logout,
   };

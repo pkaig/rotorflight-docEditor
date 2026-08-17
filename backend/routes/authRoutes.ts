@@ -23,7 +23,7 @@ import express from "express";
 import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
-import { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET } from "../config/github";
+import { GITHUB_CLIENT_ID } from "../config/github";
 import { githubRequest } from "../githubClient";
 import { ensureFork } from "../ensureFork";
 
@@ -150,72 +150,87 @@ router.post("/device/start", async (_req, res) => {
 router.post("/device/poll", async (req, res) => {
   console.log("📡 /device/poll called");
 
-  const params = new URLSearchParams();
-  params.append("client_id", GITHUB_CLIENT_ID);
-  params.append("client_secret", GITHUB_CLIENT_SECRET);
-  params.append("device_code", req.body.device_code);
-  params.append("grant_type", "urn:ietf:params:oauth:grant-type:device_code");
+  try {
+    // No client_secret — GitHub Apps' device flow needs none (unlike a
+    // classic OAuth App's), which is the whole reason this is registered
+    // as one: nothing secret has to ship inside a downloadable executable.
+    const params = new URLSearchParams();
+    params.append("client_id", GITHUB_CLIENT_ID);
+    params.append("device_code", req.body.device_code);
+    params.append(
+      "grant_type",
+      "urn:ietf:params:oauth:grant-type:device_code",
+    );
 
-  const resp = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: params.toString(),
-  });
+    const resp = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    });
 
-  const data = (await resp.json()) as AccessTokenResponse;
-  console.log("⬅️ GitHub /access_token:", data);
+    const data = (await resp.json()) as AccessTokenResponse;
+    console.log("⬅️ GitHub /access_token:", data);
 
-  if (data.error) {
-    return res.json({ status: "pending", error: data.error });
+    if (data.error) {
+      return res.json({ status: "pending", error: data.error });
+    }
+
+    // GitHub's contract is error-or-access_token, never neither — but
+    // that's not something the response's own type can prove, so this
+    // both narrows access_token to a definite string below and guards the
+    // case where it holds for some unexpected reason.
+    if (!data.access_token) {
+      return res.json({ status: "pending", error: "no_access_token" });
+    }
+
+    // Fetch user identity
+    const user = await githubRequest<any>(data.access_token, "/user");
+
+    // Compute expiration safely
+    const expires_at =
+      typeof data.expires_in === "number"
+        ? Date.now() + data.expires_in * 1000
+        : Date.now() + 8 * 60 * 60 * 1000; // fallback: 8 hours
+
+    const token: StoredToken = {
+      access_token: data.access_token,
+      expires_at,
+      login: user.login,
+    };
+
+    saveToken(token);
+
+    // This is the actual authentication boundary: everything downstream
+    // (docsRoutes/gitRoutes/resetMirror) identifies "who is making this
+    // request" from req.session.login, never from a client-supplied login
+    // field, so this is the one place that gets to set it.
+    req.session.login = token.login;
+
+    // Fire-and-forget: starts fork creation as early as possible so it has
+    // time to become usable before the user gets to submitting a PR,
+    // without making login wait on it. ensureFork() is called again
+    // before any actual commit (gitRoutes.ts), so a user submitting
+    // within seconds of this is still handled correctly — this is purely
+    // a head start.
+    ensureFork(token.access_token, token.login).catch((err) => {
+      console.error(`ensureFork failed for ${token.login} after login:`, err);
+    });
+
+    res.json({ status: "ok", login: user.login });
+  } catch (err) {
+    // Anything thrown above (a GitHub API hiccup, a bug like the removed
+    // assertRepoScope's now-defunct scope check) used to escape uncaught,
+    // which Express turns into a 500 HTML error page — the frontend's
+    // poll() then fails to parse that as JSON and the polling loop just
+    // dies silently, leaving the UI stuck on "Waiting for authorisation…"
+    // forever with no visible error. Returning real JSON here lets the
+    // frontend at least stop and let the user retry instead.
+    console.error("device/poll failed:", err);
+    res.status(500).json({ status: "error", error: "poll_failed" });
   }
-
-  // GitHub's contract is error-or-access_token, never neither — but that's
-  // not something the response's own type can prove, so this both narrows
-  // access_token to a definite string below and guards the case where it
-  // holds for some unexpected reason.
-  if (!data.access_token) {
-    return res.json({ status: "pending", error: "no_access_token" });
-  }
-
-  // Fetch user identity
-  const user = await githubRequest<any>(data.access_token, "/user");
-
-  // 🔐 Verify token scopes BEFORE saving
-  await assertRepoScope(data.access_token);
-
-  // Compute expiration safely
-  const expires_at =
-    typeof data.expires_in === "number"
-      ? Date.now() + data.expires_in * 1000
-      : Date.now() + 8 * 60 * 60 * 1000; // fallback: 8 hours
-
-  const token: StoredToken = {
-    access_token: data.access_token,
-    expires_at,
-    login: user.login,
-  };
-
-  saveToken(token);
-
-  // This is the actual authentication boundary: everything downstream
-  // (docsRoutes/gitRoutes/resetMirror) identifies "who is making this
-  // request" from req.session.login, never from a client-supplied login
-  // field, so this is the one place that gets to set it.
-  req.session.login = token.login;
-
-  // Fire-and-forget: starts fork creation as early as possible so it has
-  // time to become usable before the user gets to submitting a PR, without
-  // making login wait on it. ensureFork() is called again before any
-  // actual commit (gitRoutes.ts), so a user submitting within seconds of
-  // this is still handled correctly — this is purely a head start.
-  ensureFork(token.access_token, token.login).catch((err) => {
-    console.error(`ensureFork failed for ${token.login} after login:`, err);
-  });
-
-  res.json({ status: "ok", login: user.login });
 });
 
 // ---------------------------------------------
@@ -303,29 +318,5 @@ router.post("/merge", (_req, res) => {
     error: "Merging pull requests is not allowed by this application.",
   });
 });
-
-// ---------------------------------------------
-// Set Repo Scope
-// ---------------------------------------------
-export async function assertRepoScope(token: string) {
-  const res = await fetch("https://api.github.com/user", {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-    },
-  });
-
-  const scopes = res.headers.get("x-oauth-scopes") || "";
-  console.log("🔐 GitHub token scopes:", scopes);
-
-  const scopeList = scopes.split(",").map((s) => s.trim());
-
-  if (!scopeList.includes("repo")) {
-    throw new Error(
-      `GitHub token missing "repo" scope. Got: [${scopes}]. ` +
-        `User must re-authenticate with updated permissions.`,
-    );
-  }
-}
 
 export default router;

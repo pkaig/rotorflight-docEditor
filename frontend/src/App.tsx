@@ -126,6 +126,7 @@ export default function App() {
     authStep,
     userCode,
     verificationUri,
+    authError,
     startGitHubLogin,
     logout,
   } = useAuth();
@@ -317,6 +318,8 @@ export default function App() {
             Sign in with GitHub to start editing the Rotorflight
             documentation.
           </p>
+
+          {authError && <p className="auth-error">{authError}</p>}
 
           {authStep === "idle" && (
             <button className="auth-signin-btn" onClick={startGitHubLogin}>

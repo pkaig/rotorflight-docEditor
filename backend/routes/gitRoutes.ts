@@ -22,7 +22,7 @@
  *   request that broader permission.
  */
 import express from "express";
-import { getTokenForUser, assertRepoScope } from "./authRoutes";
+import { getTokenForUser } from "./authRoutes";
 //import { githubRequest } from "../githubClient";
 import { ensureFork, ForkError } from "../ensureFork";
 import {
@@ -255,7 +255,6 @@ export async function commitChanges(
   }
 
   const token = getTokenForUser(login);
-  await assertRepoScope(token);
   const branch = `${workspace}`;
 
   console.log("🔧 Ensuring fork exists…");
