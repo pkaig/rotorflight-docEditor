@@ -41,7 +41,7 @@ export function useAutosave(
       } finally {
         setSaving(false);
       }
-    }, 400);
+    }, 3000);
 
     return () => {
       if (timeout.current) clearTimeout(timeout.current);

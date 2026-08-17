@@ -46,14 +46,15 @@ export default function Preview({
     };
   }, []);
 
+  // Tracks the doc actually open, as opposed to its content changing —
+  // switching files should render immediately, typing in the same file
+  // should not recompile (and flash/reset scroll) on every keystroke.
+  const lastPathRef = useRef<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-
-    // hard reset on file/content change to avoid latching
-    if (styleTagRef.current) styleTagRef.current.textContent = "";
-    setError(null);
-    setMDXContent(null);
-    setRawMode(false);
+    const isNewDoc = lastPathRef.current !== currentDocPath;
+    lastPathRef.current = currentDocPath;
 
     async function compileMdx() {
       // Images are rendered directly via <img>, not compiled as MDX.
@@ -186,10 +187,33 @@ export default function(runtime) {
       }
     }
 
-    compileMdx();
+    function runCompile() {
+      // Hard reset avoids latching stale content/error state — but only
+      // blank the preview out for an actual document switch. While the
+      // user is still typing in the same doc, the last successfully
+      // compiled version stays on screen until the new one is ready, so
+      // there's a single clean swap instead of a blank-then-refill flash.
+      if (styleTagRef.current) styleTagRef.current.textContent = "";
+      setError(null);
+      setRawMode(false);
+      compileMdx();
+    }
+
+    if (isNewDoc) {
+      setMDXContent(null);
+      runCompile();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // Same doc, content changed from typing — wait for a pause before
+    // recompiling instead of doing it on every keystroke.
+    const timer = setTimeout(runCompile, 3000);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [content, currentDocPath, isImage]);
 
