@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET } from "../config/github";
 import { githubRequest } from "../githubClient";
+import { ensureFork } from "../ensureFork";
 
 const router = express.Router();
 
@@ -147,6 +148,15 @@ router.post("/device/poll", async (req, res) => {
   };
 
   saveToken(token);
+
+  // Fire-and-forget: starts fork creation as early as possible so it has
+  // time to become usable before the user gets to submitting a PR, without
+  // making login wait on it. ensureFork() is called again before any
+  // actual commit (gitRoutes.ts), so a user submitting within seconds of
+  // this is still handled correctly — this is purely a head start.
+  ensureFork(token.access_token, token.login).catch((err) => {
+    console.error(`ensureFork failed for ${token.login} after login:`, err);
+  });
 
   res.json({ status: "ok", login: user.login });
 });

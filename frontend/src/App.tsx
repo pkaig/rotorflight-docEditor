@@ -1,5 +1,6 @@
 import "./App.css";
 import { useState, useEffect } from "react"; // <-- UPDATED
+import rfHeliLogo from "./assets/RFHeli.svg";
 import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
 import Preview from "./components/Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
@@ -91,7 +92,7 @@ export default function App() {
     notifyFileRenamed,
     notifyFileCreated,
     clearBanner,
-    clearAllChanges,
+    loadChangesFromMirror,
   } = useGitPR({
     login: login || "",
     workspace,
@@ -546,14 +547,21 @@ export default function App() {
 
       {user && (
         <div className="app-header">
-          <img
-            src={user.avatar_url}
-            alt="avatar"
-            className="app-header-avatar"
-          />
-          <span>
-            Signed in as <strong>{user.login}</strong>
-          </span>
+          <div className="app-header-brand">
+            <img src={rfHeliLogo} alt="" className="app-header-logo" />
+            <span className="app-header-title">Rotorflight Docs Editor</span>
+          </div>
+
+          <div className="app-header-user">
+            <img
+              src={user.avatar_url}
+              alt="avatar"
+              className="app-header-avatar"
+            />
+            <span>
+              Signed in as <strong>{user.login}</strong>
+            </span>
+          </div>
         </div>
       )}
 
@@ -735,6 +743,7 @@ export default function App() {
                   });
 
                   await refreshLocalWorkspace(ws);
+                  await loadChangesFromMirror();
 
                   if (
                     cleanPaths.includes(currentDocPath.replace(/^docs\//, ""))
@@ -767,12 +776,11 @@ export default function App() {
                   });
 
                   await refreshLocalWorkspace(ws);
+                  await loadChangesFromMirror();
 
                   if (currentDocPath) {
                     loadDoc(currentDocPath, ws);
                   }
-
-                  clearAllChanges();
                 }}
               >
                 Clear all

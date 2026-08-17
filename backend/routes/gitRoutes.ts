@@ -2,6 +2,7 @@
 import express from "express";
 import { getTokenForUser, assertRepoScope } from "./authRoutes";
 //import { githubRequest } from "../githubClient";
+import { ensureFork, ForkError } from "../ensureFork";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -15,36 +16,6 @@ const router = express.Router();
 /* ============================================================
    Helpers
    ============================================================ */
-async function ensureFork(token: string, login: string) {
-  let forkExists = false;
-
-  // FIRST: check if fork exists
-  try {
-    const fork = await githubRequest(token, `/repos/${login}/${GITHUB_REPO}`);
-    console.log("Fork already exists:", fork.full_name);
-    forkExists = true;
-  } catch (err) {
-    console.log("❗ GET /repos/<login>/<repo> failed:", err);
-  }
-
-  // IF fork does not exist, create it
-  if (!forkExists) {
-    console.log("⚠️ Fork missing — creating fork from upstream…");
-    console.log("Owner:", GITHUB_OWNER);
-    console.log("Repo:", GITHUB_REPO);
-
-    const forkResp = await githubRequest(
-      token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/forks`,
-      "POST",
-      { default_branch_only: true },
-    );
-
-    //console.log("📨 /forks response:", forkResp);
-  }
-
-  console.log("⏳ Waiting for fork to become ready…");
-}
 
 // Resolves a branch name or commit SHA to its commit + top-level tree entries.
 async function getTreeEntries(
@@ -354,6 +325,9 @@ router.post("/commit", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error("❌ Commit failed:", err);
+    if (err instanceof ForkError) {
+      return res.status(409).json({ error: err.message });
+    }
     res.status(500).json({ error: "Commit failed" });
   }
 });
