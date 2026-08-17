@@ -45,7 +45,7 @@ import {
   UpdateBanner,
 } from "./components/versionModals";
 
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.0.0";
 
 import { Tree, type TreeNode } from "./components/Tree";
 import { useAuth } from "./hooks/useAuth";
