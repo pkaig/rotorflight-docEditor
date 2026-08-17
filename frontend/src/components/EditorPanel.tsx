@@ -64,7 +64,13 @@ export const EditorPanel = React.memo(function EditorPanel({
           login={login}
           workspace={workspace}
           style={{
-            fontFamily: "monospace",
+            // Explicit font, not the generic "monospace" keyword: some
+            // browsers resolve generic font families to a different actual
+            // font for form controls (<textarea>) than for regular
+            // elements (<div>), which would make the backdrop and textarea
+            // render glyphs at very slightly different widths and drift
+            // out of alignment over a long document.
+            fontFamily: "Consolas, 'Courier New', monospace",
             fontSize: "14px",
             padding: "1rem",
             border: "1px solid #ccc",

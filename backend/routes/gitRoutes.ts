@@ -46,11 +46,143 @@ async function ensureFork(token: string, login: string) {
   console.log("⏳ Waiting for fork to become ready…");
 }
 
-// Ensure a workspace branch exists in the user's fork
+// Resolves a branch name or commit SHA to its commit + top-level tree entries.
+async function getTreeEntries(
+  token: string,
+  owner: string,
+  repo: string,
+  branchOrSha: string,
+) {
+  let commitSha = branchOrSha;
+
+  if (!/^[0-9a-f]{40}$/i.test(branchOrSha)) {
+    const ref = await githubRequest(
+      token,
+      `/repos/${owner}/${repo}/git/refs/heads/${branchOrSha}`,
+    );
+    commitSha = ref.object.sha;
+  }
+
+  const commit = await githubRequest(
+    token,
+    `/repos/${owner}/${repo}/git/commits/${commitSha}`,
+  );
+  const tree = await githubRequest(
+    token,
+    `/repos/${owner}/${repo}/git/trees/${commit.tree.sha}`,
+  );
+
+  return {
+    commitSha,
+    treeSha: commit.tree.sha as string,
+    entries: tree.tree as Array<{
+      path: string;
+      mode: string;
+      type: string;
+      sha: string;
+    }>,
+  };
+}
+
+// Everything this app ever reads or writes — nothing else in the repo
+// (.github/workflows, package.json, etc.) is touched by this sync.
+const SYNCED_PATHS = ["docs", "versioned_docs", "project-words.txt"];
+
+// Brings a fork branch's docs content up to date with upstream by building
+// a new tree that's identical to the branch's current tree except these
+// specific top-level paths are swapped for upstream's current versions —
+// everything else (crucially .github/workflows/*) is inherited byte-for-
+// byte unchanged from the branch's own tree via `base_tree`.
+//
+// A full "sync this fork with upstream" (GitHub's merge-upstream API, what
+// the "Sync fork" button does) was tried first and doesn't work here:
+// GitHub refuses it for any OAuth app lacking the `workflow` scope whenever
+// the sync would touch `.github/workflows/*`, which upstream has, and
+// requesting that broader scope is a real permission decision that
+// shouldn't happen silently as a side effect of this fix. Since no
+// workflow file content actually changes with this targeted approach,
+// GitHub allows it without that scope.
+async function syncBranchWithUpstreamDocs(
+  token: string,
+  login: string,
+  branch: string,
+) {
+  console.log(
+    `🔄 Syncing [${SYNCED_PATHS.join(", ")}] from upstream into fork branch "${branch}"…`,
+  );
+
+  const upstream = await getTreeEntries(
+    token,
+    GITHUB_OWNER,
+    GITHUB_REPO,
+    GITHUB_DEFAULT_BRANCH,
+  );
+  const fork = await getTreeEntries(token, login, GITHUB_REPO, branch);
+
+  const overrides = upstream.entries.filter((e) =>
+    SYNCED_PATHS.includes(e.path),
+  );
+
+  if (overrides.length === 0) {
+    console.warn(
+      "⚠️ None of the synced paths were found upstream — skipping sync",
+    );
+    return fork.commitSha;
+  }
+
+  const newTree = await githubRequest(
+    token,
+    `/repos/${login}/${GITHUB_REPO}/git/trees`,
+    "POST",
+    {
+      base_tree: fork.treeSha,
+      tree: overrides.map((e) => ({
+        path: e.path,
+        mode: e.mode,
+        type: e.type,
+        sha: e.sha,
+      })),
+    },
+  );
+
+  if (newTree.sha === fork.treeSha) {
+    console.log("✅ Branch already matches upstream for synced paths");
+    return fork.commitSha;
+  }
+
+  const commit = await githubRequest(
+    token,
+    `/repos/${login}/${GITHUB_REPO}/git/commits`,
+    "POST",
+    {
+      message: `Sync ${SYNCED_PATHS.join(", ")} with upstream`,
+      tree: newTree.sha,
+      parents: [fork.commitSha],
+    },
+  );
+
+  // Always a valid fast-forward — the new commit's parent is exactly the
+  // branch's current head.
+  await githubRequest(
+    token,
+    `/repos/${login}/${GITHUB_REPO}/git/refs/heads/${branch}`,
+    "PATCH",
+    { sha: commit.sha },
+  );
+
+  console.log("✅ Branch synced, new head:", commit.sha);
+  return commit.sha;
+}
+
+// Ensure a workspace branch exists in the user's fork, then bring its docs
+// content up to date with upstream before the caller commits the user's
+// own local changes on top.
 async function ensureBranch(token: string, login: string, branch: string) {
   console.log(
     `🔍 ensureBranch(): checking branch "${branch}" in fork ${login}/${GITHUB_REPO}`,
   );
+
+  let branchExists = true;
 
   try {
     const ref = await githubRequest(
@@ -58,36 +190,43 @@ async function ensureBranch(token: string, login: string, branch: string) {
       `/repos/${login}/${GITHUB_REPO}/git/refs/heads/${branch}`,
     );
     console.log("✅ Branch exists:", ref.ref);
-    return ref;
   } catch {
+    branchExists = false;
     console.log(`⚠️ Branch "${branch}" missing — creating from upstream main`);
   }
 
-  console.log(
-    "🔍 Fetching upstream base branch:",
-    `${GITHUB_OWNER}/${GITHUB_REPO}:${GITHUB_DEFAULT_BRANCH}`,
-  );
+  if (!branchExists) {
+    // Branch from the FORK's own default branch tip, not upstream's — a
+    // fork's default branch is usually behind upstream (forks don't
+    // auto-update), and creating a ref pointing at a commit that was never
+    // actually merged into the fork's own history fails with a 404 from
+    // GitHub's Git Data API, even though that commit is individually
+    // readable by SHA across the fork network. syncBranchWithUpstreamDocs
+    // (called below, unconditionally) brings its doc content forward from
+    // this potentially-stale base right after.
+    const base = await githubRequest(
+      token,
+      `/repos/${login}/${GITHUB_REPO}/git/refs/heads/${GITHUB_DEFAULT_BRANCH}`,
+    );
 
-  const base = await githubRequest(
-    token,
-    `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/refs/heads/${GITHUB_DEFAULT_BRANCH}`,
-  );
+    console.log("📌 Fork base SHA:", base.object.sha);
+    console.log("🔧 Creating branch in fork:", `refs/heads/${branch}`);
 
-  console.log("📌 Upstream base SHA:", base.object.sha);
+    await githubRequest(
+      token,
+      `/repos/${login}/${GITHUB_REPO}/git/refs`,
+      "POST",
+      {
+        ref: `refs/heads/${branch}`,
+        sha: base.object.sha,
+      },
+    );
+  }
 
-  console.log("🔧 Creating branch in fork:", `refs/heads/${branch}`);
-
-  await githubRequest(
-    token,
-    `/repos/${login}/${GITHUB_REPO}/git/refs`,
-    "POST",
-    {
-      ref: `refs/heads/${branch}`,
-      sha: base.object.sha,
-    },
-  );
-
-  console.log("🔄 Re-fetching new branch…");
+  // Run on every call, not just branch creation — an already-existing
+  // workspace branch (e.g. submitting a follow-up update to an open PR)
+  // can just as easily have drifted from upstream since it was created.
+  await syncBranchWithUpstreamDocs(token, login, branch);
 
   return await githubRequest(
     token,
@@ -246,6 +385,7 @@ router.post("/pr", async (req, res) => {
     );
 
     let pr;
+    let created: boolean;
 
     if (prs.length > 0) {
       console.log("✏️ Updating existing PR:", prs[0].number);
@@ -256,6 +396,7 @@ router.post("/pr", async (req, res) => {
         "PATCH",
         { body: description },
       );
+      created = false;
     } else {
       console.log("🆕 Creating new PR…");
 
@@ -270,18 +411,23 @@ router.post("/pr", async (req, res) => {
           body: description,
         },
       );
+      created = true;
     }
 
     console.log("✅ PR ready:", pr.html_url);
 
+    // Status uses the pr_created/pr_updated vocabulary the frontend's
+    // PRResponse type actually switches on — this used to send
+    // { number, url, state } instead, which the frontend's handler never
+    // matched, so a successful PR submission produced no visible banner.
     res.json({
-      number: pr.number,
+      status: created ? "pr_created" : "pr_updated",
+      prNumber: pr.number,
       url: pr.html_url,
-      state: pr.state,
     });
   } catch (err) {
     console.error("❌ PR failed:", err);
-    res.status(500).json({ error: "Failed to create/update PR" });
+    res.status(500).json({ status: "error", error: "Failed to create/update PR" });
   }
 });
 

@@ -292,6 +292,20 @@
   color: #002f52;
 }
 
+.banner-error {
+  background: #ffebee;
+  border-left-color: #e53935;
+  color: #a12622;
+}
+
+.banner-error button {
+  color: #a12622;
+}
+
+.banner-error button:hover {
+  color: #7a1c19;
+}
+
 /* ============================================================
    9. MARKDOWN PREVIEW
    ============================================================ */
@@ -1094,6 +1108,9 @@
   margin-bottom: 0.75rem;
   font-size: 0.9rem;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 /* Light red warning banner */
@@ -1110,6 +1127,18 @@
   background: #e8f3ff;
   border: 1px solid #bcd9ff;
   color: #1a4d8f;
+}
+
+/* Light green success banner */
+.modal-banner.success,
+.workspace-banner.success {
+  background: #e6f6e6;
+  border: 1px solid #b3e0b3;
+  color: #1e7a1e;
+}
+
+.modal-banner .loading-icon {
+  flex-shrink: 0;
 }
 
 .app-root {
@@ -1284,19 +1313,6 @@
 /* ============================================================
    23. SPELL CHECKER
    ============================================================ */
-
-/* Reserves the same scrollbar-gutter width as the real textarea on top
-   of it (both use overflow-y: scroll) so their word-wrap points can't
-   drift apart — but only the textarea's scrollbar should be visible,
-   since it's the one that's actually kept in sync via JS on scroll. */
-.spellcheck-backdrop {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* old Edge */
-}
-
-.spellcheck-backdrop::-webkit-scrollbar {
-  display: none; /* Chrome/Safari/new Edge */
-}
 
 .spell-error {
   background: transparent;

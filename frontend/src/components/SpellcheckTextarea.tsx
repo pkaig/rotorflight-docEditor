@@ -39,6 +39,31 @@ export function SpellcheckTextarea({
   const backdropRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // The backdrop must have the exact same content width as the real
+  // textarea for their word-wrap to land on the same points. Trying to
+  // guarantee that with matching CSS (overflow/scrollbar treatment) turned
+  // out to be platform-dependent — some systems give scrollbars real
+  // layout width, others use overlay scrollbars that take none, and a
+  // "hide the backdrop's own scrollbar" trick doesn't reserve the same
+  // gutter on the former. Measuring the textarea's actual rendered content
+  // width (clientWidth already excludes whatever its real scrollbar took)
+  // and sizing the backdrop to match is correct regardless of platform.
+  const [taSize, setTaSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    const update = () => setTaSize({ width: el.clientWidth, height: el.clientHeight });
+    update();
+
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // Re-tokenize + re-check on a debounce so typing stays smooth on longer docs.
   useEffect(() => {
     if (!ready) {
@@ -184,9 +209,9 @@ export function SpellcheckTextarea({
   // (which sets -webkit-font-smoothing/text-rendering on :root). Left
   // implicit, the two layers can render glyphs at very slightly different
   // widths, which compounds line over line into a growing vertical drift.
-  const borderWidth = "1px";
+  const borderWidthPx = 1;
   const sharedBox: React.CSSProperties = {
-    fontFamily: style?.fontFamily ?? "monospace",
+    fontFamily: style?.fontFamily ?? "Consolas, 'Courier New', monospace",
     fontSize: style?.fontSize ?? "14px",
     fontWeight: "normal",
     fontStyle: "normal",
@@ -196,12 +221,22 @@ export function SpellcheckTextarea({
     tabSize: 4,
     lineHeight: 1.4,
     padding: style?.padding ?? "1rem",
-    borderWidth,
+    borderWidth: `${borderWidthPx}px`,
     borderStyle: "solid",
     borderRadius: style?.borderRadius,
     boxSizing: "border-box",
     whiteSpace: "pre-wrap",
-    wordBreak: "break-word",
+    // Plain word-boundary wrapping only — no mid-word breaking. break-word
+    // lets the browser split a word wherever it decides that word doesn't
+    // fit, and that "does it fit" measurement can differ by a sub-pixel
+    // between the backdrop <div> and the real <textarea>, flipping the
+    // wrap decision on a long line and shifting every line below it out
+    // of alignment. Word-boundary-only wrapping has no such judgment call.
+    // Trade-off: an unbroken token longer than the line width (e.g. a raw
+    // long URL) will overflow horizontally and get clipped by overflow-x:
+    // hidden rather than wrap — acceptable for prose, where that's rare.
+    wordBreak: "normal",
+    overflowWrap: "normal",
     margin: 0,
     WebkitFontSmoothing: "antialiased",
     MozOsxFontSmoothing: "grayscale",
@@ -220,9 +255,18 @@ export function SpellcheckTextarea({
         style={{
           ...sharedBox,
           position: "absolute",
-          inset: 0,
-          overflowY: "scroll",
-          overflowX: "hidden",
+          top: 0,
+          left: 0,
+          // Sized to match the textarea's actual measured content box
+          // (see the ResizeObserver above) rather than inset:0 — a plain
+          // percentage/inset match assumes the textarea's real scrollbar
+          // (if the platform renders one) takes the same width as
+          // whatever the backdrop is given, which isn't guaranteed.
+          // Falls back to 100% only for the first paint before the
+          // observer fires.
+          width: taSize ? `${taSize.width + borderWidthPx * 2}px` : "100%",
+          height: taSize ? `${taSize.height + borderWidthPx * 2}px` : "100%",
+          overflow: "hidden",
           borderColor: "#ccc",
           background: style?.background ?? "white",
           color: "#000",
@@ -248,7 +292,12 @@ export function SpellcheckTextarea({
           position: "relative",
           width: "100%",
           height: "100%",
-          overflowY: "scroll",
+          // Natural scrolling — whatever real or overlay scrollbar the
+          // platform gives it, the ResizeObserver above measures its
+          // actual content width afterward and resizes the backdrop to
+          // match, so there's no need to force a permanently-reserved
+          // scrollbar gutter here anymore.
+          overflowY: "auto",
           overflowX: "hidden",
           borderColor: "transparent",
           background: "transparent",

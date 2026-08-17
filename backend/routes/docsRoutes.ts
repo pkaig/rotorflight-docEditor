@@ -479,6 +479,14 @@ router.get("/scan-local-changes", async (req, res) => {
 
     for (const file of mirrorSet) {
       if (!localSet.has(file)) {
+        // project-words.txt's editable local copy only gets created
+        // lazily, the first time a word is actually added via the
+        // spell-checker's "add to dictionary" action (see
+        // POST /project-words/add). Its absence here just means nothing's
+        // been added yet in this workspace — not that the user deleted
+        // the project's shared dictionary file, which this was otherwise
+        // reporting as a real deletion in every PR.
+        if (file === PROJECT_WORDS_FILE) continue;
         deleted.push({ path: file, type: "deleted" });
       }
     }
@@ -575,7 +583,7 @@ router.post("/submit-pr", async (req, res) => {
       )}&workspace=${encodeURIComponent(workspace)}`,
     ).then((r) => r.json());
 
-    await fetch(
+    const commitRes = await fetch(
       `http://localhost:4000/api/git/commit?login=${encodeURIComponent(
         login,
       )}&workspace=${encodeURIComponent(workspace)}`,
@@ -586,7 +594,19 @@ router.post("/submit-pr", async (req, res) => {
       },
     );
 
-    const prRes = await fetch(
+    // Previously ignored: a failed commit (e.g. GitHub API/auth error)
+    // still fell through to attempting a PR, either against stale content
+    // or failing later with no clear signal of what actually went wrong.
+    if (!commitRes.ok) {
+      const commitErr = await commitRes.json().catch(() => ({}));
+      console.error("submit-pr: commit step failed:", commitErr);
+      return res.status(500).json({
+        status: "error",
+        error: commitErr.error || "Failed to commit changes",
+      });
+    }
+
+    const prFetchRes = await fetch(
       `http://localhost:4000/api/git/pr?login=${encodeURIComponent(
         login,
       )}&workspace=${encodeURIComponent(workspace)}`,
@@ -595,11 +615,22 @@ router.post("/submit-pr", async (req, res) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description }),
       },
-    ).then((r) => r.json());
+    );
+
+    const prRes = await prFetchRes.json();
+
+    if (!prFetchRes.ok) {
+      console.error("submit-pr: PR step failed:", prRes);
+      return res.status(500).json({
+        status: "error",
+        error: prRes.error || "Failed to create/update PR",
+      });
+    }
 
     return res.json(prRes);
-  } catch {
-    return res.status(500).json({ error: "Failed to submit PR" });
+  } catch (err) {
+    console.error("submit-pr failed:", err);
+    return res.status(500).json({ status: "error", error: "Failed to submit PR" });
   }
 });
 

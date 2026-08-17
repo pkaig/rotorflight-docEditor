@@ -6,12 +6,14 @@ export type PRStatus =
   | "pr_created"
   | "pr_updated"
   | "pr_merged"
-  | "pr_closed";
+  | "pr_closed"
+  | "error";
 
 export interface PRResponse {
   status: PRStatus;
   prNumber?: number;
   url?: string;
+  error?: string;
 }
 
 interface UseGitPROptions {
@@ -39,9 +41,12 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
   const [banner, setBanner] = useState<null | {
     type: PRStatus;
     prNumber?: number;
+    url?: string;
+    error?: string;
   }>(null);
 
   const [activePR, setActivePR] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   /* -------------------------------------------------------
      Mirror-based change tracking
@@ -99,11 +104,16 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
       switch (res.status) {
         case "pr_created":
           setActivePR(res.prNumber ?? null);
-          setBanner({ type: "pr_created", prNumber: res.prNumber });
+          setBanner({ type: "pr_created", prNumber: res.prNumber, url: res.url });
           break;
 
         case "pr_updated":
-          setBanner({ type: "pr_updated", prNumber: res.prNumber });
+          setActivePR(res.prNumber ?? null);
+          setBanner({ type: "pr_updated", prNumber: res.prNumber, url: res.url });
+          break;
+
+        case "error":
+          setBanner({ type: "error", error: res.error || "Something went wrong" });
           break;
 
         case "pr_merged":
@@ -136,20 +146,30 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
     async (description: string) => {
       if (!login || !workspace) return;
 
-      const res = await fetch(
-        `/api/docs/submit-pr?login=${encodeURIComponent(
-          login,
-        )}&workspace=${encodeURIComponent(workspace)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description }),
-        },
-      );
+      setSubmitting(true);
+      setBanner(null);
 
-      const json: PRResponse = await res.json();
-      handleBackendResponse(json);
-      return json;
+      try {
+        const res = await fetch(
+          `/api/docs/submit-pr?login=${encodeURIComponent(
+            login,
+          )}&workspace=${encodeURIComponent(workspace)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ description }),
+          },
+        );
+
+        const json: PRResponse = await res.json();
+        handleBackendResponse(json);
+        return json;
+      } catch (err) {
+        console.error("submitPR failed:", err);
+        setBanner({ type: "error", error: "Failed to reach the server" });
+      } finally {
+        setSubmitting(false);
+      }
     },
     [login, workspace, handleBackendResponse],
   );
@@ -229,6 +249,7 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
     banner,
     activePR,
     submitPR,
+    submitting,
     changes,
     loadChangesFromMirror,
     notifyFileSaved,

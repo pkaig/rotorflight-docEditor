@@ -482,6 +482,28 @@ router.post("/rebase-all-workspace", async (req, res) => {
       // conflicts → do nothing in baseline
     }
 
+    // Mark the workspace caught up with upstream so /workspace-upstream-status
+    // stops reporting stale — this was never done, so every rebase pass
+    // "succeeded" but the workspace was flagged stale again on the very
+    // next check, forcing a full re-rebase (several seconds re-hashing
+    // every file) on every single "Set up PR" open, forever. Skipped when
+    // there are unresolved conflicts: those files still don't match
+    // upstream, so staleness should persist until they're resolved.
+    const hasConflicts =
+      (docsResult?.conflicts.length ?? 0) > 0 ||
+      (versionedResult?.conflicts.length ?? 0) > 0;
+
+    if (!hasConflicts) {
+      const upstreamSha = await fs.readFile(
+        path.join(upstream, ".upstream-hash"),
+        "utf8",
+      );
+      await fs.writeFile(
+        path.join(workspaceRoot, "mirror-hash.txt"),
+        upstreamSha.trim(),
+      );
+    }
+
     return res.json({ ok: true, result });
   } catch (err) {
     console.error("REBASE ERROR:", err);
