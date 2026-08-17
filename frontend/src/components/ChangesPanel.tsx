@@ -9,20 +9,38 @@
  *   Purely presentational — `changes` and `selectedChanges` are owned
  *   by App.tsx (via useGitPR), not local state here.
  */
+import type { Dispatch, SetStateAction } from "react";
+import type { ChangeSet } from "../hooks/useGitPR";
+
+interface ChangesPanelProps {
+  changes: ChangeSet;
+  selectedChanges: Record<string, boolean>;
+  setSelectedChanges: Dispatch<SetStateAction<Record<string, boolean>>>;
+  onOpenFile: (path: string) => void;
+}
+
 export function ChangesPanel({
   changes,
   selectedChanges,
   setSelectedChanges,
   onOpenFile, // ← NEW
-}) {
-  function toggle(path) {
+}: ChangesPanelProps) {
+  function toggle(path: string) {
     setSelectedChanges((prev) => ({
       ...prev,
       [path]: !prev[path],
     }));
   }
 
-  function Row({ prefix, path, label }) {
+  function Row({
+    prefix,
+    path,
+    label,
+  }: {
+    prefix: string;
+    path: string;
+    label: string;
+  }) {
     return (
       <div
         className="change-row"

@@ -17,6 +17,15 @@ import { useEffect, useState } from "react";
 
 type Status = "checking" | "idle" | "rebasing" | "done";
 
+interface PRDescriptionModalProps {
+  isOpen: boolean;
+  onSubmit: (description: string) => void;
+  onCancel: () => void;
+  login: string | null;
+  workspace: string | null;
+  onConflictsDetected: (conflicts: unknown[]) => void;
+}
+
 export function PRDescriptionModal({
   isOpen,
   onSubmit,
@@ -24,7 +33,7 @@ export function PRDescriptionModal({
   login,
   workspace,
   onConflictsDetected, // NEW callback
-}) {
+}: PRDescriptionModalProps) {
   const [description, setDescription] = useState("");
   // Single status drives the banner instead of three independently-set
   // booleans — the old version set "stale" true when the pre-submit check
@@ -34,7 +43,11 @@ export function PRDescriptionModal({
   const [status, setStatus] = useState<Status>("checking");
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !login || !workspace) return;
+    // Fresh bindings: narrowing `login`/`workspace` to non-null above
+    // doesn't carry into the separately-scoped async IIFE below.
+    const currentLogin = login;
+    const currentWorkspace = workspace;
 
     setDescription("");
     setStatus("checking");
@@ -45,8 +58,8 @@ export function PRDescriptionModal({
       try {
         const data = await fetch(
           `/api/docs/workspace-upstream-status?login=${encodeURIComponent(
-            login,
-          )}&workspace=${encodeURIComponent(workspace)}`,
+            currentLogin,
+          )}&workspace=${encodeURIComponent(currentWorkspace)}`,
         ).then((r) => r.json());
 
         if (cancelled) return;
@@ -60,8 +73,8 @@ export function PRDescriptionModal({
 
         const reb = await fetch(
           `/api/reset-mirror/rebase-all-workspace?login=${encodeURIComponent(
-            login,
-          )}&workspace=${encodeURIComponent(workspace)}`,
+            currentLogin,
+          )}&workspace=${encodeURIComponent(currentWorkspace)}`,
           { method: "POST" },
         ).then((r) => r.json());
 

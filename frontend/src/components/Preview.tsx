@@ -21,7 +21,6 @@
  *   the one that compiles.
  */
 import { useEffect, useRef, useState } from "react";
-import { VFile } from "vfile";
 import * as React from "react";
 
 import { compile } from "@mdx-js/mdx/lib/compile.js";
@@ -41,11 +40,17 @@ import TabItem from "../mdx/TabItem";
 // Compiles the current doc's MDX/Markdown source in-browser (no build step)
 // and renders it. On compile/eval failure, falls back to a line-numbered
 // raw view highlighting the offending line.
+interface PreviewProps {
+  content: string;
+  currentDocPath: string;
+  onError?: (line: number | null) => void;
+}
+
 export default function Preview({
   content,
   currentDocPath,
   onError = () => {},
-}) {
+}: PreviewProps) {
   const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath);
 
   const [MDXContent, setMDXContent] = useState<any>(null);
@@ -100,26 +105,39 @@ export default function Preview({
 
       const isMdx = currentDocPath.endsWith(".mdx");
 
-      const vfile = new VFile({
-        value: content,
-        path: currentDocPath,
-        cwd: "/",
-      });
+      // A plain compatible object, not `new VFile(...)` — the root `vfile`
+      // package and @mdx-js/mdx's own bundled copy of it are structurally
+      // identical but nominally different classes (a dual-package hazard),
+      // so an actual VFile instance built from the root package doesn't
+      // type-check against compile()'s own nested VFile type. compile()
+      // accepts this plain options shape directly and wraps it internally.
+      const vfile = { value: content, path: currentDocPath, cwd: "/" };
 
       const login = localStorage.getItem("rf_login") || "";
       const wsMatch = currentDocPath.match(/^local-workspace\/([^/]+)\//);
       const workspace = wsMatch ? wsMatch[1] : "";
       const loadCtx = createLoadContext(login, workspace);
 
+      // Typed `any[]`, not the `unified` package's own `PluggableList`: the
+      // root `unified` package and @mdx-js/mdx's own bundled copy of it are
+      // structurally identical but nominally different types (the same
+      // dual-package hazard as vfile above), so a plugin list built against
+      // the root package's Plugin type doesn't type-check against
+      // compile()'s own nested Plugin type.
+      //
       // frontmatter must be first so later plugins never see the leading
       // "---" block as markdown content; directive must precede admonitions
       // so ":::note" blocks are parsed before being turned into HTML.
-      const commonPlugins = [remarkFrontmatter, remarkDirective, remarkAdmonitions];
-      const remarkPlugins = isMdx
+      const commonPlugins: any[] = [
+        remarkFrontmatter,
+        remarkDirective,
+        remarkAdmonitions,
+      ];
+      const remarkPlugins: any[] = isMdx
         ? [...commonPlugins, [remarkStripImports, loadCtx]]
         : commonPlugins;
 
-      const rehypePlugins = [[rehypeImages, currentDocPath]];
+      const rehypePlugins: any[] = [[rehypeImages, currentDocPath]];
 
       let compiled: any;
 
@@ -128,11 +146,13 @@ export default function Preview({
           jsx: false,
           outputFormat: "function-body",
           development: false,
-          allowDangerousHtml: true,
+          // Not a real @mdx-js/mdx compile option (no such property exists
+          // in this version's CompileOptions) — was already a silent no-op
+          // at runtime; removed rather than kept as dead configuration.
           remarkPlugins,
           rehypePlugins,
           useDynamicImport: false,
-          providerImportSource: false,
+          providerImportSource: null,
         });
 
         const code = String(compiled.value || "");

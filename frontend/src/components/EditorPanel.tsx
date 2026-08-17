@@ -79,6 +79,34 @@ This is how to use an image.
   );
 }
 
+interface EditorPanelProps {
+  content: string;
+  setContent: React.Dispatch<React.SetStateAction<string>>;
+  currentDocPath: string;
+  conflict: boolean;
+  errorLine: number | null;
+  saveState: "idle" | "saving" | "saved" | "error";
+  login: string | null;
+  workspace: string | null;
+  refreshLocalWorkspace: (ws: string) => Promise<unknown>;
+  onSelect: (ws: string, path: string) => Promise<void> | void;
+
+  // modal props
+  showNewFileModal: boolean;
+  setShowNewFileModal: React.Dispatch<React.SetStateAction<boolean>>;
+  newFileName: string;
+  setNewFileName: React.Dispatch<React.SetStateAction<string>>;
+  newFileFolder: string | null;
+  setNewFileFolder: React.Dispatch<React.SetStateAction<string | null>>;
+  notifyFileCreated: (
+    slug: string,
+    path: string,
+    content: string,
+  ) => Promise<{ ok: boolean; error?: string } | undefined>;
+  newDocTemplate: string;
+  newFileImageName: string | null;
+}
+
 export const EditorPanel = React.memo(function EditorPanel({
   content,
   setContent,
@@ -101,7 +129,7 @@ export const EditorPanel = React.memo(function EditorPanel({
   notifyFileCreated,
   newDocTemplate,
   newFileImageName,
-}) {
+}: EditorPanelProps) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -128,10 +156,10 @@ export const EditorPanel = React.memo(function EditorPanel({
       <h3>{conflict ? "Resolve Conflict" : "Editor"}</h3>
 
       {/* EDITOR BODY */}
-      {conflict ? (
+      {conflict && workspace ? (
         <ConflictResolver
           workspace={workspace}
-          file={currentDocPath.split("/").pop()}
+          file={currentDocPath.split("/").pop() ?? ""}
           login={login}
           onMergedChange={(text) => setContent(text)}
           onClose={() => onSelect(workspace, currentDocPath)}

@@ -19,8 +19,8 @@
 import { visit } from "unist-util-visit";
 
 export default function remarkAdmonitions() {
-  return (tree) => {
-    visit(tree, (node) => {
+  return (tree: any) => {
+    visit(tree, (node: any) => {
       if (
         node.type === "containerDirective" ||
         node.type === "leafDirective" ||

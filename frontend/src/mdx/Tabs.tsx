@@ -16,13 +16,41 @@
  *   fetch for a Docusaurus theme internal.
  */
 // tabs.tsx
-import React, { useState, Children, cloneElement } from "react";
+import { useState, Children, cloneElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import styles from "../css/tabs.module.css";
 
-export default function Tabs({ children, groupId, defaultValue }) {
-  const items = Children.toArray(children).filter(
-    (child) => child.type && child.type.displayName === "TabItem",
+interface TabItemElementProps {
+  value: string;
+  label?: string;
+  active?: boolean;
+  children?: ReactNode;
+}
+
+function isTabItemElement(
+  node: ReactNode,
+): node is ReactElement<TabItemElementProps> {
+  if (typeof node !== "object" || node === null || !("type" in node)) {
+    return false;
+  }
+  const type = (node as ReactElement).type;
+  return (
+    typeof type === "function" &&
+    (type as { displayName?: string }).displayName === "TabItem"
   );
+}
+
+interface TabsProps {
+  children?: ReactNode;
+  // Accepted for API compatibility with real Docusaurus tabs (which sync
+  // active tab across every <Tabs> sharing a groupId) but not wired up in
+  // this preview-sandbox re-implementation.
+  groupId?: string;
+  defaultValue?: string;
+}
+
+export default function Tabs({ children, defaultValue }: TabsProps) {
+  const items = Children.toArray(children).filter(isTabItemElement);
 
   const first = defaultValue || items[0]?.props.value;
   const [active, setActive] = useState(first);

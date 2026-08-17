@@ -43,13 +43,13 @@ interface UseGitPROptions {
 /* -------------------------------------------------------
    Change tracking types
 ------------------------------------------------------- */
-type ChangeEntry = {
+export type ChangeEntry = {
   path: string;
   type: "added" | "modified" | "deleted" | "renamed";
   from?: string;
 };
 
-type ChangeSet = {
+export type ChangeSet = {
   added: ChangeEntry[];
   modified: ChangeEntry[];
   deleted: ChangeEntry[];

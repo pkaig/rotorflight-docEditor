@@ -15,6 +15,20 @@
 import { useEffect, useState } from "react";
 import { diffLines } from "diff";
 
+interface ConflictResolverProps {
+  file: string;
+  workspace: string;
+  login: string | null;
+  onMergedChange: (merged: string) => void;
+  onClose: () => void;
+  onResolved: () => void;
+  // Passed by one caller (App.tsx) but unused here — this component always
+  // fetches its own copy of the conflict content via file/workspace/login
+  // instead of trusting content the caller already has.
+  workspaceText?: string;
+  upstreamText?: string;
+}
+
 export default function ConflictResolver({
   file,
   workspace,
@@ -22,7 +36,7 @@ export default function ConflictResolver({
   onMergedChange,
   onClose,
   onResolved,
-}) {
+}: ConflictResolverProps) {
   const [workspaceText, setWorkspaceText] = useState("");
   const [upstreamText, setUpstreamText] = useState("");
   const [mergedText, setMergedText] = useState("");

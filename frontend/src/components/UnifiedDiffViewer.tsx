@@ -16,7 +16,19 @@
 import { diffLines } from "diff";
 import { useEffect, useState } from "react";
 
-export default function UnifiedDiffViewer({ login, workspace, file, onClose }) {
+interface UnifiedDiffViewerProps {
+  login: string | null;
+  workspace: string | null;
+  file: string;
+  onClose: () => void;
+}
+
+export default function UnifiedDiffViewer({
+  login,
+  workspace,
+  file,
+  onClose,
+}: UnifiedDiffViewerProps) {
   const [workspaceText, setWorkspaceText] = useState("");
   const [baselineText, setBaselineText] = useState("");
   const [loading, setLoading] = useState(true);

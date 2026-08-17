@@ -27,8 +27,11 @@ import { useState, useRef, useEffect } from "react";
 // rendered Changes panel (App.tsx's instance). Saving a file updated
 // nothing visible because of exactly this: the notification went to an
 // orphaned instance nobody was looking at.
-export function useDocEditor(login, workspace, notifyFileSaved: () => void) {
-  // export function useDocEditor(login: string | null, workspace: string | null) {
+export function useDocEditor(
+  login: string | null,
+  workspace: string | null,
+  notifyFileSaved: () => void,
+) {
   const [content, setContent] = useState("");
   const [currentDocPath, setCurrentDocPath] = useState("");
   const [isSyncingImages, setIsSyncingImages] = useState(false);

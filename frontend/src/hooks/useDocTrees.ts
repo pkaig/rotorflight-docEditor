@@ -27,6 +27,10 @@ export function useDocTrees(
   ------------------------------------------------------- */
   useEffect(() => {
     if (!isAuthenticated || !login) return;
+    // Rebound to a plain `string`: TS narrows `login` to non-null here, but
+    // that narrowing doesn't carry into the separately-scoped loadAllLocal
+    // closure below — a fresh binding does.
+    const currentLogin = login;
 
     if (workspaces.length === 0) {
       setLocalTrees({});
@@ -41,7 +45,7 @@ export function useDocTrees(
         try {
           const res = await fetch(
             `/api/docs/list-local?login=${encodeURIComponent(
-              login,
+              currentLogin,
             )}&workspace=${encodeURIComponent(ws)}`,
           );
 

@@ -13,9 +13,18 @@
  *   the same object reference.
  */
 // TabItem.tsx
-import React from "react";
+import type { ReactNode } from "react";
 
-export default function TabItem({ children, active }) {
+interface TabItemProps {
+  children?: ReactNode;
+  active?: boolean;
+  // Accepted (and used by Tabs.tsx via item.props.value/label) but not
+  // referenced here — TabItem itself only cares about active/children.
+  value?: string;
+  label?: string;
+}
+
+export default function TabItem({ children, active }: TabItemProps) {
   if (!active) return null;
   return <div>{children}</div>;
 }

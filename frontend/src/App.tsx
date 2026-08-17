@@ -34,16 +34,14 @@ import { useAutosave } from "./hooks/useAutosave";
 import { useGitPR } from "./hooks/useGitPR";
 import { PRPanel } from "./components/PRPanel";
 import { ChangesPanel } from "./components/ChangesPanel";
-import DiffViewer from "./components/DiffViewer";
 import UnifiedDiffViewer from "./components/UnifiedDiffViewer";
 import ConflictResolver from "./components/ConflictResolver";
-import { isConflictFile, baseFileName } from "./components/conflictUtils";
+import { isConflictFile } from "./components/conflictUtils";
 
 import {
   MaintenanceModal,
   ForceUpdateModal,
   UpdateAvailableModal,
-  UpdateBanner,
 } from "./components/versionModals";
 
 import { Tree, type TreeNode } from "./components/Tree";
@@ -56,6 +54,32 @@ import { useWorkspaces } from "./hooks/useWorkspaces";
 import { validateWorkspaceName } from "./utils/validateWorkspaceName";
 
 const IMAGE_RE = /\.(png|jpe?g|gif|svg|webp)$/i;
+
+type EditorStatus = {
+  type: "blocked" | "forceUpdate" | "updateAvailable" | "ok";
+  message?: string;
+  current?: string;
+  latest?: string;
+  downloadUrl?: string;
+} | null;
+
+// Shape of docEditorStatus.json, the remote version-gate config fetched via
+// the backend's /api/version proxy.
+interface DocEditorStatusConfig {
+  blocked: boolean;
+  blockMessage?: string;
+  latestVersion: string;
+  minSupportedVersion: string;
+  updateMessage?: string;
+  downloadUrl?: string;
+}
+
+type ConflictData = {
+  file: string;
+  workspace: string;
+  workspaceText: string;
+  upstreamText: string;
+} | null;
 
 // Looks up folderPath within the already-loaded tree (no extra fetch — the
 // sidebar already has this data) and returns the alphabetically-first image
@@ -109,20 +133,10 @@ export default function App() {
   const [workspace, setWorkspace] = useState<string | null>(null);
 
   /* WORKSPACE LIST */
-  const {
-    workspaces,
-    loading: loadingWorkspaces,
-    loadWorkspaces,
-  } = useWorkspaces(login);
+  const { workspaces, loadWorkspaces } = useWorkspaces(login);
 
   /* VERSION GATE */
-  const [editorStatus, setEditorStatus] = useState<null | {
-    type: "blocked" | "forceUpdate" | "updateAvailable" | "ok";
-    message?: string;
-    current?: string;
-    latest?: string;
-    downloadUrl?: string;
-  }>(null);
+  const [editorStatus, setEditorStatus] = useState<EditorStatus>(null);
 
   /* DOCUMENT TREES (LOCAL ONLY) */
   const { localTrees, loadingLocal, refreshLocalWorkspace } = useDocTrees(
@@ -159,10 +173,7 @@ export default function App() {
     setContent,
     currentDocPath,
     setCurrentDocPath,
-    isSyncingImages,
-    setIsSyncingImages,
     loadDoc,
-    handleCloneToLocal,
     suppressNextAutosave,
     setSuppressNextAutosave,
     saveState,
@@ -170,7 +181,11 @@ export default function App() {
   } = useDocEditor(login, workspace, notifyFileSaved);
 
   /* UI STATE */
-  const { editorWidth, startDrag } = useDragResize(50);
+  // Return value unused — the resizable editor/preview divider this hook
+  // drives isn't currently wired to any draggable handle in the JSX below,
+  // so it's inert today. Still called so its window mousemove/mouseup
+  // listeners are attached, in case that wiring comes back.
+  useDragResize(50);
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const [showNewFileModal, setShowNewFileModal] = useState(false);
@@ -179,16 +194,12 @@ export default function App() {
   const [newFileImageName, setNewFileImageName] = useState<string | null>(null);
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
-  const { checking, stale, updating } = useUpstreamStatus(login);
+  const { checking, updating } = useUpstreamStatus(login);
   const [showDiff, setShowDiff] = useState(false);
   const [currentFile, setCurrentFile] = useState("");
 
   const [showConflictModal, setShowConflictModal] = useState(false);
-  const [conflictData, setConflictData] = useState(null);
-
-  const [openWorkspaces, setOpenWorkspaces] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [conflictData, setConflictData] = useState<ConflictData>(null);
 
   const conflict = isConflictFile(currentDocPath);
 
@@ -212,8 +223,11 @@ export default function App() {
   // -----------------------------
   // VERSION EVALUATION
   // -----------------------------
-  function evaluateStatus(cfg, APP_VERSION) {
-    function compare(a, b) {
+  function evaluateStatus(
+    cfg: DocEditorStatusConfig,
+    currentVersion: string,
+  ): NonNullable<EditorStatus> {
+    function compare(a: string, b: string) {
       const pa = a.split(".").map(Number);
       const pb = b.split(".").map(Number);
       for (let i = 0; i < 3; i++) {
@@ -227,20 +241,20 @@ export default function App() {
       return { type: "blocked", message: cfg.blockMessage };
     }
 
-    if (compare(APP_VERSION, cfg.minSupportedVersion) < 0) {
+    if (compare(currentVersion, cfg.minSupportedVersion) < 0) {
       return {
         type: "forceUpdate",
-        current: APP_VERSION,
+        current: currentVersion,
         latest: cfg.latestVersion,
         message: cfg.updateMessage,
         downloadUrl: cfg.downloadUrl,
       };
     }
 
-    if (compare(APP_VERSION, cfg.latestVersion) < 0) {
+    if (compare(currentVersion, cfg.latestVersion) < 0) {
       return {
         type: "updateAvailable",
-        current: APP_VERSION,
+        current: currentVersion,
         latest: cfg.latestVersion,
         message: cfg.updateMessage,
         downloadUrl: cfg.downloadUrl,
@@ -550,55 +564,16 @@ export default function App() {
     );
   }
 
-  /* RESTORE SELECTED CHANGES */
-  async function clearSelectedChanges(ws: string, paths: string[]) {
-    if (!login) return;
-
-    for (const p of paths) {
-      console.log("Restore path:", p);
-      await fetch(
-        `/api/docs/restore-file?login=${encodeURIComponent(
-          login,
-        )}&workspace=${encodeURIComponent(ws)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: p }),
-        },
-      );
-    }
-
-    await refreshLocalWorkspace(ws);
-    setSelectedChanges({});
-  }
-
-  if (editorStatus === null) return null;
-
-  if (editorStatus.type === "blocked") {
-    return <MaintenanceModal message={editorStatus.message} />;
-  }
-
-  if (editorStatus.type === "forceUpdate") {
-    return <ForceUpdateModal {...editorStatus} />;
-  }
-
-  if (editorStatus.type === "updateAvailable") {
-    return (
-      <UpdateAvailableModal
-        {...editorStatus}
-        onContinue={() => setEditorStatus({ type: "ok" })}
-      />
-    );
-  }
-
   /* MAIN UI */
-  /* MAIN UI */
+  // Note: editorStatus.type can only be "ok" once execution reaches here —
+  // "blocked"/"forceUpdate"/"updateAvailable" all return a full-screen modal
+  // above instead, and updateAvailable's onContinue resets type to "ok"
+  // rather than preserving "was dismissed but still outdated". UpdateBanner
+  // (a persistent post-dismiss reminder) is exported and imported for
+  // exactly this spot but can never actually render as a result — a
+  // pre-existing dead path, not something introduced by this fix pass.
   return (
     <div className="app-root">
-      {editorStatus.type === "updateAvailable" && (
-        <UpdateBanner {...editorStatus} />
-      )}
-
       {saving && <div className="saving-indicator">Saving…</div>}
 
       {user && (
@@ -784,6 +759,7 @@ export default function App() {
                     return;
 
                   const ws = workspace;
+                  if (!ws) return;
 
                   const cleanPaths = selected.map((p) => {
                     let clean = p.replace(/^local-workspace\/[^/]+\//, "");
@@ -832,6 +808,7 @@ export default function App() {
                     return;
 
                   const ws = workspace;
+                  if (!ws) return;
 
                   await fetch("/api/reset-mirror/clear-all", {
                     method: "POST",
@@ -856,8 +833,9 @@ export default function App() {
                 changes={changes}
                 selectedChanges={selectedChanges}
                 setSelectedChanges={setSelectedChanges}
-                onOpenFile={(rawPath) => {
+                onOpenFile={(rawPath: string) => {
                   const ws = workspace;
+                  if (!ws) return;
 
                   // Build the full path exactly like the tree uses
                   const fullPath = `local-workspace/${ws}/${rawPath}`;
@@ -881,7 +859,7 @@ export default function App() {
           </div>
         </div>
 
-        {showConflictModal && (
+        {showConflictModal && conflictData && (
           <ConflictResolver
             file={conflictData.file}
             workspace={conflictData.workspace}
@@ -890,14 +868,19 @@ export default function App() {
             login={login}
             onMergedChange={(merged) => {
               setContent(merged);
-              saveDocument(conflictData.file, merged, conflictData.workspace);
+              // Was previously called as saveDocument(conflictData.file, merged,
+              // conflictData.workspace) — saveDocument only takes one argument
+              // (newContent), so that extra-args call silently saved
+              // conflictData.file (a path string) as the document's content
+              // instead of the actual merged text, on every keystroke.
+              saveDocument(merged);
               refreshLocalWorkspace(conflictData.workspace);
               setShowConflictModal(false);
             }}
             onClose={() => setShowConflictModal(false)}
             onResolved={() => {
               setShowConflictModal(false);
-              refreshLocalWorkspace(workspace);
+              refreshLocalWorkspace(conflictData.workspace);
             }}
           />
         )}

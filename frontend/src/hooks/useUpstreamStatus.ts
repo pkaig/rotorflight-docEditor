@@ -15,7 +15,7 @@
 // useUpstreamStatus.ts
 import { useEffect, useState } from "react";
 
-export function useUpstreamStatus(login: string) {
+export function useUpstreamStatus(login: string | null) {
   const [checking, setChecking] = useState(true);
   const [stale, setStale] = useState(false);
   const [updating, setUpdating] = useState(false);

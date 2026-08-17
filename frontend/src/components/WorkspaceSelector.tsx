@@ -3,25 +3,27 @@
  * Description of responsibility:
  *   Modal for creating a new workspace: validates the entered name,
  *   checks (and if needed triggers a refresh of) the global upstream
- *   mirror's freshness before letting the user proceed, and lists
- *   existing workspaces.
+ *   mirror's freshness before letting the user proceed.
  *
  * Info:
  *   onSelect(null) is the modal's "cancelled" signal (both Escape and
  *   the Cancel button use it) — App.tsx's handler for this component
  *   treats a null workspace name as "just close the modal, don't
- *   actually create anything."
+ *   actually create anything." Existing workspace names are fetched on
+ *   mount but not currently rendered anywhere in this modal — the fetch
+ *   looks like unfinished scaffolding for showing/avoiding duplicates,
+ *   left as-is rather than removed or finished here.
  */
 import { useEffect, useState } from "react";
 import { validateWorkspaceName } from "../utils/validateWorkspaceName";
 
 interface WorkspaceSelectorProps {
-  login: string;
+  login: string | null;
   onSelect: (workspace: string | null) => void;
 }
 
 export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
-  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [, setWorkspaces] = useState<string[]>([]);
   const [newName, setNewName] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -62,9 +64,10 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
       setUpstreamStale(false);
       setCloning(false);
       if (!login) return;
+      const currentLogin = login;
 
       fetch(
-        `/api/reset-mirror/upstream-status?login=${encodeURIComponent(login)}`,
+        `/api/reset-mirror/upstream-status?login=${encodeURIComponent(currentLogin)}`,
       )
         .then((r) => r.json())
         .then(async (data) => {
@@ -74,7 +77,7 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
 
             // Trigger mirror refresh
             await fetch(
-              `/api/reset-mirror?login=${encodeURIComponent(login)}`,
+              `/api/reset-mirror?login=${encodeURIComponent(currentLogin)}`,
               { method: "POST" },
             );
 

@@ -66,8 +66,8 @@ export function Tree({
 
   return (
     <ul className="tree-list">
-      {safeNodes.map((node, index) => {
-        // console.log("TREE NODE", index, node);
+      {safeNodes.map((node) => {
+        // console.log("TREE NODE", node);
         if (!node || typeof node !== "object") return null;
 
         // --- SAFETY: ensure key is always a string ---

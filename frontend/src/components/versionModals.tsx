@@ -13,8 +13,9 @@
  *   stylesheet cascade.
  */
 // VersionModals.tsx
+import type { CSSProperties } from "react";
 
-export function MaintenanceModal({ message }) {
+export function MaintenanceModal({ message }: { message?: string }) {
   return (
     <div style={modalBackdrop}>
       <div style={modalBox}>
@@ -29,7 +30,19 @@ export function MaintenanceModal({ message }) {
   );
 }
 
-export function ForceUpdateModal({ message, current, latest, downloadUrl }) {
+interface VersionInfoProps {
+  message?: string;
+  current?: string;
+  latest?: string;
+  downloadUrl?: string;
+}
+
+export function ForceUpdateModal({
+  message,
+  current,
+  latest,
+  downloadUrl,
+}: VersionInfoProps) {
   return (
     <div style={modalBackdrop}>
       <div style={modalBox}>
@@ -67,7 +80,7 @@ export function UpdateAvailableModal({
   current,
   downloadUrl,
   onContinue,
-}) {
+}: VersionInfoProps & { onContinue: () => void }) {
   return (
     <div style={modalBackdrop}>
       <div style={modalBox}>
@@ -100,7 +113,13 @@ export function UpdateAvailableModal({
   );
 }
 
-export function UpdateBanner({ message, latest }) {
+export function UpdateBanner({
+  message,
+  latest,
+}: {
+  message?: string;
+  latest?: string;
+}) {
   return (
     <div style={bannerStyle}>
       <strong>Update available:</strong> {message} (v{latest})
@@ -112,7 +131,7 @@ export function UpdateBanner({ message, latest }) {
    SHARED STYLES
 ----------------------------- */
 
-const modalBackdrop = {
+const modalBackdrop: CSSProperties = {
   position: "fixed",
   inset: 0,
   background: "rgba(0,0,0,0.4)",
