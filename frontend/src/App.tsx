@@ -21,6 +21,7 @@
  *   actual alphabetical order.
  */
 import "./App.css";
+import { version as APP_VERSION } from "../package.json";
 import { useState, useEffect } from "react"; // <-- UPDATED
 import rfHeliLogo from "./assets/RFHeli.svg";
 import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
@@ -44,8 +45,6 @@ import {
   UpdateAvailableModal,
   UpdateBanner,
 } from "./components/versionModals";
-
-const APP_VERSION = "1.0.0";
 
 import { Tree, type TreeNode } from "./components/Tree";
 import { useAuth } from "./hooks/useAuth";
