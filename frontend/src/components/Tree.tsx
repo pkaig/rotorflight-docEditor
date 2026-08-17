@@ -16,6 +16,11 @@ interface TreeProps {
   onFolderClick?: (path: string) => void;
   openFolders: Record<string, boolean>;
   setOpenFolders: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  // Highlights the file row matching this path (the doc currently open in
+  // the editor) — currentDocPath is built from the same
+  // "local-workspace/<ws>/..." format as node.path, so a direct match is
+  // enough, no normalization needed.
+  currentPath?: string;
 }
 
 export function Tree({
@@ -26,6 +31,7 @@ export function Tree({
   setDraggedItem,
   openFolders,
   setOpenFolders,
+  currentPath,
 }: TreeProps) {
   const safeNodes = Array.isArray(nodes) ? nodes : [];
   const folders = openFolders || {};
@@ -54,7 +60,8 @@ export function Tree({
                   className={
                     "tree-node " +
                     (node.type === "dir" ? "folder" : "file") +
-                    (node.isWorkspaceRoot ? " workspace-root" : "")
+                    (node.isWorkspaceRoot ? " workspace-root" : "") +
+                    (node.path && folders[node.path] ? " open" : "")
                   }
                   onClick={(e) => {
                     e.stopPropagation();
@@ -66,7 +73,8 @@ export function Tree({
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => node.path && onDropFolder(node.path)}
                 >
-                  {node.name}
+                  <span className="tree-node-name">{node.name}</span>
+                  {!node.isWorkspaceRoot && <span className="tree-chevron" aria-hidden="true" />}
                 </div>
 
                 {node.path && folders[node.path] && (
@@ -78,12 +86,16 @@ export function Tree({
                     setDraggedItem={setDraggedItem}
                     openFolders={folders}
                     setOpenFolders={setOpenFolders}
+                    currentPath={currentPath}
                   />
                 )}
               </div>
             ) : (
               <button
-                className="tree-node file"
+                className={
+                  "tree-node file" +
+                  (node.path && node.path === currentPath ? " active" : "")
+                }
                 draggable
                 onDragStart={() => node.path && setDraggedItem(node.path)}
                 onClick={() => node.path && onSelect(node.path)}

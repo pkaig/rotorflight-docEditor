@@ -233,7 +233,7 @@
 }
 
 .modal-submit {
-  background: #0070f3;
+  background: #3578e5;
   color: white;
   padding: 8px 14px;
   border-radius: 6px;
@@ -252,7 +252,7 @@
    ============================================================ */
 
 .submit-pr {
-  background: #0070f3;
+  background: #3578e5;
   color: white;
   padding: 10px 14px;
   border-radius: 6px;
@@ -266,7 +266,7 @@
 
 .banner {
   background: #eaf7ff;
-  border-left: 4px solid #0070f3;
+  border-left: 4px solid #3578e5;
   padding: 10px 14px;
   border-radius: 6px;
   margin: 0 0 1rem 0;
@@ -750,19 +750,55 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 0;
+  padding: 3px 18px 3px 6px;
+  border-radius: 5px;
   cursor: pointer;
   background: none;
   border: none;
+  border-left: 3px solid transparent;
   text-align: left;
-  color: #004a80;
+  color: #33383d;
   font-size: 0.92rem;
+}
+
+.tree-node:not(.workspace-root):hover {
+  background: #eef4fb;
+}
+
+/* Expand/collapse affordance for folders — rotates via .open, set in
+   Tree.tsx from the same openFolders state that controls whether children
+   actually render, so it never drifts out of sync with the real state. */
+.tree-node-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-chevron {
+  width: 20px;
+  flex-shrink: 0;
+  font-size: 27px;
+  line-height: 1;
+  color: #6b7480;
+  margin-left: auto;
+  padding-left: 6px;
+  transition: transform 0.15s ease;
+}
+
+.tree-chevron::before {
+  content: "▸";
+}
+
+.tree-node.open > .tree-chevron {
+  transform: rotate(90deg);
 }
 
 .tree-node.folder::before {
   content: "○";
   font-size: 12px;
-  color: #004a80;
+  color: #3578e5;
   width: 12px;
   display: inline-block;
 }
@@ -770,9 +806,20 @@
 .tree-node.file::before {
   content: "●";
   font-size: 10px;
-  color: #004a80;
+  color: #8a94a3;
   width: 12px;
   display: inline-block;
+}
+
+.tree-node.file.active {
+  background: #eaf2fc;
+  border-left-color: #3578e5;
+  color: #3578e5;
+  font-weight: 600;
+}
+
+.tree-node.file.active::before {
+  color: #3578e5;
 }
 
 .tree-node.workspace-root::before {
@@ -1149,14 +1196,19 @@
 }
 
 /* header + saving */
+/* Matches rotorflight.org's own navbar treatment (src/theme/Navbar/rfNavbar.css
+   in the docs repo): a floating rounded pill in the same light blue, inset
+   from the page edges rather than a flush full-width bar. */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.9rem 1rem;
-  background: #f0f0f0;
-  border-bottom: 1px solid #ccc;
+  padding: 0.5rem 1.25rem;
+  background: rgba(77, 168, 218, 0.9);
+  border-radius: 25px;
+  width: 97%;
+  margin: 10px auto;
   flex-shrink: 0;
 }
 
@@ -1176,13 +1228,14 @@
 .app-header-title {
   font-weight: 800;
   font-size: 1.3rem;
-  color: #333;
+  color: #1c1e21;
 }
 
 .app-header-user {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  color: #1c1e21;
 }
 
 .app-header-avatar {

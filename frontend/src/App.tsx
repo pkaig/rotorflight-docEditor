@@ -687,6 +687,7 @@ export default function App() {
                     setDraggedItem={setDraggedItem}
                     openFolders={openFolders}
                     setOpenFolders={setOpenFolders}
+                    currentPath={currentDocPath}
                   />
                 </div>
               );
