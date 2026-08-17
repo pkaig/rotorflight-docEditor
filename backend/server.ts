@@ -1,3 +1,20 @@
+/* backend/server.ts
+ *
+ * Description of responsibility:
+ *   The Express app's entry point: wires up CORS, JSON parsing, session
+ *   middleware, and mounts every route module
+ *   (auth/docs/reset-mirror/version/git) before starting the listener.
+ *
+ * Info:
+ *   dotenv.config() runs before any other import specifically so every
+ *   subsequently-imported module (config/github.ts in particular) sees
+ *   fully-populated process.env values at module-load time, not just
+ *   inside request handlers. CORS is locked to a single configured
+ *   FRONTEND_ORIGIN with credentials:true — a wildcard origin can't be
+ *   combined with cookie-bearing requests, so this is what makes
+ *   session auth work at all.
+ */
+
 // Load env FIRST
 import dotenv from "dotenv";
 dotenv.config();

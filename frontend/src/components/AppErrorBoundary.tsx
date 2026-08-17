@@ -1,3 +1,14 @@
+/* frontend/src/components/AppErrorBoundary.tsx
+ *
+ * Description of responsibility:
+ *   Class-based React error boundary wrapping the whole app — catches
+ *   otherwise-fatal render errors and shows a plain fallback message
+ *   instead of a blank white screen.
+ *
+ * Info:
+ *   Must be a class component; React error boundaries have no hook
+ *   equivalent.
+ */
 import React from "react";
 
 export class AppErrorBoundary extends React.Component<

@@ -1,3 +1,17 @@
+/* frontend/src/components/WorkspaceSelector.tsx
+ *
+ * Description of responsibility:
+ *   Modal for creating a new workspace: validates the entered name,
+ *   checks (and if needed triggers a refresh of) the global upstream
+ *   mirror's freshness before letting the user proceed, and lists
+ *   existing workspaces.
+ *
+ * Info:
+ *   onSelect(null) is the modal's "cancelled" signal (both Escape and
+ *   the Cancel button use it) — App.tsx's handler for this component
+ *   treats a null workspace name as "just close the modal, don't
+ *   actually create anything."
+ */
 import { useEffect, useState } from "react";
 import { validateWorkspaceName } from "../utils/validateWorkspaceName";
 

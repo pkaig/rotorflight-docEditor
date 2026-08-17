@@ -1,3 +1,25 @@
+/* frontend/src/components/Preview.tsx
+ *
+ * Description of responsibility:
+ *   Compiles the current doc's MDX/Markdown source in the browser (no
+ *   build step) via @mdx-js/mdx and evaluates the result to render a
+ *   live preview, falling back to a line-numbered raw view
+ *   highlighting the offending line on compile/eval failure.
+ *
+ * Info:
+ *   The compile effect deliberately does not fire on every keystroke:
+ *   switching to a new document recompiles after a short 60ms settle
+ *   window (see lastPathRef), while continuing to type in the same
+ *   document waits a full 3000ms of inactivity — and does not clear
+ *   MDXContent first, so the previously-rendered version stays on
+ *   screen until the next one is ready rather than flashing blank. The
+ *   60ms settle window exists because useDocEditor's loadDoc sets
+ *   currentDocPath synchronously but content asynchronously, so
+ *   opening a file fires this effect twice in quick succession; not
+ *   eagerly marking lastPathRef as "seen" on the first fire means
+ *   whichever fire still has current content when the timer elapses is
+ *   the one that compiles.
+ */
 import { useEffect, useRef, useState } from "react";
 import { VFile } from "vfile";
 import * as React from "react";

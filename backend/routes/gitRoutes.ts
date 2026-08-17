@@ -1,4 +1,26 @@
-// ./routes/gitRoutes.ts
+/* backend/routes/gitRoutes.ts
+ *
+ * Description of responsibility:
+ *   Talks to the GitHub Git Data API to turn a workspace's local file
+ *   changes into a real commit on the user's fork, and to open or
+ *   update the pull request from that fork branch back to upstream.
+ *   Also brings a fork branch's docs content forward from upstream
+ *   before committing on top of it, so a stale fork branch doesn't
+ *   silently diverge.
+ *
+ * Info:
+ *   commitChanges() and submitPullRequest() are exported as plain
+ *   functions, not just used by their own /commit and /pr routes, so
+ *   docsRoutes.ts's /submit-pr can call them directly in-process
+ *   instead of the HTTP self-calls it used to make (which stopped
+ *   carrying valid auth once these routes started requiring a session
+ *   cookie). syncBranchWithUpstreamDocs() deliberately only swaps the
+ *   top-level docs/versioned_docs/project-words.txt tree entries rather
+ *   than doing a full GitHub "sync fork" — that API is refused for
+ *   OAuth apps without the `workflow` scope whenever upstream's
+ *   .github/workflows/* has changed, and this app has no reason to
+ *   request that broader permission.
+ */
 import express from "express";
 import { getTokenForUser, assertRepoScope } from "./authRoutes";
 //import { githubRequest } from "../githubClient";

@@ -1,19 +1,24 @@
-// Extracts spell-checkable words (with their character offsets in the
-// original source) from Markdown/MDX prose, skipping code spans, fenced
-// code blocks, frontmatter, link/image URLs, and MDX-specific constructs —
-// import/export statements, JSX tags + their attributes, and {expression}
-// interpolations — anything that isn't prose a human typed and might have
-// misspelled.
-//
-// remark-mdx gives these constructs their own node types (mdxjsEsm,
-// mdxJsxFlowElement/mdxJsxTextElement, mdxFlowExpression/mdxTextExpression)
-// instead of letting them fall through and get misparsed as plain
-// paragraph text — which is what happened without it: a JSX tag name or
-// an import's module path could end up spell-checked like prose. JSX
-// element *children* (the actual rendered text inside a component, e.g.
-// `<TabItem>real prose</TabItem>`) are still walked normally, since only
-// the tag/attributes live outside the visited "text" nodes, not the
-// children.
+/* frontend/src/spellcheck/tokenizeMarkdown.ts
+ *
+ * Description of responsibility:
+ *   Extracts spell-checkable words (with their character offsets in
+ *   the original source) from Markdown/MDX prose for
+ *   SpellcheckTextarea, skipping code spans, fenced code blocks,
+ *   frontmatter, link/image URLs, and MDX-specific constructs
+ *   (imports/exports, JSX tags and their attributes, {expression}
+ *   interpolations).
+ *
+ * Info:
+ *   Relies on remark-mdx giving those MDX constructs their own
+ *   distinct node types (mdxjsEsm, mdxJsxFlowElement/
+ *   mdxJsxTextElement, mdxFlowExpression/mdxTextExpression) rather than
+ *   letting them fall through as plain paragraph text — without
+ *   remark-mdx in the parser pipeline, a JSX tag name or an import's
+ *   module path could get spell-checked like prose. JSX element
+ *   children (the actual rendered text inside a component) are still
+ *   walked normally, since only the tag/attributes live outside the
+ *   visited "text" nodes, not the children.
+ */
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkFrontmatter from "remark-frontmatter";

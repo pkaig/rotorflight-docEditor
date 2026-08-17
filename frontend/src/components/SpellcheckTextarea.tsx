@@ -1,3 +1,29 @@
+/* frontend/src/components/SpellcheckTextarea.tsx
+ *
+ * Description of responsibility:
+ *   Drop-in replacement for a plain <textarea> that highlights
+ *   misspelled words with a wavy underline and offers right-click
+ *   suggested corrections plus "add to dictionary" — the same
+ *   interaction model as Word/Google Docs/most IDEs.
+ *
+ * Info:
+ *   Implemented as a transparent-text textarea stacked on top of a
+ *   backdrop <div> that mirrors the same text with misspelled words
+ *   wrapped in <mark> — a native textarea can't style substrings
+ *   itself, so this is the standard technique for that. Getting the
+ *   two layers pixel-aligned took real care: typography properties are
+ *   pinned explicitly (form controls don't reliably inherit font
+ *   smoothing/ligatures the way a <div> does), the backdrop is sized to
+ *   the textarea's measured clientWidth/clientHeight via ResizeObserver
+ *   rather than percentage/inset (scrollbar width varies by platform),
+ *   and word wrapping is restricted to word-boundary-only (wordBreak:
+ *   "normal") because sub-pixel "does this fit" differences between the
+ *   two layers can flip a mid-word break decision and desync every line
+ *   below it. applySuggestion() replaces text via the textarea's native
+ *   setRangeText + a dispatched input event rather than JS string
+ *   manipulation, so the browser's native undo stack treats a
+ *   correction as one undoable step.
+ */
 import { useEffect, useRef, useState } from "react";
 import { useSpellchecker } from "../hooks/useSpellchecker";
 import { tokenizeMarkdown, type WordToken } from "../spellcheck/tokenizeMarkdown";

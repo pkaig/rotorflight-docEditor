@@ -1,3 +1,22 @@
+/* frontend/src/components/PRPanel.tsx
+ *
+ * Description of responsibility:
+ *   Sidebar panel that shows the current PR status banner and the
+ *   "Set up PR" / "Update PR" button, and opens PRDescriptionModal to
+ *   collect a description before calling submitPR.
+ *
+ * Info:
+ *   banner/activePR/submitPR/submitting/clearBanner are all passed
+ *   down from App.tsx's single useGitPR() call rather than created
+ *   here — see the note in App.tsx on why there must only ever be one
+ *   instance of that hook. warnNoConflictUI is a module-level function
+ *   (not an inline default parameter) specifically so its identity
+ *   stays stable across renders; an inline default would be a new
+ *   function every render, which made PRDescriptionModal's
+ *   upstream-check effect (which depends on this prop) think something
+ *   had changed and re-run on every PRPanel re-render while the modal
+ *   was open.
+ */
 // PRPanel.tsx
 
 import { useState } from "react";

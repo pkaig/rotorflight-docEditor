@@ -1,3 +1,22 @@
+/* frontend/src/hooks/useGitPR.tsx
+ *
+ * Description of responsibility:
+ *   Owns PR/change-tracking state for a workspace: the list of pending
+ *   local changes (scanned against the mirror baseline), the current
+ *   PR status banner, and submitPR()/notifyFile*() functions that both
+ *   mutate the backend and keep this state in sync afterward.
+ *
+ * Info:
+ *   Every call to this hook is an independent state instance — React
+ *   hooks don't share state across call sites — which is why App.tsx
+ *   creates exactly one instance and passes its values down as props
+ *   rather than letting EditorPanel/PRPanel/useDocEditor each call this
+ *   hook themselves. An earlier version did exactly that, and a saved
+ *   file's notifyFileSaved() call updated a `changes` value nobody was
+ *   actually rendering. notifyFileCreated() returns a real {ok, error}
+ *   result (not fire-and-forget) so EditorPanel's "create new page"
+ *   modal can show a failure reason instead of silently doing nothing.
+ */
 import { useState, useCallback, useEffect } from "react";
 
 export type PRStatus =

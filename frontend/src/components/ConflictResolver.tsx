@@ -1,3 +1,17 @@
+/* frontend/src/components/ConflictResolver.tsx
+ *
+ * Description of responsibility:
+ *   Modal shown when a doc has a real merge conflict between the
+ *   user's workspace edits and an upstream change pulled in during a
+ *   rebase — shows a line-by-line diff and a merge textarea, and posts
+ *   the chosen resolution to /api/reset-mirror/resolve-conflict.
+ *
+ * Info:
+ *   saveCurrent() intentionally keeps the .conflict file around
+ *   (resolution: "manual" without deleting it) so the user can save
+ *   partial progress and come back to finish resolving later;
+ *   resolve() is the only path that actually clears the conflict.
+ */
 import { useEffect, useState } from "react";
 import { diffLines } from "diff";
 

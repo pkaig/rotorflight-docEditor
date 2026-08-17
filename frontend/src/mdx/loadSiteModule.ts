@@ -1,14 +1,28 @@
-// Recursive loader for anything an MDX doc (or a component it pulls in)
-// can import: media, CSS modules, JSON data, and .tsx/.jsx/.ts/.js
-// components. There's no bundler available in the browser, so component
-// modules are transpiled on the fly with Babel and evaluated with a small
-// hand-rolled CommonJS `require` — see resolveComponent() below for why
-// dependencies have to be resolved *before* that eval, not during it.
-//
-// Babel is ~2-3MB and most docs never import a live component, so it's
-// dynamically imported inside loadComponent() rather than at module scope —
-// Vite splits it into its own chunk that only loads for the docs that
-// actually need it.
+/* frontend/src/mdx/loadSiteModule.ts
+ *
+ * Description of responsibility:
+ *   Recursive loader for anything an MDX doc (or a component it pulls
+ *   in) can import: media, CSS modules, JSON data, and
+ *   .tsx/.jsx/.ts/.js components — resolving, fetching, and (for real
+ *   components) transpiling + evaluating them on the fly, since there's
+ *   no bundler available in the browser preview sandbox.
+ *
+ * Info:
+ *   loadComponent() resolves every one of a component's own
+ *   dependencies up front, before transpiling/evaluating it, because
+ *   the transpiled code calls a synchronous require(spec) — by the
+ *   time that runs, every specifier it can ask for must already be
+ *   loaded and sitting in resolvedDeps. Babel is ~2-3MB and most docs
+ *   never import a live component, so it's dynamically imported inside
+ *   loadComponent() rather than at module scope, letting Vite split it
+ *   into a chunk that only loads for docs that actually need it.
+ *   cssModuleProxy() returns each requested class name back as its own
+ *   string value, since there's no build step here to generate real
+ *   CSS-module scoped names — just enough to keep
+ *   `className={styles.x}` working; __esModule and then are excluded
+ *   from the proxy so Babel's CJS interop helper doesn't misidentify it
+ *   as a thenable/ES module.
+ */
 import * as React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import {

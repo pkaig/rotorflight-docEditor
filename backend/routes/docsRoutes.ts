@@ -1,3 +1,24 @@
+/* backend/routes/docsRoutes.ts
+ *
+ * Description of responsibility:
+ *   The bulk of the per-workspace document API: listing a workspace's
+ *   local file tree, loading/saving/creating doc files, uploading
+ *   images, restoring a single file from the mirror baseline, scanning
+ *   local changes against that baseline, creating/deleting workspaces,
+ *   and submitting a workspace's changes as a PR. Also owns the
+ *   per-workspace spell-check project dictionary (project-words.txt).
+ *
+ * Info:
+ *   requireToken() is the shared guard nearly every route here starts
+ *   with: it derives login from req.session (never a client-supplied
+ *   query/body field) and validates the workspace name via
+ *   isSafePathSegment() before it's ever joined into a filesystem path.
+ *   scanLocalChanges() is exported as a plain function, not just used
+ *   by its own route, so /submit-pr can call it directly in-process
+ *   instead of over an HTTP self-call — a server-to-server fetch()
+ *   doesn't carry the browser's session cookie, so those self-calls
+ *   stopped working once every route required a session.
+ */
 import express from "express";
 import { githubRequest } from "../githubClient";
 import { getTokenForUser } from "./authRoutes";

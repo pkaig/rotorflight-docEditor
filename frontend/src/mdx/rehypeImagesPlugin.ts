@@ -1,3 +1,17 @@
+/* frontend/src/mdx/rehypeImagesPlugin.ts
+ *
+ * Description of responsibility:
+ *   Rehype plugin that rewrites every <img>/<video> src in a compiled
+ *   doc's HTML tree from a relative/workspace path into a real
+ *   fetchable URL against /api/docs/images/local, so images render in
+ *   the preview sandbox exactly as they would in the published site.
+ *
+ * Info:
+ *   Leaves http(s):// and data: URLs untouched — only paths meant to
+ *   resolve against the workspace get rewritten. Resolution is relative
+ *   to the current doc's own directory (docDir), matching how
+ *   Docusaurus resolves relative image paths in real docs.
+ */
 import { visit } from "unist-util-visit";
 import path from "path-browserify";
 

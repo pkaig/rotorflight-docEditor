@@ -1,3 +1,18 @@
+/* frontend/src/components/UnifiedDiffViewer.tsx
+ *
+ * Description of responsibility:
+ *   The diff panel actually rendered by App.tsx when "Show Diff" is
+ *   toggled — shows a unified (single-column, +/- prefixed) line diff
+ *   between a file's workspace content and its mirror baseline.
+ *
+ * Info:
+ *   The `if (!file || !workspace) return;` guard lives inside the
+ *   effect, not before the hook calls above it — React requires the
+ *   same hooks to run in the same order on every render, so bailing
+ *   out before useEffect ran would be a rules-of-hooks violation, even
+ *   though file/workspace are already guaranteed non-empty by the time
+ *   this actually mounts today.
+ */
 import { diffLines } from "diff";
 import { useEffect, useState } from "react";
 

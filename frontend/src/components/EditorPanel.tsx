@@ -1,3 +1,23 @@
+/* frontend/src/components/EditorPanel.tsx
+ *
+ * Description of responsibility:
+ *   The main document editor surface: renders the spell-checked
+ *   textarea (or ConflictResolver, when the open file has an
+ *   unresolved conflict) and owns the "create new page" modal,
+ *   including slugging the entered name into a safe filename and
+ *   seeding new pages with a worked image-usage example when the
+ *   target folder has an img/ subfolder.
+ *
+ * Info:
+ *   slugifyFileName() also guards against path traversal (collapsing
+ *   "." runs) even though the backend independently validates the path
+ *   too. buildNewFileContent() inserts the image import after the
+ *   template's frontmatter block specifically — an import placed before
+ *   a leading "---" frontmatter fence breaks MDX parsing. The
+ *   textarea's error-line highlight background is computed here from
+ *   the `errorLine` prop that flows down from Preview's compile errors
+ *   via App.tsx.
+ */
 // EditorPanel.tsx
 import React, { useState } from "react";
 import { SpellcheckTextarea } from "./SpellcheckTextarea";

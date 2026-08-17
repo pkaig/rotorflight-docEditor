@@ -1,4 +1,17 @@
-// githubClient.ts
+/* backend/githubClient.ts
+ *
+ * Description of responsibility:
+ *   Thin wrapper around the GitHub REST API: attaches the bearer token
+ *   and required headers, and turns a non-2xx response into a thrown
+ *   Error instead of leaving every caller to check res.ok itself.
+ *
+ * Info:
+ *   Every authenticated GitHub call in the backend (ensureFork,
+ *   authRoutes, docsRoutes) goes through this one function, so a change
+ *   to auth headers or error handling only has to happen here. Note
+ *   gitRoutes.ts and resetMirror.ts each define their own separate
+ *   GitHub request helper rather than importing this one.
+ */
 import fetch from "node-fetch";
 import {
   GITHUB_CLIENT_ID,

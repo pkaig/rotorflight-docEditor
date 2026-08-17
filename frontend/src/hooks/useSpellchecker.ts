@@ -1,3 +1,18 @@
+/* frontend/src/hooks/useSpellchecker.ts
+ *
+ * Description of responsibility:
+ *   Bridges SpellcheckTextarea to the underlying Hunspell-based
+ *   dictionary module (spellcheck/dictionary.ts): loads the base
+ *   dictionary plus the current workspace's project word list once per
+ *   (login, workspace) pair, and exposes checkWord/suggest/addWord.
+ *
+ * Info:
+ *   `ready` is derived during render from comparing the current
+ *   (login, workspace) key against the last key that finished loading,
+ *   rather than a separate boolean reset inside the effect — so it
+ *   correctly reads false immediately on a workspace switch, before
+ *   the effect has even had a chance to run.
+ */
 import { useCallback, useEffect, useState } from "react";
 import {
   addProjectWord,

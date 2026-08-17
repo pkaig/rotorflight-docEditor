@@ -1,3 +1,15 @@
+/* backend/scanImages.ts
+ *
+ * Description of responsibility:
+ *   Scans a doc's raw source text for every image it references — MDX
+ *   `import x from "./foo.png"` statements, Markdown `![]()` syntax, and
+ *   raw `<img src="...">` tags — and resolves each to a path relative
+ *   to the doc's own folder.
+ *
+ * Info:
+ *   Regex-based rather than a real MDX/Markdown parse, since the goal
+ *   is just "which image files does this doc touch", not a full AST.
+ */
 console.log("scanImages module loaded");
 import path from "path";
 

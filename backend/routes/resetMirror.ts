@@ -1,4 +1,23 @@
-// resetMirror.ts
+/* backend/routes/resetMirror.ts
+ *
+ * Description of responsibility:
+ *   Maintains the single shared "global mirror" clone of upstream
+ *   rotorflight-docs (Rotorflight-docs/mirror) and each workspace's own
+ *   baseline copy of it, and rebases a workspace's local edits onto a
+ *   newer upstream when the global mirror is refreshed — applying
+ *   non-conflicting upstream changes automatically and writing
+ *   `.conflict` sibling files for anything the user edited differently.
+ *
+ * Info:
+ *   loadWorkspaceMirror() is exported as a plain function so
+ *   docsRoutes.ts's /create-workspace can call it in-process instead of
+ *   over an HTTP self-call (same reasoning as commitChanges/
+ *   submitPullRequest in gitRoutes.ts). The rebase route writes
+ *   mirror-hash.txt once a rebase completes cleanly (skipped when
+ *   conflicts remain) — without that, /workspace-upstream-status would
+ *   report the workspace stale again immediately after every rebase,
+ *   forcing a full re-rebase on every single "Set up PR" open.
+ */
 import express from "express";
 import * as fs from "fs-extra";
 import crypto from "crypto";

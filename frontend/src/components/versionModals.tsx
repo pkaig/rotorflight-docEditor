@@ -1,3 +1,17 @@
+/* frontend/src/components/versionModals.tsx
+ *
+ * Description of responsibility:
+ *   The set of full-screen modals (and one banner) App.tsx shows based
+ *   on the remote version-gate config from /api/version: a hard
+ *   maintenance block, a forced-update block, a dismissible
+ *   update-available notice, and its persistent banner form.
+ *
+ * Info:
+ *   All four share one small set of inline style objects at the bottom
+ *   of the file rather than CSS classes — these are rare, full-screen
+ *   overlay states that don't need to participate in the app's regular
+ *   stylesheet cascade.
+ */
 // VersionModals.tsx
 
 export function MaintenanceModal({ message }) {

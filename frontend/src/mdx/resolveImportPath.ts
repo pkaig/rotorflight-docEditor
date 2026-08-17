@@ -1,8 +1,17 @@
-// Resolves Docusaurus-style import specifiers (relative paths and the
-// `@site/` site-root alias) to a workspace-relative path in the form
-// "local-workspace/<workspace>/...", which is what the backend's
-// /api/docs/images/local endpoint (reused here as a generic "serve any
-// workspace file" endpoint) expects.
+/* frontend/src/mdx/resolveImportPath.ts
+ *
+ * Description of responsibility:
+ *   Resolves Docusaurus-style import specifiers (relative paths and
+ *   the `@site/` site-root alias) to a workspace-relative path in the
+ *   form "local-workspace/<workspace>/...", which is what the
+ *   backend's /api/docs/images/local endpoint (reused as a generic
+ *   "serve any workspace file" endpoint) expects.
+ *
+ * Info:
+ *   joinPath() is a small hand-rolled path resolver rather than Node's
+ *   `path` module, since there's no Node path module available in the
+ *   browser preview sandbox.
+ */
 
 // Browser-safe path resolver (no Node "path" module available in-browser)
 function joinPath(base: string, relative: string): string {

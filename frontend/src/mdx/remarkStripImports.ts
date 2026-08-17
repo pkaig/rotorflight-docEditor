@@ -1,3 +1,20 @@
+/* frontend/src/mdx/remarkStripImports.ts
+ *
+ * Description of responsibility:
+ *   Remark plugin that rewrites/strips ESM import and export statements
+ *   in .mdx files so the browser-side MDX compiler, which has no
+ *   bundler or module resolver, can evaluate the compiled output
+ *   standalone.
+ *
+ * Info:
+ *   MDX parses import/export statements into `mdxjsEsm` mdast nodes,
+ *   and hast-util-to-estree emits code for them straight from
+ *   `node.data.estree` — it never looks at `node.value`. So the
+ *   rewrite has to happen on the ESTree itself; editing `node.value`
+ *   alone compiles to nothing. See the per-case comments below for how
+ *   each import kind (media, CSS/JSON/component, react, @theme/*, and
+ *   everything else) is handled differently.
+ */
 // Rewrites/strips ESM import & export statements in .mdx files so the
 // browser-side MDX compiler (which has no bundler or module resolver) can
 // evaluate the output standalone.

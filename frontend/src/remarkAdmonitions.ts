@@ -1,3 +1,19 @@
+/* frontend/src/remarkAdmonitions.ts
+ *
+ * Description of responsibility:
+ *   Remark plugin that turns Docusaurus-style `:::note`/`:::warning`/etc.
+ *   directive blocks (parsed by remark-directive into
+ *   container/leaf/text directive nodes) into the actual HTML structure
+ *   (admonition/admonition-<type> divs with a title bar) Docusaurus's
+ *   real theme CSS expects, so admonitions render correctly in the
+ *   in-browser preview.
+ *
+ * Info:
+ *   Must run after remark-directive in the plugin pipeline (see
+ *   Preview.tsx's commonPlugins ordering) — without it, ":::note"
+ *   blocks are still plain text/paragraph nodes, not the directive node
+ *   types this plugin looks for.
+ */
 // frontend/src/remarkAdmonitions.js
 
 import { visit } from "unist-util-visit";

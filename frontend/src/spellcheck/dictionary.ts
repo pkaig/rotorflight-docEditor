@@ -1,10 +1,26 @@
-// Lazily-loaded, singleton Hunspell speller: en_US base + en_GB word list
-// + a curated technical-terms list (see public/dictionaries/README.md),
-// layered with the project's own cspell.json/project-words.txt vocabulary.
-// Dictionary data is fetched from public/dictionaries as static assets
-// rather than imported from their source npm packages, since those read
-// from disk at import time (or ship pre-compressed) and have no plain
-// browser-usable form.
+/* frontend/src/spellcheck/dictionary.ts
+ *
+ * Description of responsibility:
+ *   Owns the actual Hunspell speller instance: lazily loads and merges
+ *   the base en_US dictionary, an en_GB word list, a curated
+ *   technical-terms list, and (per workspace) the project's own
+ *   project-words.txt/cspell.json vocabulary, and exposes
+ *   isCorrect/getSuggestions/addProjectWord for useSpellchecker.ts.
+ *
+ * Info:
+ *   en_GB words are stripped of their Hunspell affix flags and added as
+ *   bare literals (parseHunspellDicAsLiterals) rather than merged via
+ *   nspell's dictionary() extension method — en_US and en_GB assign
+ *   those flag codes independently against their own .aff rule tables,
+ *   and feeding en-gb.dic's flagged entries through en.aff's rules
+ *   verifiably corrupts the speller into accepting arbitrary gibberish
+ *   as correctly spelled. The cost is losing automatic inflection of
+ *   GB-only spelling variants, judged an acceptable trade-off.
+ *   Dictionary data is fetched from public/dictionaries as static
+ *   assets rather than imported from their source npm packages, since
+ *   those read from disk at import time or ship pre-compressed, neither
+ *   of which works in a plain browser context.
+ */
 import nspell, { type NSpell } from "nspell";
 
 let spellerPromise: Promise<NSpell> | null = null;

@@ -1,3 +1,18 @@
+/* frontend/src/components/PRDescriptionModal.tsx
+ *
+ * Description of responsibility:
+ *   Modal for entering a PR description before submitting; also runs a
+ *   pre-submit check for upstream drift and triggers a rebase of the
+ *   workspace against upstream if needed, showing progress via a
+ *   single status state.
+ *
+ * Info:
+ *   A single `status` state (checking/idle/rebasing/done) drives the
+ *   banner instead of several independent booleans — an earlier
+ *   version set a "stale" flag when the check started and never
+ *   cleared it, so the "rebasing workspace…" message stayed on screen
+ *   long after the rebase had actually finished.
+ */
 import { useEffect, useState } from "react";
 
 type Status = "checking" | "idle" | "rebasing" | "done";

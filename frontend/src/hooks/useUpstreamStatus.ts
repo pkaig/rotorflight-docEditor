@@ -1,3 +1,17 @@
+/* frontend/src/hooks/useUpstreamStatus.ts
+ *
+ * Description of responsibility:
+ *   Checks whether the shared global mirror of upstream
+ *   rotorflight-docs is stale on login, and triggers (and reports
+ *   progress on) a mirror refresh if so, for the "Checking
+ *   upstream…"/"Updating Rotorflight-docs…" sidebar banner.
+ *
+ * Info:
+ *   Distinct from PRDescriptionModal's own upstream check — that one
+ *   rebases a single workspace's local edits against a fresh mirror
+ *   right before a PR submission; this one just keeps the shared
+ *   global mirror itself current in the background.
+ */
 // useUpstreamStatus.ts
 import { useEffect, useState } from "react";
 

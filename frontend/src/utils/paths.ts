@@ -1,3 +1,16 @@
+/* frontend/src/utils/paths.ts
+ *
+ * Description of responsibility:
+ *   Small helpers for recognizing and building the app's canonical
+ *   "local-workspace/<workspace>/..." virtual path format used
+ *   throughout the sidebar tree and editor state.
+ *
+ * Info:
+ *   pathDebug is a manual on/off switch for verbose console logging
+ *   during path-related debugging — left in as false rather than
+ *   removed since it's been useful more than once when workspace-path
+ *   bugs come up again.
+ */
 const pathDebug = false;
 
 export function isLocalPath(path: string) {

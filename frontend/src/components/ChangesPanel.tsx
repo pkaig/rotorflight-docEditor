@@ -1,3 +1,14 @@
+/* frontend/src/components/ChangesPanel.tsx
+ *
+ * Description of responsibility:
+ *   Renders the sidebar's list of pending local changes (added/
+ *   modified/deleted/renamed files) with per-row checkboxes for the
+ *   "clear selected" action and a click-to-open handler for each file.
+ *
+ * Info:
+ *   Purely presentational — `changes` and `selectedChanges` are owned
+ *   by App.tsx (via useGitPR), not local state here.
+ */
 export function ChangesPanel({
   changes,
   selectedChanges,

@@ -1,3 +1,18 @@
+/* frontend/src/hooks/useAutosave.ts
+ *
+ * Description of responsibility:
+ *   Debounced autosave: waits 3s after the last edit to the current doc
+ *   before calling the passed-in saveDocument, so typing doesn't
+ *   trigger a save (and the Preview/Editor flash that used to come with
+ *   it) on every keystroke.
+ *
+ * Info:
+ *   All the guard conditions live inside the effect body, after every
+ *   hook call, not as early returns above them — an early return
+ *   before a hook call would violate React's rules of hooks (same
+ *   hooks must run in the same order every render), even though none
+ *   of these conditions actually trip in practice today.
+ */
 import { useEffect, useRef, useState } from "react";
 const AUTOSAVE_ENABLED = true;
 

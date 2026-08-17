@@ -1,3 +1,12 @@
+/* frontend/src/main.tsx
+ *
+ * Description of responsibility:
+ *   Vite/React entry point — mounts <App> into the DOM inside
+ *   StrictMode and a top-level AppErrorBoundary.
+ *
+ * Info:
+ *   None beyond the standard Vite React template shape.
+ */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";

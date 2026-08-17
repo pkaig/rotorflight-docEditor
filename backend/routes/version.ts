@@ -1,3 +1,16 @@
+/* backend/routes/version.ts
+ *
+ * Description of responsibility:
+ *   Proxies the app's remote version-gate config (docEditorStatus.json,
+ *   read from the rotorflight-docs repo) to the frontend, so
+ *   useVersionGate.ts can decide whether to show a maintenance/upgrade
+ *   banner without the browser fetching raw.githubusercontent.com
+ *   directly.
+ *
+ * Info:
+ *   A thin passthrough rather than an auth-gated route — this config is
+ *   public info already, so it deliberately doesn't require a session.
+ */
 import express from "express";
 import fetch from "node-fetch";
 

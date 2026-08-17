@@ -1,3 +1,22 @@
+/* frontend/src/hooks/useDocEditor.ts
+ *
+ * Description of responsibility:
+ *   Owns the currently-open document's state: loading a file's content
+ *   from the workspace, tracking its path, saving edits back (skipping
+ *   a save if content is unchanged since the last one), and cloning a
+ *   file from the upstream mirror into the local workspace.
+ *
+ * Info:
+ *   notifyFileSaved is passed in as a parameter rather than obtained
+ *   from this hook's own useGitPR() call, because every call to that
+ *   hook is an independent state instance — a separate instance's
+ *   notifyFileSaved would only refresh its own `changes`, never the
+ *   instance actually feeding App.tsx's rendered Changes panel. loadDoc
+ *   sets currentDocPath synchronously but content only after its fetch
+ *   resolves — Preview.tsx's compile effect has a specific
+ *   settle-window workaround for the resulting double-fire this causes
+ *   on file open.
+ */
 import { useState, useRef, useEffect } from "react";
 
 // notifyFileSaved is passed in rather than obtained from its own

@@ -1,3 +1,18 @@
+/* frontend/src/hooks/useVersionGate.ts
+ *
+ * Description of responsibility:
+ *   Fetches the remote version-gate config directly from
+ *   raw.githubusercontent.com and derives whether the app should show
+ *   a maintenance/forced-update/update-available state.
+ *
+ * Info:
+ *   Not currently imported anywhere — App.tsx has its own inline copy
+ *   of this same check (evaluateStatus/checkStatus in App.tsx, fetching
+ *   via the backend's /api/version proxy instead of hitting
+ *   raw.githubusercontent.com directly). Left in place since removing
+ *   unused code wasn't in scope of this pass, but a future cleanup
+ *   should pick one implementation and delete the other.
+ */
 import { useEffect, useState } from "react";
 
 const APP_VERSION = "1.4.2";

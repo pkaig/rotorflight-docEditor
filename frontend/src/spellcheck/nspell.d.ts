@@ -1,4 +1,14 @@
-// nspell ships no type declarations of its own.
+/* frontend/src/spellcheck/nspell.d.ts
+ *
+ * Description of responsibility:
+ *   Hand-written type declarations for the `nspell` package, which
+ *   ships none of its own.
+ *
+ * Info:
+ *   Only declares the subset of nspell's API this app actually calls
+ *   (correct/suggest/add/remove/dictionary) — not a complete
+ *   third-party type definition.
+ */
 declare module "nspell" {
   export interface NSpell {
     correct(word: string): boolean;

@@ -1,3 +1,20 @@
+/* frontend/src/mdx/Tabs.tsx
+ *
+ * Description of responsibility:
+ *   Minimal re-implementation of Docusaurus's @theme/Tabs for the
+ *   in-browser preview sandbox — renders a tab header row plus the
+ *   active TabItem's content.
+ *
+ * Info:
+ *   Filters children by `child.type.displayName === "TabItem"` rather
+ *   than an instanceof/import check, matching how TabItem.tsx
+ *   identifies itself — see the note there on why identity checks work
+ *   this way in the sandboxed preview. Preview.tsx injects this
+ *   component (and TabItem) into evaluated MDX by name as runtime
+ *   globals; remarkStripImports.ts drops `import ... from "@theme/Tabs"`
+ *   statements rather than resolving them, since there's nothing to
+ *   fetch for a Docusaurus theme internal.
+ */
 // tabs.tsx
 import React, { useState, Children, cloneElement } from "react";
 import styles from "../css/tabs.module.css";

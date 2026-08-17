@@ -1,3 +1,19 @@
+/* frontend/src/components/Tree.tsx
+ *
+ * Description of responsibility:
+ *   Recursive sidebar file/folder tree — renders a workspace's doc
+ *   structure, handles expand/collapse, drag-and-drop file moves, the
+ *   "new page" (+) button per folder, and highlights the
+ *   currently-open file.
+ *
+ * Info:
+ *   The workspace-root folder node never gets a chevron or a "+"
+ *   button — it only ever contains docs/versioned_docs, not actual
+ *   pages, so those controls would be meaningless there. currentPath
+ *   comparison is a direct string match against node.path because both
+ *   use the same "local-workspace/<ws>/..." canonical format, so no
+ *   normalization step is needed.
+ */
 import React from "react";
 
 export type TreeNode = {

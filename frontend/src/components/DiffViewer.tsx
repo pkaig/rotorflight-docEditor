@@ -1,3 +1,18 @@
+/* frontend/src/components/DiffViewer.tsx
+ *
+ * Description of responsibility:
+ *   Read-only side panel showing a line diff between a file's current
+ *   workspace content and its mirror baseline, fetched from
+ *   /api/reset-mirror/diff-file.
+ *
+ * Info:
+ *   Superseded in the main layout by UnifiedDiffViewer.tsx (App.tsx
+ *   renders that one instead), but kept as a working alternate diff
+ *   presentation. The `if (!file || !workspace)` early-return JSX
+ *   deliberately comes after the effect and its hooks, not before — an
+ *   early return above a hook call would violate React's rules of
+ *   hooks.
+ */
 import { diffLines } from "diff";
 import { useEffect, useState } from "react";
 

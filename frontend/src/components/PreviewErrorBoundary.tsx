@@ -1,3 +1,17 @@
+/* frontend/src/components/PreviewErrorBoundary.tsx
+ *
+ * Description of responsibility:
+ *   Class-based error boundary scoped to the Preview panel only —
+ *   catches MDX render errors and reports the offending line number up
+ *   to App.tsx (via onError) so EditorPanel can highlight it, instead
+ *   of letting a preview crash take down the whole app.
+ *
+ * Info:
+ *   Kept separate from AppErrorBoundary specifically so a broken
+ *   preview never takes the editor down with it — the user can keep
+ *   editing and fix the doc while only the preview pane shows an
+ *   error.
+ */
 import React from "react";
 
 export default class PreviewErrorBoundary extends React.Component<

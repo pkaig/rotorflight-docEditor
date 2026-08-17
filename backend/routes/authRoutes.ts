@@ -1,3 +1,24 @@
+/* backend/routes/authRoutes.ts
+ *
+ * Description of responsibility:
+ *   Implements GitHub's OAuth device flow (start/poll) and owns the
+ *   server-side session: it's the only place req.session.login ever
+ *   gets set, and it exposes /session, /status/:login, /me/:login and
+ *   /logout for the frontend to read and clear that session. Also
+ *   stores each user's GitHub access token on disk
+ *   (routes/tokens/<login>.json) and exposes getTokenForUser() for the
+ *   rest of the backend.
+ *
+ * Info:
+ *   /status/:login and /me/:login only ever answer for the caller's own
+ *   session login, never an arbitrary :login param — otherwise anyone
+ *   could probe whether any GitHub username has used this app. Identity
+ *   is established exactly once, in /device/poll, right after GitHub
+ *   confirms the token; nothing downstream trusts a client-supplied
+ *   login value. Token file paths use process.cwd() rather than
+ *   __dirname so they resolve the same whether running from source
+ *   (ts-node-dev) or compiled dist/ output.
+ */
 import express from "express";
 import fetch from "node-fetch";
 import fs from "fs";

@@ -1,3 +1,25 @@
+/* frontend/src/App.tsx
+ *
+ * Description of responsibility:
+ *   The root application component: owns top-level state (auth,
+ *   workspace selection, editor content, sidebar tree UI) and wires
+ *   together every major hook (useAuth, useDocEditor, useGitPR,
+ *   useDocTrees, useWorkspaces, useAutosave, useUpstreamStatus) and
+ *   panel component (Tree, EditorPanel, Preview, ChangesPanel, PRPanel,
+ *   ConflictResolver) into the full editing layout.
+ *
+ * Info:
+ *   There is exactly one useGitPR() instance for the whole app, created
+ *   here and passed down — useDocEditor and PRPanel used to each create
+ *   their own (hooks don't share state across call sites), so notifying
+ *   "a file was saved" never reached the instance actually feeding the
+ *   rendered Changes panel. findFirstImage() walks the already-loaded
+ *   sidebar tree (no extra fetch) to find a folder's first image for
+ *   the new-file "example image" seeding in EditorPanel.tsx, using a
+ *   case-insensitive sort since the default JS sort would otherwise put
+ *   an uppercase-led filename before a lowercase one regardless of
+ *   actual alphabetical order.
+ */
 import "./App.css";
 import { useState, useEffect } from "react"; // <-- UPDATED
 import rfHeliLogo from "./assets/RFHeli.svg";

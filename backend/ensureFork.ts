@@ -1,16 +1,19 @@
-// ensureFork.ts
-//
-// Ensures <login>/<GITHUB_REPO> exists as a genuine fork of
-// <GITHUB_OWNER>/<GITHUB_REPO>, creating it if missing, and — critically —
-// polls until its git data is actually queryable before returning.
-// GitHub's fork API returns 202 and replicates the fork asynchronously, so
-// the repo existing is not the same as it being usable yet; callers that
-// immediately read refs from a freshly-created fork can hit a 404 race.
-//
-// Shared between authRoutes.ts (called right after login, so fork creation
-// starts as early as possible) and gitRoutes.ts (called again before a
-// commit, so it's still correct even for someone who submits within
-// seconds of their first login).
+/* backend/ensureFork.ts
+ *
+ * Description of responsibility:
+ *   Ensures <login>/<GITHUB_REPO> exists as a genuine fork of
+ *   <GITHUB_OWNER>/<GITHUB_REPO>, creating it if missing, before any
+ *   commit or PR flow tries to use it.
+ *
+ * Info:
+ *   GitHub's fork API returns 202 and replicates the fork asynchronously
+ *   — the repo existing is not the same as it being usable — so this
+ *   polls the fork's default-branch ref until it's actually queryable
+ *   instead of returning as soon as the fork API call succeeds. Shared
+ *   between authRoutes.ts (called right after login, as a head start)
+ *   and gitRoutes.ts (called again before every commit, so it's still
+ *   correct for someone who submits within seconds of first login).
+ */
 import { githubRequest } from "./githubClient";
 import { GITHUB_OWNER, GITHUB_REPO, GITHUB_DEFAULT_BRANCH } from "./config/github";
 

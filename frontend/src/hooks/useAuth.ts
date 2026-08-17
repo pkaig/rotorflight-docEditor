@@ -1,3 +1,22 @@
+/* frontend/src/hooks/useAuth.ts
+ *
+ * Description of responsibility:
+ *   Owns the frontend's view of GitHub auth: restores an existing
+ *   session on load, drives the OAuth device-flow login (start +
+ *   poll), and fetches the signed-in user's public GitHub profile for
+ *   display.
+ *
+ * Info:
+ *   The restore-on-load effect asks the backend "who does my session
+ *   cookie belong to?" (/api/auth/session) rather than trusting a
+ *   remembered localStorage login — the backend derives identity
+ *   purely from req.session.login, so asking about an arbitrary
+ *   remembered name would let anyone impersonate any GitHub username
+ *   that had ever signed in, just by writing that name into their own
+ *   localStorage. rf_login in localStorage is still written on
+ *   successful login and read elsewhere in the app, but only as
+ *   informational display state now, never as a trust boundary.
+ */
 import { useEffect, useState } from "react";
 
 type User = {
