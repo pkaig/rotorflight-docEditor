@@ -362,6 +362,50 @@ router.post("/save", async (req, res) => {
 });
 
 /* ============================================================
+   9b. CREATE NEW FILE
+   ============================================================ */
+
+router.post("/create", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, workspace } = auth;
+  let { path: filePath, content } = req.body;
+
+  if (!filePath) {
+    return res.status(400).json({ error: "Missing path" });
+  }
+
+  try {
+    filePath = String(filePath).replace(/\\/g, "/");
+
+    if (filePath.startsWith("local-workspace/")) {
+      const [, , ...rest] = filePath.split("/");
+      filePath = rest.join("/");
+    }
+
+    const fullPath = path.join(
+      process.cwd(),
+      "workspaces",
+      login,
+      workspace,
+      filePath,
+    );
+
+    if (await fs.pathExists(fullPath)) {
+      return res.status(409).json({ error: "A file already exists at that path" });
+    }
+
+    await fs.ensureDir(path.dirname(fullPath));
+    await fs.writeFile(fullPath, content ?? "", "utf8");
+
+    return res.json({ ok: true });
+  } catch {
+    return res.status(500).json({ error: "Failed to create file" });
+  }
+});
+
+/* ============================================================
    10. RESET LOCAL WORKSPACE (REBUILD FROM GLOBAL MIRROR)
    ============================================================ */
 

@@ -25,7 +25,7 @@ import {
 
 const APP_VERSION = "1.4.2";
 
-import { Tree } from "./components/Tree";
+import { Tree, type TreeNode } from "./components/Tree";
 import { useAuth } from "./hooks/useAuth";
 import { useDocTrees } from "./hooks/useDocTrees";
 import { useDocEditor } from "./hooks/useDocEditor";
@@ -33,6 +33,40 @@ import { useDragResize } from "./hooks/useDragResize";
 import { WorkspaceSelector } from "./components/WorkspaceSelector";
 import { useWorkspaces } from "./hooks/useWorkspaces";
 import { validateWorkspaceName } from "./utils/validateWorkspaceName";
+
+const IMAGE_RE = /\.(png|jpe?g|gif|svg|webp)$/i;
+
+// Looks up folderPath within the already-loaded tree (no extra fetch — the
+// sidebar already has this data) and returns the alphabetically-first image
+// in its img/ subfolder, if any, for the "example image" section new pages
+// get seeded with.
+function findFirstImage(nodes: TreeNode[], folderPath: string): string | null {
+  function findNode(list: TreeNode[]): TreeNode | null {
+    for (const n of list) {
+      if (n.path === folderPath) return n;
+      if (n.children) {
+        const found = findNode(n.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const folder = findNode(nodes);
+  const imgFolder = folder?.children?.find(
+    (c) => c.type === "dir" && c.name === "img",
+  );
+  const images = (imgFolder?.children ?? [])
+    .filter((c) => c.type === "file" && IMAGE_RE.test(c.name))
+    .map((c) => c.name)
+    // Plain .sort() is case-sensitive (all uppercase-first names sort
+    // before any lowercase-first one), which doesn't match what a user
+    // would consider "first" — e.g. "Bluejay_Complete.png" beating
+    // "arming-1.png" purely because 'B' < 'a' in ASCII.
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+  return images[0] ?? null;
+}
 
 /* -------------------------------------------------------
    ROOT APPLICATION COMPONENT
@@ -121,6 +155,7 @@ export default function App() {
   const [showNewFileModal, setShowNewFileModal] = useState(false);
   const [newFileFolder, setNewFileFolder] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState("");
+  const [newFileImageName, setNewFileImageName] = useState<string | null>(null);
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
   const { checking, stale, updating } = useUpstreamStatus(login);
@@ -688,6 +723,13 @@ export default function App() {
                     openFolders={openFolders}
                     setOpenFolders={setOpenFolders}
                     currentPath={currentDocPath}
+                    onNewFile={(folderPath) => {
+                      setWorkspace(ws);
+                      setNewFileFolder(folderPath);
+                      setNewFileName("");
+                      setNewFileImageName(findFirstImage(nodes, folderPath));
+                      setShowNewFileModal(true);
+                    }}
                   />
                 </div>
               );
@@ -886,6 +928,7 @@ export default function App() {
                   setNewFileFolder={setNewFileFolder}
                   notifyFileCreated={notifyFileCreated}
                   newDocTemplate={newDocTemplate}
+                  newFileImageName={newFileImageName}
                 />
               )}
             </div>

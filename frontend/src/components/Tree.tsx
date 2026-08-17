@@ -21,6 +21,10 @@ interface TreeProps {
   // "local-workspace/<ws>/..." format as node.path, so a direct match is
   // enough, no normalization needed.
   currentPath?: string;
+  // Shows a "+" on each folder row (except the workspace root, which only
+  // ever contains docs/versioned_docs, not actual pages) to create a new
+  // page inside it.
+  onNewFile?: (folderPath: string) => void;
 }
 
 export function Tree({
@@ -32,6 +36,7 @@ export function Tree({
   openFolders,
   setOpenFolders,
   currentPath,
+  onNewFile,
 }: TreeProps) {
   const safeNodes = Array.isArray(nodes) ? nodes : [];
   const folders = openFolders || {};
@@ -75,6 +80,19 @@ export function Tree({
                 >
                   <span className="tree-node-name">{node.name}</span>
                   {!node.isWorkspaceRoot && <span className="tree-chevron" aria-hidden="true" />}
+                  {!node.isWorkspaceRoot && onNewFile && (
+                    <button
+                      type="button"
+                      className="tree-new-file-btn"
+                      title="New page in this folder"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (node.path) onNewFile(node.path);
+                      }}
+                    >
+                      +
+                    </button>
+                  )}
                 </div>
 
                 {node.path && folders[node.path] && (
@@ -87,6 +105,7 @@ export function Tree({
                     openFolders={folders}
                     setOpenFolders={setOpenFolders}
                     currentPath={currentPath}
+                    onNewFile={onNewFile}
                   />
                 )}
               </div>

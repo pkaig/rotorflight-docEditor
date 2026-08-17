@@ -223,21 +223,27 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
   );
 
   const notifyFileCreated = useCallback(
-    async (_slug: string, path: string) => {
-      if (!login || !workspace) return;
+    async (_slug: string, path: string, content: string) => {
+      if (!login || !workspace) return { ok: false, error: "Not signed in" };
 
-      await fetch(
+      const res = await fetch(
         `/api/docs/create?login=${encodeURIComponent(
           login,
         )}&workspace=${encodeURIComponent(workspace)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path }),
+          body: JSON.stringify({ path, content }),
         },
       );
 
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return { ok: false, error: body.error || "Failed to create file" };
+      }
+
       await loadChangesFromMirror();
+      return { ok: true };
     },
     [login, workspace, loadChangesFromMirror],
   );

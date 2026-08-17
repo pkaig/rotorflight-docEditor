@@ -1,6 +1,62 @@
 // EditorPanel.tsx
-import React from "react";
+import React, { useState } from "react";
 import { SpellcheckTextarea } from "./SpellcheckTextarea";
+
+// Docusaurus doc slugs are lowercase-hyphenated — matches spaces and
+// underscores the same way so "My New Page"/"my_new_page" both become
+// "my-new-page", then drops anything else that isn't safe in a path
+// segment (also blocks "../" traversal via the leftover "." collapse).
+function slugifyFileName(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\.(mdx?|MDX?)$/, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+// Seeds new pages that already have an img/ folder with a worked example of
+// how to actually use an image, rather than leaving people to guess the
+// import + JSX pattern from scratch. The import has to land after the
+// frontmatter block (imports before "---" would break it), so this splits
+// on the template's own leading frontmatter rather than just prepending.
+function buildNewFileContent(
+  template: string,
+  imageName: string | null,
+): string {
+  if (!imageName) return template;
+
+  const importLine = `import testImage from "./img/${imageName}";\n`;
+  const exampleSection = `
+# Example image
+
+This is how to use an image.
+1. add to the img folder then
+2. import it at the top of the file like this:  
+   - import testImage from "./img/-your-image-file-"; then
+3. use it in the file like this:
+
+<div style={{ textAlign: 'center' }}>
+  <img src={testImage} style={{ width: '70%', borderRadius: '10px' }} />
+</div>
+`;
+
+  const frontmatterMatch = template.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+  if (!frontmatterMatch) {
+    return importLine + "\n" + template + exampleSection;
+  }
+
+  const end = frontmatterMatch[0].length;
+  return (
+    template.slice(0, end) +
+    "\n" +
+    importLine +
+    template.slice(end) +
+    exampleSection
+  );
+}
 
 export const EditorPanel = React.memo(function EditorPanel({
   content,
@@ -23,7 +79,11 @@ export const EditorPanel = React.memo(function EditorPanel({
   setNewFileFolder,
   notifyFileCreated,
   newDocTemplate,
+  newFileImageName,
 }) {
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   return (
     <div
       className="editor-container"
@@ -95,21 +155,53 @@ export const EditorPanel = React.memo(function EditorPanel({
           <div className="edit-modal-box">
             <h3>Create new page</h3>
 
-            <p>Enter a file name (without extension):</p>
+            <p>Enter a file name:</p>
 
             <input
               type="text"
               value={newFileName}
-              onChange={(e) => setNewFileName(e.target.value)}
-              placeholder="my-new-page"
+              onChange={(e) => {
+                setNewFileName(e.target.value);
+                setCreateError(null);
+              }}
+              placeholder="My New Page"
+              autoFocus
               style={{ width: "100%", marginTop: "0.5rem" }}
             />
 
+            <p
+              style={{
+                fontSize: "0.85rem",
+                color: "#666",
+                marginTop: "0.4rem",
+              }}
+            >
+              Will be created as{" "}
+              <code>{slugifyFileName(newFileName) || "…"}.mdx</code>
+            </p>
+
+            {newFileImageName && (
+              <p style={{ fontSize: "0.85rem", color: "#666" }}>
+                Includes a worked example using{" "}
+                <code>img/{newFileImageName}</code>.
+              </p>
+            )}
+
+            {createError && (
+              <p style={{ fontSize: "0.85rem", color: "#c0392b" }}>
+                {createError}
+              </p>
+            )}
+
             <div className="edit-modal-buttons" style={{ marginTop: "1rem" }}>
               <button
+                disabled={creating}
                 onClick={async () => {
-                  const safe = newFileName.trim().replace(/\s+/g, "-");
-                  if (!safe || !newFileFolder) return;
+                  const safe = slugifyFileName(newFileName);
+                  if (!safe || !newFileFolder) {
+                    setCreateError("Enter a name for the page.");
+                    return;
+                  }
 
                   const wsMatch = newFileFolder.match(
                     /^local-workspace\/([^/]+)\//,
@@ -118,23 +210,46 @@ export const EditorPanel = React.memo(function EditorPanel({
                   if (!ws) return;
 
                   const newPath = `${newFileFolder}/${safe}.mdx`;
+                  const initialContent = buildNewFileContent(
+                    newDocTemplate,
+                    newFileImageName,
+                  );
 
-                  setContent(newDocTemplate);
-                  notifyFileCreated("local-workspace", newPath);
+                  setCreating(true);
+                  setCreateError(null);
+
+                  const result = await notifyFileCreated(
+                    "local-workspace",
+                    newPath,
+                    initialContent,
+                  );
+
+                  setCreating(false);
+
+                  if (!result?.ok) {
+                    setCreateError(result?.error || "Failed to create file.");
+                    return;
+                  }
+
                   setShowNewFileModal(false);
                   setNewFileFolder(null);
+                  setNewFileName("");
+                  setContent(initialContent);
 
                   await refreshLocalWorkspace(ws);
                   onSelect(ws, newPath);
                 }}
               >
-                Create
+                {creating ? "Creating…" : "Create"}
               </button>
 
               <button
+                disabled={creating}
                 onClick={() => {
                   setShowNewFileModal(false);
                   setNewFileFolder(null);
+                  setNewFileName("");
+                  setCreateError(null);
                 }}
               >
                 Cancel
