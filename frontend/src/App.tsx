@@ -505,7 +505,12 @@ export default function App() {
       setContent("");
       return;
     }
-    setCurrentFile(cleanPath);
+    // relPath (docs/-prefixed), not cleanPath (stripped) — currentFile must
+    // stay in the same full-path format /diff-file and `changes` use, or
+    // the diff view resolves the wrong file and comes back empty once this
+    // file is edited and saved (see the isChangedFile branch above, which
+    // already gets this right).
+    setCurrentFile(relPath);
     setShowDiff(false);
     loadDoc(path, ws);
   };
