@@ -83,7 +83,16 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      // Not tied to NODE_ENV — "production" here still means plain
+      // http://localhost (as a combined server or via Electron, see
+      // electron/main.ts), never HTTPS. A `secure` cookie can't be
+      // stored or sent over a non-HTTPS connection at all, so setting
+      // this from NODE_ENV alone silently broke every request after
+      // login once NODE_ENV=production actually meant "Electron", not
+      // "behind a real HTTPS-terminating host" — the cookie from a
+      // successful login was simply never attached to the next request.
+      // Revisit if this app ever gains an actual HTTPS-serving path.
+      secure: false,
       maxAge: 8 * 60 * 60 * 1000, // 8h, matches the device-flow token's own fallback expiry
     },
   }),
