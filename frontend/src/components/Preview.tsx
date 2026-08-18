@@ -28,6 +28,7 @@ import * as jsxRuntime from "react/jsx-runtime";
 
 import remarkFrontmatter from "remark-frontmatter";
 import remarkDirective from "remark-directive";
+import remarkGfm from "remark-gfm";
 import remarkAdmonitions from "../remarkAdmonitions";
 import remarkStripImports from "../mdx/remarkStripImports";
 import { createLoadContext, resolveDepsObject } from "../mdx/loadSiteModule";
@@ -128,8 +129,13 @@ export default function Preview({
       // frontmatter must be first so later plugins never see the leading
       // "---" block as markdown content; directive must precede admonitions
       // so ":::note" blocks are parsed before being turned into HTML.
+      // remarkGfm adds table/strikethrough/task-list/autolink syntax —
+      // none of that is part of standard CommonMark, so without it a
+      // real doc's markdown tables were just falling through as literal
+      // pipe-delimited text instead of becoming an actual <table>.
       const commonPlugins: any[] = [
         remarkFrontmatter,
+        remarkGfm,
         remarkDirective,
         remarkAdmonitions,
       ];
