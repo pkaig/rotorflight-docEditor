@@ -28,7 +28,9 @@ import * as jsxRuntime from "react/jsx-runtime";
 
 import remarkFrontmatter from "remark-frontmatter";
 import remarkDirective from "remark-directive";
-import remarkGfm from "remark-gfm";
+// "remark-gfm-mdx" is an npm alias for remark-gfm@3, not the project's
+// normal (v4) remark-gfm — see the compile-plugin comment below for why.
+import remarkGfm from "remark-gfm-mdx";
 import remarkAdmonitions from "../remarkAdmonitions";
 import remarkStripImports from "../mdx/remarkStripImports";
 import { createLoadContext, resolveDepsObject } from "../mdx/loadSiteModule";
@@ -133,6 +135,22 @@ export default function Preview({
       // none of that is part of standard CommonMark, so without it a
       // real doc's markdown tables were just falling through as literal
       // pipe-delimited text instead of becoming an actual <table>.
+      //
+      // remarkGfm here is specifically the "remark-gfm-mdx" import (an
+      // npm alias for remark-gfm@3, see the top of this file) — plain
+      // remark-gfm@4 depends on a micromark-extension-gfm-table version
+      // built for micromark v4's tokenizer internals, but compile() here
+      // runs through @mdx-js/mdx's own bundled, older micromark v3
+      // pipeline (another instance of the dual-package hazard this file
+      // already works around for vfile/unified above), so a v4-generation
+      // GFM extension crashed with "Cannot read properties of undefined
+      // (reading 'inTable')" the moment it hit an actual table. Plain
+      // remark-gfm (v4) stays the right choice for
+      // spellcheck/tokenizeMarkdown.ts's separate pipeline, which runs on
+      // the project's normal (newer) top-level unified/remark-parse —
+      // downgrading it there broke spell-check tokenization instead
+      // ("this.setData is not a function"), so both versions are kept
+      // side by side rather than picking one for the whole project.
       const commonPlugins: any[] = [
         remarkFrontmatter,
         remarkGfm,
