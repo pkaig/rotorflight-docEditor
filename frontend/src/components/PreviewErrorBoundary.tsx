@@ -11,6 +11,16 @@
  *   preview never takes the editor down with it — the user can keep
  *   editing and fix the doc while only the preview pane shows an
  *   error.
+ *
+ *   Once state.error is set, this stays latched forever — render()
+ *   below returns the error box unconditionally whenever it's set,
+ *   with nothing in this file that ever clears it back to null. React
+ *   only resets a class component's state by unmounting and remounting
+ *   it, so the caller MUST render this with a `key` that changes
+ *   whenever the thing being previewed changes (App.tsx keys it by
+ *   currentDocPath) — without that, one broken doc permanently blanks
+ *   the preview for every doc opened afterward, since it's still the
+ *   same latched instance.
  */
 import React from "react";
 

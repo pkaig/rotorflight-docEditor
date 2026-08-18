@@ -1015,7 +1015,7 @@ export default function App() {
           {/* PREVIEW COLUMN */}
           <div className="preview-panel">
             <h3>Preview</h3>
-            <PreviewErrorBoundary onError={setErrorLine}>
+            <PreviewErrorBoundary key={currentDocPath} onError={setErrorLine}>
               {currentDocPath &&
                 (content.length > 0 ||
                   /\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath)) && (
