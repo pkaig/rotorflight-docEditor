@@ -34,9 +34,10 @@
       { "from": "backend/dist", "to": "backend/dist" },
       { "from": "backend/node_modules", "to": "backend/node_modules" },
       { "from": "backend/package.json", "to": "backend/package.json" },
-      { "from": "frontend/dist", "to": "frontend/dist" }
+      { "from": "frontend/dist", "to": "frontend/dist" },
+      { "from": "electron/icon.ico", "to": "electron/icon.ico" }
     ],
-    "win": { "target": "nsis" },
+    "win": { "target": "nsis", "icon": "electron/icon.ico" },
     "mac": { "target": "dmg" },
     "linux": { "target": "AppImage" }
   }

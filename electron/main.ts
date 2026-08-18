@@ -99,11 +99,19 @@ function waitForServer(url: string, timeoutMs: number): Promise<void> {
   });
 }
 
+// Same RESOURCES_ROOT-relative resolution as the frontend build: shipped
+// via extraResources (see package.json), not `files`, so it lands next to
+// backend/frontend under resources/ rather than inside the app's asar —
+// consistent with how everything else non-code this app needs at runtime
+// is resolved.
+const ICON_PATH = path.join(RESOURCES_ROOT, "electron", "icon.ico");
+
 async function createWindow(): Promise<void> {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
     title: "Rotorflight Docs Editor",
+    icon: ICON_PATH,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
