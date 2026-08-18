@@ -511,7 +511,18 @@ export async function githubRequest(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`GitHub API error: ${res.status} ${text}`);
+    // GitHub returns this specific header on a 403 naming exactly which
+    // permission was missing for the request — the only reliable way to
+    // tell "wrong permission configured" apart from "app not installed
+    // on this repo" apart from "user doesn't have access" without
+    // guessing, per GitHub's own REST API docs.
+    const acceptedPermissions = res.headers.get("x-accepted-github-permissions");
+    console.error("❌ GitHub API error:", res.status, text);
+    console.error("❌ X-Accepted-GitHub-Permissions:", acceptedPermissions || "(not sent)");
+    throw new Error(
+      `GitHub API error: ${res.status} ${text}` +
+        (acceptedPermissions ? ` (needs permission: ${acceptedPermissions})` : ""),
+    );
   }
 
   return await res.json();
