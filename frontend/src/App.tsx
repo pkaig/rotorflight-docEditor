@@ -487,11 +487,19 @@ export default function App() {
     // `changes[path]` was always undefined, so this branch never actually
     // ran, and even when it did, it set state (showDiffViewer/diffFile)
     // that nothing in the render tree ever read.
-    const isChangedFile = (
-      changes.added as { path: string }[]
-    )
-      .concat(changes.modified, changes.deleted, changes.renamed)
-      .some((c) => c.path === relPath);
+    //
+    // Excludes images: the diff viewer only knows how to show a text
+    // diff, and a brand-new (or modified) image is just as much a
+    // "changed file" as a doc is, so without this check every image in
+    // the Changes panel opened a text diff view against binary image
+    // content instead of just displaying the image.
+    const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
+
+    const isChangedFile =
+      !isImage &&
+      (changes.added as { path: string }[])
+        .concat(changes.modified, changes.deleted, changes.renamed)
+        .some((c) => c.path === relPath);
 
     if (isChangedFile) {
       setCurrentFile(relPath);
@@ -505,7 +513,6 @@ export default function App() {
     // -----------------------------------------------------
     if (!/\.[a-z0-9]+$/i.test(path)) return;
 
-    const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
     if (isImage) {
       setCurrentDocPath(path);
       setContent("");
