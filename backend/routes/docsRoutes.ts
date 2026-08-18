@@ -647,6 +647,8 @@ router.post("/create-workspace", async (req, res) => {
   const login = req.session?.login;
   const workspace = req.body.workspace as string;
 
+  console.log("📡 /create-workspace called:", login, workspace);
+
   if (!login) {
     return res.status(401).json({ error: "Not signed in" });
   }
@@ -658,7 +660,9 @@ router.post("/create-workspace", async (req, res) => {
     const token = getTokenForUser(login);
 
     // 1. Ensure global mirror is current
+    console.log("🔧 create-workspace: ensuring global mirror is up to date…");
     await ensureMirrorUpToDate(token);
+    console.log("✅ create-workspace: global mirror ready");
 
     // 2. Create workspace root
     const workspaceRoot = path.join(
@@ -702,9 +706,10 @@ router.post("/create-workspace", async (req, res) => {
       upstreamSha,
     );
 
+    console.log("✅ create-workspace: done:", workspace);
     return res.json({ ok: true, workspace });
   } catch (err) {
-    console.error("Failed to create workspace:", err);
+    console.error("❌ Failed to create workspace:", err);
     return res.status(500).json({ error: "Failed to create workspace" });
   }
 });

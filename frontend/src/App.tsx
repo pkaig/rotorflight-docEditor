@@ -695,11 +695,22 @@ export default function App() {
                       return;
                     }
 
-                    await fetch(`/api/docs/create-workspace?login=${login}`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ workspace: newWorkspaceName }),
-                    });
+                    const createRes = await fetch(
+                      `/api/docs/create-workspace?login=${login}`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ workspace: newWorkspaceName }),
+                      },
+                    );
+
+                    if (!createRes.ok) {
+                      const body = await createRes.json().catch(() => ({}));
+                      alert(
+                        `Failed to create workspace: ${body.error || createRes.statusText}`,
+                      );
+                      return;
+                    }
 
                     await loadWorkspaces();
                     setWorkspace(newWorkspaceName);
