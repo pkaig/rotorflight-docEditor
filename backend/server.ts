@@ -111,9 +111,14 @@ app.use("/api", versionRouter);
 // Git PR + Commit Routes (must be BEFORE listen)
 app.use("/api/git", git);
 
-// Health check
+// Health check — includes mode so electron/main.ts's startup health-check
+// can tell "our own production instance answered" apart from "something
+// else entirely answered on this port" (most likely a leftover dev-mode
+// instance of this same app from earlier testing, still holding the
+// port — same code, same route, so a plain {status:"ok"} response alone
+// can't distinguish the two).
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", mode: process.env.NODE_ENV || "development" });
 });
 
 // Serve the built frontend in production — dev mode keeps using Vite's own

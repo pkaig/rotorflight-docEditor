@@ -77,6 +77,15 @@ function startBackend(): void {
   require(path.join(RESOURCES_ROOT, "backend", "dist", "server.js"));
 }
 
+// Confirms the health endpoint answers AND that whatever answered is
+// actually our own production instance — not just anything on this port.
+// A leftover dev-mode instance of this same app (started via `npm run
+// dev` and never closed) answers this exact same route identically
+// except for `mode`, so a bare "did something respond" check can't tell
+// the two apart: it'll happily open a window against a server that never
+// registers the frontend-serving code (dev mode expects Vite's own dev
+// server for that instead), producing a confusing "Cannot GET /" with no
+// indication of what's actually wrong.
 function waitForServer(url: string, timeoutMs: number): Promise<void> {
   const start = Date.now();
 
@@ -84,8 +93,32 @@ function waitForServer(url: string, timeoutMs: number): Promise<void> {
     function attempt() {
       http
         .get(url, (res) => {
-          res.resume();
-          resolve();
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk) => chunks.push(chunk));
+          res.on("end", () => {
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+              if (body.mode === "production") {
+                resolve();
+                return;
+              }
+              reject(
+                new Error(
+                  `Something else is already using port ${PORT} (responded ` +
+                    `with mode="${body.mode}", not this app's own production ` +
+                    `instance). Close whatever that is — likely a leftover ` +
+                    `"npm run dev" from testing — and try again.`,
+                ),
+              );
+            } catch (err) {
+              reject(
+                new Error(
+                  `Port ${PORT} is already in use by something that isn't ` +
+                    `this app (its /api/health response wasn't valid JSON).`,
+                ),
+              );
+            }
+          });
         })
         .on("error", () => {
           if (Date.now() - start > timeoutMs) {
