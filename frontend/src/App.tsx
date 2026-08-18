@@ -28,6 +28,7 @@ import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
 import Preview from "./components/Preview";
 import newDocTemplate from "../templates/newDocTemplate.mdx?raw";
 import { EditorPanel } from "./components/EditorPanel";
+import { AddImageModal } from "./components/AddImageModal";
 import { useUpstreamStatus } from "./hooks/useUpstreamStatus";
 
 import { useAutosave } from "./hooks/useAutosave";
@@ -194,6 +195,8 @@ export default function App() {
   const [newFileFolder, setNewFileFolder] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState("");
   const [newFileImageName, setNewFileImageName] = useState<string | null>(null);
+  const [showAddImageModal, setShowAddImageModal] = useState(false);
+  const [addImageFolder, setAddImageFolder] = useState<string | null>(null);
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
   const { checking, updating } = useUpstreamStatus(login);
@@ -774,6 +777,11 @@ export default function App() {
                       setNewFileImageName(findFirstImage(nodes, folderPath));
                       setShowNewFileModal(true);
                     }}
+                    onNewImage={(folderPath) => {
+                      setWorkspace(ws);
+                      setAddImageFolder(folderPath);
+                      setShowAddImageModal(true);
+                    }}
                   />
                 </div>
               );
@@ -932,6 +940,17 @@ export default function App() {
             }}
           />
         )}
+
+        <AddImageModal
+          isOpen={showAddImageModal}
+          folder={addImageFolder}
+          login={login}
+          onClose={() => setShowAddImageModal(false)}
+          onUploaded={async (ws) => {
+            await refreshLocalWorkspace(ws);
+            await notifyFileSaved();
+          }}
+        />
 
         {/* MAIN EDITOR + PREVIEW AREA */}
         <div className="editor-preview-row">

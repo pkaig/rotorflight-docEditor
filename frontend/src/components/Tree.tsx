@@ -13,6 +13,11 @@
  *   comparison is a direct string match against node.path because both
  *   use the same "local-workspace/<ws>/..." canonical format, so no
  *   normalization step is needed.
+ *
+ *   The "+" button calls onNewImage instead of onNewFile specifically
+ *   for a folder named "img" — img/ folders exist to hold images, not
+ *   .mdx documents, so offering "new page" there was actively wrong
+ *   (see AddImageModal.tsx for what onNewImage actually opens).
  */
 import React from "react";
 
@@ -39,8 +44,10 @@ interface TreeProps {
   currentPath?: string;
   // Shows a "+" on each folder row (except the workspace root, which only
   // ever contains docs/versioned_docs, not actual pages) to create a new
-  // page inside it.
+  // page inside it — or, for a folder literally named "img", to add an
+  // image instead (see onNewImage).
   onNewFile?: (folderPath: string) => void;
+  onNewImage?: (folderPath: string) => void;
 }
 
 export function Tree({
@@ -53,6 +60,7 @@ export function Tree({
   setOpenFolders,
   currentPath,
   onNewFile,
+  onNewImage,
 }: TreeProps) {
   const safeNodes = Array.isArray(nodes) ? nodes : [];
   const folders = openFolders || {};
@@ -96,19 +104,29 @@ export function Tree({
                 >
                   <span className="tree-node-name">{node.name}</span>
                   {!node.isWorkspaceRoot && <span className="tree-chevron" aria-hidden="true" />}
-                  {!node.isWorkspaceRoot && onNewFile && (
-                    <button
-                      type="button"
-                      className="tree-new-file-btn"
-                      title="New page in this folder"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (node.path) onNewFile(node.path);
-                      }}
-                    >
-                      +
-                    </button>
-                  )}
+                  {!node.isWorkspaceRoot &&
+                    (node.name.toLowerCase() === "img" ? onNewImage : onNewFile) && (
+                      <button
+                        type="button"
+                        className="tree-new-file-btn"
+                        title={
+                          node.name.toLowerCase() === "img"
+                            ? "Add image to this folder"
+                            : "New page in this folder"
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!node.path) return;
+                          if (node.name.toLowerCase() === "img") {
+                            onNewImage?.(node.path);
+                          } else {
+                            onNewFile?.(node.path);
+                          }
+                        }}
+                      >
+                        +
+                      </button>
+                    )}
                 </div>
 
                 {node.path && folders[node.path] && (
@@ -122,6 +140,7 @@ export function Tree({
                     setOpenFolders={setOpenFolders}
                     currentPath={currentPath}
                     onNewFile={onNewFile}
+                    onNewImage={onNewImage}
                   />
                 )}
               </div>

@@ -22,21 +22,7 @@
 import React, { useState } from "react";
 import { SpellcheckTextarea } from "./SpellcheckTextarea";
 import ConflictResolver from "./ConflictResolver";
-
-// Docusaurus doc slugs are lowercase-hyphenated — matches spaces and
-// underscores the same way so "My New Page"/"my_new_page" both become
-// "my-new-page", then drops anything else that isn't safe in a path
-// segment (also blocks "../" traversal via the leftover "." collapse).
-function slugifyFileName(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(/\.(mdx?|MDX?)$/, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+import { slugifyFileName } from "../utils/slugifyFileName";
 
 // Seeds new pages that already have an img/ folder with a worked example of
 // how to actually use an image, rather than leaving people to guess the

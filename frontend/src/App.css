@@ -641,6 +641,40 @@
 }
 
 /* ============================================================
+   16b. ADD IMAGE MODAL — DROP ZONE
+   ============================================================ */
+
+.add-image-dropzone {
+  margin-top: 0.75rem;
+  border: 2px dashed #c7d2e0;
+  border-radius: 8px;
+  padding: 1.5rem 1rem;
+  cursor: pointer;
+  background: #f7fafd;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.add-image-dropzone:hover,
+.add-image-dropzone.drag-over {
+  border-color: #3578e5;
+  background: #eaf2fc;
+}
+
+.add-image-dropzone-hint {
+  color: #5b6472;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.add-image-preview {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 6px;
+  display: block;
+  margin: 0 auto;
+}
+
+/* ============================================================
    17. LOADING BANNERS (duplicate block kept for safety)
    ============================================================ */
 
