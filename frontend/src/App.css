@@ -488,8 +488,11 @@
 }
 
 .editor-container {
-  padding: 1rem;
-  border-right: 1px solid #ddd;
+  /* No padding or border of its own — .editor-scroll-area already insets
+     it on every side, and .editor-column already draws the divider
+     against the preview panel; both were being applied twice, which is
+     why the editor looked more cramped than the preview panel next to
+     it despite the two columns being the same width. */
   display: flex;
   flex-direction: column;
   overflow: hidden;
