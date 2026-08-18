@@ -539,7 +539,8 @@
   background: #fafafa;
 }
 
-.changes-panel h4 {
+.changes-panel h4,
+.changes-rows h4 {
   margin-top: 0.5;
   margin-bottom: 0.5rem;
   font-size: 0.95rem;
@@ -1547,14 +1548,10 @@
   flex-shrink: 0;
 }
 
-/* Changes panel grows but stops at 50% of viewport — was 40vh, but that
-   budget is shared with .changes-actions and .pr-panel too, leaving
-   very little of it for the actual list once a real changeset (e.g. a
-   folder full of newly-added images) has more than a handful of
-   entries. */
+/* Changes panel grows but stops at 40% of viewport */
 .changes-panel {
   flex-shrink: 0; /* do NOT stretch to fill sidebar */
-  max-height: 50vh;
+  max-height: 40vh; /* ← the key requirement */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1581,6 +1578,20 @@
   min-height: 0;
   overflow-y: auto;
   padding: 0.5rem;
+}
+
+/* ChangesPanel.tsx's own root div — cosmetic border/background carried
+   over from the old (pre-refactor) .changes-panel rule above, which
+   this div used to share by class name before that collision was fixed
+   (see the comment in ChangesPanel.tsx). Deliberately has no
+   max-height/overflow of its own: this box must be free to grow to its
+   full natural height so .changes-list-container, its actual scroll
+   ancestor, is the only thing that ever clips/scrolls it. */
+.changes-rows {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: #fafafa;
 }
 
 /* PR panel stays fixed at bottom of the changes panel */

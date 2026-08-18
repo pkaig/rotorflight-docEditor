@@ -8,6 +8,16 @@
  * Info:
  *   Purely presentational — `changes` and `selectedChanges` are owned
  *   by App.tsx (via useGitPR), not local state here.
+ *
+ *   The root div is deliberately named "changes-rows", not
+ *   "changes-panel" — App.tsx's own sidebar wrapper (the actual
+ *   scroll-budget owner, via .changes-list-container) already uses the
+ *   "changes-panel" class for its outer flex/max-height layout. Reusing
+ *   that name here made this component's root div inherit that same
+ *   max-height + overflow:hidden as a SECOND, nested box, which capped
+ *   and hard-clipped the row list on its own regardless of how much
+ *   scroll room the real outer container had — no amount of scrolling
+ *   could reach rows past that inner cap.
  */
 import type { Dispatch, SetStateAction } from "react";
 import type { ChangeSet } from "../hooks/useGitPR";
@@ -62,7 +72,7 @@ export function ChangesPanel({
   }
 
   return (
-    <div className="changes-panel">
+    <div className="changes-rows">
       <h4>Changes</h4>
 
       {changes.added.map((c) => (
