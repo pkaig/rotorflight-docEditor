@@ -1434,10 +1434,16 @@
   flex-shrink: 0;
 }
 
-/* scrollable editor/diff area */
+/* Houses the editor/diff view — not scrollable itself. Both
+   EditorPanel's textarea and UnifiedDiffViewer's .diff-scroll already own
+   their own internal scrolling (each sits inside its own overflow:hidden
+   flex column that fills this container's height), so this also having
+   overflow-y:auto produced a redundant second, outer scrollbar with
+   nothing of its own to actually scroll. */
 .editor-scroll-area {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   padding: 1rem;
   padding-bottom: 2rem; /* inner margin from bottom */
 }
