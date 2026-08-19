@@ -45,6 +45,24 @@ export class ForkConflictError extends ForkError {
   }
 }
 
+// Thrown by gitRoutes.ts's syncBranchWithUpstream() when a real merge of
+// upstream's latest commit into the workspace branch hits an actual
+// content conflict (GitHub's Merges API returns 409) — upstream and the
+// user's already-committed local edits changed the same lines. Unlike
+// ForkNotReadyError this isn't transient; it needs a human to resolve it.
+export class UpstreamMergeConflictError extends ForkError {
+  constructor(branch: string) {
+    super(
+      `Merging upstream's latest changes into "${branch}" hit a real ` +
+        `conflict — upstream and your local edits changed the same ` +
+        `content. Resolve it on GitHub directly (compare/merge ` +
+        `${GITHUB_OWNER}/${GITHUB_REPO}:${GITHUB_DEFAULT_BRANCH} into ` +
+        `your fork's ${branch} branch), then try submitting again.`,
+    );
+    this.name = "UpstreamMergeConflictError";
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -93,7 +111,15 @@ export async function ensureFork(token: string, login: string): Promise<void> {
         `/repos/${login}/${GITHUB_REPO}/git/refs/heads/${GITHUB_DEFAULT_BRANCH}`,
       );
       return;
-    } catch {
+    } catch (err) {
+      // A 403 here is not "still replicating" — GitHub returns 404 for a
+      // ref that genuinely doesn't exist yet, never 403. Retrying a 403
+      // just burns ~12s before giving up with a misleading "still being
+      // created" message instead of the real cause: no installation
+      // access to this account's fork at all.
+      if (err instanceof GitHubApiError && err.status === 403) {
+        throw new GitHubAppNotInstalledError(GITHUB_APP_INSTALL_URL);
+      }
       await sleep(FORK_POLL_INTERVAL_MS);
     }
   }

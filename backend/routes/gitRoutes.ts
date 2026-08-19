@@ -14,17 +14,23 @@
  *   docsRoutes.ts's /submit-pr can call them directly in-process
  *   instead of the HTTP self-calls it used to make (which stopped
  *   carrying valid auth once these routes started requiring a session
- *   cookie). syncBranchWithUpstreamDocs() deliberately only swaps the
- *   top-level docs/versioned_docs/project-words.txt tree entries rather
- *   than doing a full GitHub "sync fork" — that API is refused for
- *   OAuth apps without the `workflow` scope whenever upstream's
- *   .github/workflows/* has changed, and this app has no reason to
- *   request that broader permission.
+ *   cookie). syncBranchWithUpstream() does a real merge of upstream's
+ *   default branch into the workspace branch via GitHub's Merges API
+ *   (POST /repos/{owner}/{repo}/merges) — an earlier version only spliced
+ *   the docs/versioned_docs/project-words.txt tree entries onto the
+ *   branch's existing history instead, avoiding a real merge because that
+ *   needs the App's separate `workflows` permission whenever upstream has
+ *   touched .github/workflows/*. That kept the branch's own commit graph
+ *   permanently behind upstream (GitHub always showed it as "N commits
+ *   behind"), confusing real contributors even though the PR's diff was
+ *   still correct. Now that the App has been granted `workflows` too,
+ *   doing the real merge is both simpler than the tree-splicing and
+ *   actually keeps the branch's history in sync, not just its content.
  */
 import express from "express";
 import { getTokenForUser } from "./authRoutes";
 import { GitHubApiError, GitHubAppNotInstalledError } from "../githubClient";
-import { ensureFork, ForkError } from "../ensureFork";
+import { ensureFork, ForkError, UpstreamMergeConflictError } from "../ensureFork";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -41,132 +47,76 @@ const router = express.Router();
    Helpers
    ============================================================ */
 
-// Resolves a branch name or commit SHA to its commit + top-level tree entries.
-async function getTreeEntries(
-  token: string,
-  owner: string,
-  repo: string,
-  branchOrSha: string,
-) {
-  let commitSha = branchOrSha;
-
-  if (!/^[0-9a-f]{40}$/i.test(branchOrSha)) {
-    const ref = await githubRequest(
-      token,
-      `/repos/${owner}/${repo}/git/refs/heads/${branchOrSha}`,
-    );
-    commitSha = ref.object.sha;
-  }
-
-  const commit = await githubRequest(
-    token,
-    `/repos/${owner}/${repo}/git/commits/${commitSha}`,
-  );
-  const tree = await githubRequest(
-    token,
-    `/repos/${owner}/${repo}/git/trees/${commit.tree.sha}`,
-  );
-
-  return {
-    commitSha,
-    treeSha: commit.tree.sha as string,
-    entries: tree.tree as Array<{
-      path: string;
-      mode: string;
-      type: string;
-      sha: string;
-    }>,
-  };
-}
-
-// Everything this app ever reads or writes — nothing else in the repo
-// (.github/workflows, package.json, etc.) is touched by this sync.
-const SYNCED_PATHS = ["docs", "versioned_docs", "project-words.txt"];
-
-// Brings a fork branch's docs content up to date with upstream by building
-// a new tree that's identical to the branch's current tree except these
-// specific top-level paths are swapped for upstream's current versions —
-// everything else (crucially .github/workflows/*) is inherited byte-for-
-// byte unchanged from the branch's own tree via `base_tree`.
+// Real merge, not a tree splice: POSTs to GitHub's Merges API with the
+// workspace branch as base and upstream's current default-branch commit
+// as head, so the branch's own history genuinely includes upstream's
+// commits afterward. head is a bare commit SHA from a different repo
+// (rotorflight/rotorflight-docs), which works because a real fork shares
+// object storage with its upstream — any upstream commit is readable
+// within the fork by SHA even though it was never merged into the fork's
+// own refs (the same fact ensureBranch's own comment below relies on).
 //
-// A full "sync this fork with upstream" (GitHub's merge-upstream API, what
-// the "Sync fork" button does) was tried first and doesn't work here:
-// GitHub refuses it for any OAuth app lacking the `workflow` scope whenever
-// the sync would touch `.github/workflows/*`, which upstream has, and
-// requesting that broader scope is a real permission decision that
-// shouldn't happen silently as a side effect of this fix. Since no
-// workflow file content actually changes with this targeted approach,
-// GitHub allows it without that scope.
-async function syncBranchWithUpstreamDocs(
+// Uses a bare fetch instead of the shared githubRequest() helper because
+// this is the one call site here that has to distinguish three different
+// non-JSON-body outcomes on top of the usual error path: 201 (created a
+// real merge commit), 204 (base already contains head — nothing to
+// merge, not an error), and 409 (a genuine content conflict, not a
+// GitHub-access problem).
+async function syncBranchWithUpstream(
   token: string,
   login: string,
   branch: string,
 ) {
-  console.log(
-    `🔄 Syncing [${SYNCED_PATHS.join(", ")}] from upstream into fork branch "${branch}"…`,
-  );
-
-  const upstream = await getTreeEntries(
+  const upstreamRef = await githubRequest(
     token,
-    GITHUB_OWNER,
-    GITHUB_REPO,
-    GITHUB_DEFAULT_BRANCH,
+    `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/refs/heads/${GITHUB_DEFAULT_BRANCH}`,
   );
-  const fork = await getTreeEntries(token, login, GITHUB_REPO, branch);
+  const upstreamSha = upstreamRef.object.sha;
 
-  const overrides = upstream.entries.filter((e) =>
-    SYNCED_PATHS.includes(e.path),
-  );
+  console.log(`🔄 Merging upstream (${upstreamSha}) into fork branch "${branch}"…`);
 
-  if (overrides.length === 0) {
-    console.warn(
-      "⚠️ None of the synced paths were found upstream — skipping sync",
-    );
-    return fork.commitSha;
-  }
-
-  const newTree = await githubRequest(
-    token,
-    `/repos/${login}/${GITHUB_REPO}/git/trees`,
-    "POST",
+  const res = await fetch(
+    `https://api.github.com/repos/${login}/${GITHUB_REPO}/merges`,
     {
-      base_tree: fork.treeSha,
-      tree: overrides.map((e) => ({
-        path: e.path,
-        mode: e.mode,
-        type: e.type,
-        sha: e.sha,
-      })),
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        base: branch,
+        head: upstreamSha,
+        commit_message: `Merge upstream/${GITHUB_DEFAULT_BRANCH} into ${branch}`,
+      }),
     },
   );
 
-  if (newTree.sha === fork.treeSha) {
-    console.log("✅ Branch already matches upstream for synced paths");
-    return fork.commitSha;
+  if (res.status === 204) {
+    console.log("✅ Branch already up to date with upstream");
+    return;
   }
 
-  const commit = await githubRequest(
-    token,
-    `/repos/${login}/${GITHUB_REPO}/git/commits`,
-    "POST",
-    {
-      message: `Sync ${SYNCED_PATHS.join(", ")} with upstream`,
-      tree: newTree.sha,
-      parents: [fork.commitSha],
-    },
-  );
+  if (res.status === 201) {
+    const merge = await res.json();
+    console.log("✅ Branch synced via real merge, new head:", merge.sha);
+    return;
+  }
 
-  // Always a valid fast-forward — the new commit's parent is exactly the
-  // branch's current head.
-  await githubRequest(
-    token,
-    `/repos/${login}/${GITHUB_REPO}/git/refs/heads/${branch}`,
-    "PATCH",
-    { sha: commit.sha },
-  );
+  if (res.status === 409) {
+    throw new UpstreamMergeConflictError(branch);
+  }
 
-  console.log("✅ Branch synced, new head:", commit.sha);
-  return commit.sha;
+  const text = await res.text();
+  const acceptedPermissions = res.headers.get("x-accepted-github-permissions");
+  console.error("❌ Merge-upstream error:", res.status, text);
+  console.error("❌ X-Accepted-GitHub-Permissions:", acceptedPermissions || "(not sent)");
+  throw new GitHubApiError(
+    res.status,
+    `GitHub API error: ${res.status} ${text}` +
+      (acceptedPermissions ? ` (needs permission: ${acceptedPermissions})` : ""),
+  );
 }
 
 // Ensure a workspace branch exists in the user's fork, then bring its docs
@@ -196,9 +146,9 @@ async function ensureBranch(token: string, login: string, branch: string) {
     // auto-update), and creating a ref pointing at a commit that was never
     // actually merged into the fork's own history fails with a 404 from
     // GitHub's Git Data API, even though that commit is individually
-    // readable by SHA across the fork network. syncBranchWithUpstreamDocs
-    // (called below, unconditionally) brings its doc content forward from
-    // this potentially-stale base right after.
+    // readable by SHA across the fork network. syncBranchWithUpstream
+    // (called below, unconditionally) merges it forward to upstream's
+    // actual current state right after.
     const base = await githubRequest(
       token,
       `/repos/${login}/${GITHUB_REPO}/git/refs/heads/${GITHUB_DEFAULT_BRANCH}`,
@@ -221,7 +171,7 @@ async function ensureBranch(token: string, login: string, branch: string) {
   // Run on every call, not just branch creation — an already-existing
   // workspace branch (e.g. submitting a follow-up update to an open PR)
   // can just as easily have drifted from upstream since it was created.
-  await syncBranchWithUpstreamDocs(token, login, branch);
+  await syncBranchWithUpstream(token, login, branch);
 
   return await githubRequest(
     token,

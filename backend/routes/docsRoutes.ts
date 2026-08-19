@@ -20,7 +20,11 @@
  *   stopped working once every route required a session.
  */
 import express, { type Request, type Response } from "express";
-import { githubRequest, GitHubAppNotInstalledError } from "../githubClient";
+import {
+  githubRequest,
+  GitHubApiError,
+  GitHubAppNotInstalledError,
+} from "../githubClient";
 import { getTokenForUser } from "./authRoutes";
 import { ensureMirrorUpToDate, loadWorkspaceMirror } from "./resetMirror";
 import { commitChanges, submitPullRequest } from "./gitRoutes";
@@ -29,7 +33,25 @@ import {
   GITHUB_OWNER,
   GITHUB_REPO,
   GITHUB_DEFAULT_BRANCH,
+  GITHUB_APP_INSTALL_URL,
 } from "../config/github";
+
+// Both commitChanges() and submitPullRequest() make several direct GitHub
+// API calls beyond the two specific spots (fork creation, PR creation)
+// that already throw GitHubAppNotInstalledError themselves — fetching the
+// head commit, creating the tree/commit, updating the ref, syncing docs
+// from upstream. Rather than individually wrap every one of those call
+// sites, this catches the same 403/404-on-a-repo-that-always-exists
+// pattern once, generically, at the top level: nothing else legitimately
+// returns 403/404 from GitHub's API here, so any GitHubApiError with
+// that status reaching this far means the same underlying cause.
+function asAppNotInstalledError(err: unknown): GitHubAppNotInstalledError | null {
+  if (err instanceof GitHubAppNotInstalledError) return err;
+  if (err instanceof GitHubApiError && (err.status === 403 || err.status === 404)) {
+    return new GitHubAppNotInstalledError(GITHUB_APP_INSTALL_URL);
+  }
+  return null;
+}
 import path from "path";
 import * as fs from "fs-extra";
 import multer from "multer";
@@ -741,11 +763,12 @@ router.post("/submit-pr", async (req, res) => {
       await commitChanges(login, workspace, scan);
     } catch (err) {
       console.error("submit-pr: commit step failed:", err);
-      if (err instanceof GitHubAppNotInstalledError) {
+      const notInstalled = asAppNotInstalledError(err);
+      if (notInstalled) {
         return res.status(403).json({
           status: "error",
-          error: err.message,
-          installUrl: err.installUrl,
+          error: notInstalled.message,
+          installUrl: notInstalled.installUrl,
         });
       }
       const error =
@@ -761,11 +784,12 @@ router.post("/submit-pr", async (req, res) => {
       return res.json(prRes);
     } catch (err) {
       console.error("submit-pr: PR step failed:", err);
-      if (err instanceof GitHubAppNotInstalledError) {
+      const notInstalled = asAppNotInstalledError(err);
+      if (notInstalled) {
         return res.status(403).json({
           status: "error",
-          error: err.message,
-          installUrl: err.installUrl,
+          error: notInstalled.message,
+          installUrl: notInstalled.installUrl,
         });
       }
       return res.status(500).json({
