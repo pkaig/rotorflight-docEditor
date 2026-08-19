@@ -135,15 +135,17 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
 
   if (loading) {
     return (
-      <div className="workspace-selector-loading">
-        <h2>Loading workspaces…</h2>
+      <div className="workspace-selector-modal">
+        <div className="workspace-selector-content">
+          <h2>Loading workspaces…</h2>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="workspace-selector-container">
-      <div className="workspace-selector-inner">
+    <div className="workspace-selector-modal">
+      <div className="workspace-selector-content">
         <h3>Create New Workspace</h3>
 
         {checkingUpstream && (
