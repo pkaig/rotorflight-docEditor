@@ -14,8 +14,13 @@
  *   and gitRoutes.ts (called again before every commit, so it's still
  *   correct for someone who submits within seconds of first login).
  */
-import { githubRequest } from "./githubClient";
-import { GITHUB_OWNER, GITHUB_REPO, GITHUB_DEFAULT_BRANCH } from "./config/github";
+import { githubRequest, GitHubApiError, GitHubAppNotInstalledError } from "./githubClient";
+import {
+  GITHUB_OWNER,
+  GITHUB_REPO,
+  GITHUB_DEFAULT_BRANCH,
+  GITHUB_APP_INSTALL_URL,
+} from "./config/github";
 
 const FORK_POLL_INTERVAL_MS = 1500;
 const FORK_POLL_MAX_ATTEMPTS = 8; // ~12s of polling before giving up
@@ -62,11 +67,23 @@ export async function ensureFork(token: string, login: string): Promise<void> {
   }
 
   if (!isRealFork) {
-    await githubRequest(token, `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/forks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ default_branch_only: true }),
-    });
+    try {
+      await githubRequest(token, `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/forks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ default_branch_only: true }),
+      });
+    } catch (err) {
+      // GITHUB_OWNER/GITHUB_REPO is the well-known upstream repo — it
+      // always exists, so a 403/404 forking it can only mean the App has
+      // no usable installation for this account, not a genuinely missing
+      // repo. The unfiltered rethrow below preserves any other failure
+      // (rate limit, network error, etc.) as-is.
+      if (err instanceof GitHubApiError && (err.status === 403 || err.status === 404)) {
+        throw new GitHubAppNotInstalledError(GITHUB_APP_INSTALL_URL);
+      }
+      throw err;
+    }
   }
 
   for (let attempt = 0; attempt < FORK_POLL_MAX_ATTEMPTS; attempt++) {

@@ -38,7 +38,14 @@
       { "from": "electron/icon.ico", "to": "electron/icon.ico" }
     ],
     "win": { "target": "nsis", "icon": "electron/icon.ico" },
+    "nsis": {
+      "artifactName": "${productName} Setup ${version}-${arch}.${ext}"
+    },
     "mac": { "target": "dmg" },
-    "linux": { "target": "AppImage" }
+    "linux": {
+      "target": ["AppImage", "tar.gz"],
+      "icon": "electron/icon.png",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
   }
 }

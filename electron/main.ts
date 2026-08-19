@@ -32,7 +32,7 @@
  *   frontend/dist" the way it is in plain `node dist/server.js` — so
  *   this is passed explicitly instead.
  */
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, shell } from "electron";
 import path from "path";
 import fs from "fs";
 import http from "http";
@@ -152,6 +152,18 @@ async function createWindow(): Promise<void> {
   });
 
   win.setMenuBarVisibility(false);
+
+  // Every target="_blank" link in the app (PR links, the GitHub App
+  // install link, version-update links) hits this — without it, Electron's
+  // default behavior opens a second bare BrowserWindow inside the app
+  // itself rather than the user's actual system browser, which is
+  // especially broken for a GitHub login/install page that expects a
+  // real, cookie-persistent browser session.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+
   await win.loadURL(`http://localhost:${PORT}/`);
 }
 

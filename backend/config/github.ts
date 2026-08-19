@@ -22,6 +22,14 @@ export const GITHUB_OWNER = "rotorflight";
 export const GITHUB_REPO = "rotorflight-docs";
 export const GITHUB_DEFAULT_BRANCH = "main";
 
+// The App's slug-based install/request page — GitHub shows "Install" here
+// for an org owner, or "Request" for a member without install rights,
+// which is the correct UX for the "app not installed on this org" failure
+// (see GitHubAppNotInstalledError in githubClient.ts) rather than
+// anything this app could resolve on its own.
+export const GITHUB_APP_INSTALL_URL =
+  "https://github.com/apps/rotorflight-doceditor/installations/new";
+
 console.log("GitHub Config Loaded:");
 console.log("GITHUB_CLIENT_ID:", GITHUB_CLIENT_ID ? "✅" : "❌");
 console.log("GITHUB_OWNER:", GITHUB_OWNER ? "✅" : "❌");

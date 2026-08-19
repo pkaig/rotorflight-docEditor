@@ -33,6 +33,11 @@ export interface PRResponse {
   prNumber?: number;
   url?: string;
   error?: string;
+  // Present when the backend determined the GitHub App itself isn't
+  // installed/permitted for this account/org — a direct link to GitHub's
+  // install-or-request page, since that's the only place this can
+  // actually be resolved (an org owner has to approve it there).
+  installUrl?: string;
 }
 
 interface UseGitPROptions {
@@ -62,6 +67,7 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
     prNumber?: number;
     url?: string;
     error?: string;
+    installUrl?: string;
   }>(null);
 
   const [activePR, setActivePR] = useState<number | null>(null);
@@ -132,7 +138,11 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
           break;
 
         case "error":
-          setBanner({ type: "error", error: res.error || "Something went wrong" });
+          setBanner({
+            type: "error",
+            error: res.error || "Something went wrong",
+            installUrl: res.installUrl,
+          });
           break;
 
         case "pr_merged":

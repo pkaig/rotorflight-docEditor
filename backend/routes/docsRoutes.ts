@@ -20,7 +20,7 @@
  *   stopped working once every route required a session.
  */
 import express, { type Request, type Response } from "express";
-import { githubRequest } from "../githubClient";
+import { githubRequest, GitHubAppNotInstalledError } from "../githubClient";
 import { getTokenForUser } from "./authRoutes";
 import { ensureMirrorUpToDate, loadWorkspaceMirror } from "./resetMirror";
 import { commitChanges, submitPullRequest } from "./gitRoutes";
@@ -741,6 +741,13 @@ router.post("/submit-pr", async (req, res) => {
       await commitChanges(login, workspace, scan);
     } catch (err) {
       console.error("submit-pr: commit step failed:", err);
+      if (err instanceof GitHubAppNotInstalledError) {
+        return res.status(403).json({
+          status: "error",
+          error: err.message,
+          installUrl: err.installUrl,
+        });
+      }
       const error =
         err instanceof ForkError ? err.message : "Failed to commit changes";
       return res.status(err instanceof ForkError ? 409 : 500).json({
@@ -754,6 +761,13 @@ router.post("/submit-pr", async (req, res) => {
       return res.json(prRes);
     } catch (err) {
       console.error("submit-pr: PR step failed:", err);
+      if (err instanceof GitHubAppNotInstalledError) {
+        return res.status(403).json({
+          status: "error",
+          error: err.message,
+          installUrl: err.installUrl,
+        });
+      }
       return res.status(500).json({
         status: "error",
         error: "Failed to create/update PR",

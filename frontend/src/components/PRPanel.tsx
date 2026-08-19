@@ -43,6 +43,7 @@ interface PRPanelProps {
     prNumber?: number;
     url?: string;
     error?: string;
+    installUrl?: string;
   } | null;
   activePR: number | null;
   submitPR: (description: string) => Promise<PRResponse | undefined>;
@@ -112,7 +113,19 @@ export function PRPanel({
           {banner.type === "pr_closed" && (
             <>Pull Request #{banner.prNumber} closed. Workspace reset.</>
           )}
-          {banner.type === "error" && <>Failed to submit PR: {banner.error}</>}
+          {banner.type === "error" && (
+            <>
+              Failed to submit PR: {banner.error}
+              {banner.installUrl && (
+                <>
+                  {" "}
+                  <a href={banner.installUrl} target="_blank" rel="noreferrer">
+                    Install or request the GitHub App
+                  </a>
+                </>
+              )}
+            </>
+          )}
           <button onClick={clearBanner}>×</button>
         </div>
       )}

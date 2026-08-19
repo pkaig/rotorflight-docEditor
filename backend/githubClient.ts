@@ -23,6 +23,36 @@
 
 export type GitHubToken = string;
 
+export class GitHubApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "GitHubApiError";
+    this.status = status;
+  }
+}
+
+// Thrown wherever a GitHubApiError's status (403 with no installation, or
+// 404 on a repo we know exists) points at the GitHub App itself not being
+// installed/permitted for this account, rather than any other kind of
+// failure — see the callers in ensureFork.ts and gitRoutes.ts for exactly
+// which calls this is inferred from. Carries installUrl so the frontend
+// can offer a direct link instead of just a dead-end error string.
+export class GitHubAppNotInstalledError extends Error {
+  installUrl: string;
+  constructor(installUrl: string) {
+    super(
+      "GitHub blocked this action — the Rotorflight-docEditor GitHub App " +
+        "either isn't installed for this account/org yet, or is installed " +
+        "without the permissions this needs. An org owner needs to " +
+        "install it (or approve a pending install request) before this " +
+        "will work.",
+    );
+    this.name = "GitHubAppNotInstalledError";
+    this.installUrl = installUrl;
+  }
+}
+
 export async function githubRequest<T>(
   token: GitHubToken,
   path: string,
@@ -41,7 +71,7 @@ export async function githubRequest<T>(
   if (!res.ok) {
     const text = await res.text();
     console.error("GitHub API error:", res.status, text);
-    throw new Error(`GitHub API ${res.status}: ${text}`);
+    throw new GitHubApiError(res.status, `GitHub API ${res.status}: ${text}`);
   }
 
   return res.json() as Promise<T>;

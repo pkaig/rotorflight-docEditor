@@ -23,12 +23,13 @@
  */
 import express from "express";
 import { getTokenForUser } from "./authRoutes";
-//import { githubRequest } from "../githubClient";
+import { GitHubApiError, GitHubAppNotInstalledError } from "../githubClient";
 import { ensureFork, ForkError } from "../ensureFork";
 import {
   GITHUB_OWNER,
   GITHUB_REPO,
   GITHUB_DEFAULT_BRANCH,
+  GITHUB_APP_INSTALL_URL,
 } from "../config/github";
 import path from "path";
 import fs from "fs-extra";
@@ -395,39 +396,50 @@ export async function submitPullRequest(
 
   console.log("🔍 Checking for existing PR…");
 
-  const prs = await githubRequest(
-    token,
-    `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls?head=${login}:${branch}&state=open`,
-  );
-
-  let pr;
+  let prs, pr;
   let created: boolean;
 
-  if (prs.length > 0) {
-    console.log("✏️ Updating existing PR:", prs[0].number);
-
-    pr = await githubRequest(
+  try {
+    prs = await githubRequest(
       token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls/${prs[0].number}`,
-      "PATCH",
-      { body: description },
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls?head=${login}:${branch}&state=open`,
     );
-    created = false;
-  } else {
-    console.log("🆕 Creating new PR…");
 
-    pr = await githubRequest(
-      token,
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls`,
-      "POST",
-      {
-        title: `Docs updates from workspace "${workspace}"`,
-        head: `${login}:${branch}`,
-        base: GITHUB_DEFAULT_BRANCH,
-        body: description,
-      },
-    );
-    created = true;
+    if (prs.length > 0) {
+      console.log("✏️ Updating existing PR:", prs[0].number);
+
+      pr = await githubRequest(
+        token,
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls/${prs[0].number}`,
+        "PATCH",
+        { body: description },
+      );
+      created = false;
+    } else {
+      console.log("🆕 Creating new PR…");
+
+      pr = await githubRequest(
+        token,
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls`,
+        "POST",
+        {
+          title: `Docs updates from workspace "${workspace}"`,
+          head: `${login}:${branch}`,
+          base: GITHUB_DEFAULT_BRANCH,
+          body: description,
+        },
+      );
+      created = true;
+    }
+  } catch (err) {
+    // Same reasoning as ensureFork's fork-creation call: GITHUB_OWNER/
+    // GITHUB_REPO always exists, so a 403/404 here means the App has no
+    // usable installation/permissions for pull requests on this repo, not
+    // a genuinely missing resource.
+    if (err instanceof GitHubApiError && (err.status === 403 || err.status === 404)) {
+      throw new GitHubAppNotInstalledError(GITHUB_APP_INSTALL_URL);
+    }
+    throw err;
   }
 
   console.log("✅ PR ready:", pr.html_url);
@@ -519,7 +531,8 @@ export async function githubRequest(
     const acceptedPermissions = res.headers.get("x-accepted-github-permissions");
     console.error("❌ GitHub API error:", res.status, text);
     console.error("❌ X-Accepted-GitHub-Permissions:", acceptedPermissions || "(not sent)");
-    throw new Error(
+    throw new GitHubApiError(
+      res.status,
       `GitHub API error: ${res.status} ${text}` +
         (acceptedPermissions ? ` (needs permission: ${acceptedPermissions})` : ""),
     );
