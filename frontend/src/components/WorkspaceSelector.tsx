@@ -19,7 +19,7 @@ import { validateWorkspaceName } from "../utils/validateWorkspaceName";
 
 interface WorkspaceSelectorProps {
   login: string | null;
-  onSelect: (workspace: string | null) => void;
+  onSelect: (workspace: string | null) => void | Promise<void>;
 }
 
 export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
@@ -33,6 +33,13 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
   const [checkingUpstream, setCheckingUpstream] = useState(false);
   const [upstreamStale, setUpstreamStale] = useState(false);
   const [cloning, setCloning] = useState(false);
+
+  // App.tsx's onSelect handler does the real work (POST /create-workspace,
+  // a real git clone/fork setup that takes several seconds) before it
+  // resolves — without tracking that here too, the button just sat there
+  // looking idle for the whole call, since App.tsx's own "workspace
+  // created" banner only appears once that call has basically finished.
+  const [creating, setCreating] = useState(false);
 
   //
   // Load existing workspaces
@@ -109,13 +116,22 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
       if (e.key === "Escape") {
         onSelect(null);
       }
-      if (e.key === "Enter" && !validationError && !cloning) {
-        onSelect(newName.trim());
+      if (e.key === "Enter" && !validationError && !cloning && !creating) {
+        void submit();
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [newName, validationError, cloning, onSelect]);
+  }, [newName, validationError, cloning, creating, onSelect]);
+
+  async function submit() {
+    setCreating(true);
+    try {
+      await onSelect(newName.trim());
+    } finally {
+      setCreating(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -153,19 +169,22 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
           <div className="workspace-input-error">{validationError}</div>
         )}
 
+        {creating && (
+          <div className="workspace-banner info">Creating workspace…</div>
+        )}
+
         <div className="workspace-selector-buttons">
           <button
             className="workspace-create-btn"
-            disabled={!!validationError || cloning}
-            onClick={() =>
-              !validationError && !cloning && onSelect(newName.trim())
-            }
+            disabled={!!validationError || cloning || creating}
+            onClick={() => !validationError && !cloning && !creating && submit()}
           >
-            {cloning ? "Preparing…" : "Create Workspace"}
+            {cloning ? "Preparing…" : creating ? "Creating…" : "Create Workspace"}
           </button>
 
           <button
             className="workspace-cancel-btn"
+            disabled={creating}
             onClick={() => onSelect(null)}
           >
             Cancel
