@@ -141,6 +141,11 @@ backend/cache/
 backend/routes/tokens/
 backend/Rotorflight-docs/
 
+# older token-storage locations from before it moved to backend/routes/tokens/ —
+# kept here defensively even though nothing currently writes to them
+backend/.token
+backend/tokens/
+
 # electron-builder output (packaged installers)
 release/
 
