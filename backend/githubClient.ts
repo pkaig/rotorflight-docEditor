@@ -32,6 +32,66 @@ export class GitHubApiError extends Error {
   }
 }
 
+// Deliberately does NOT extend GitHubApiError: docsRoutes.ts's
+// asAppNotInstalledError() treats any GitHubApiError with status 403/404
+// as "the App isn't installed", and a rate limit is a completely
+// different, unrelated condition that happens to also show up as a 403 —
+// keeping this a sibling type rather than a subclass means that check
+// can't accidentally swallow a rate-limit error and misreport it as a
+// missing install.
+export class GitHubRateLimitError extends Error {
+  status: number;
+  retryAfterSeconds: number;
+  constructor(status: number, retryAfterSeconds: number) {
+    super(
+      `GitHub API rate limit hit — try again in about ${retryAfterSeconds}s.`,
+    );
+    this.name = "GitHubRateLimitError";
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+// GitHub signals rate limiting two ways: a "retry-after" header for
+// secondary/abuse limits (the one most likely to actually happen here —
+// e.g. committing a workspace with a dozen-plus images makes that many
+// individual blob-creation calls in quick succession), and
+// x-ratelimit-remaining hitting 0 (with x-ratelimit-reset giving the unix
+// timestamp it recovers at) for the primary per-hour limit. Returns null
+// for a non-rate-limit failure.
+//
+// Exported so gitRoutes.ts's own separate githubRequest() (see that
+// file's header comment for why it doesn't just import this one) applies
+// the exact same rate-limit detection/wait policy instead of duplicating
+// slightly-different logic.
+export function rateLimitRetryAfterSeconds(res: Response): number | null {
+  const retryAfter = res.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (!Number.isNaN(seconds)) return Math.max(1, seconds);
+  }
+
+  const remaining = res.headers.get("x-ratelimit-remaining");
+  const reset = res.headers.get("x-ratelimit-reset");
+  if (remaining === "0" && reset) {
+    const resetMs = Number(reset) * 1000;
+    if (!Number.isNaN(resetMs)) {
+      return Math.max(1, Math.ceil((resetMs - Date.now()) / 1000));
+    }
+  }
+
+  return null;
+}
+
+// Only worth auto-waiting for a short, bounded delay — a request that's
+// already taking seconds shouldn't silently turn into one taking minutes.
+// Past this, the caller gets a clear, typed error immediately instead.
+export const MAX_AUTO_RETRY_WAIT_SECONDS = 30;
+
+export function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Thrown wherever a GitHubApiError's status (403 with no installation, or
 // 404 on a repo we know exists) points at the GitHub App itself not being
 // installed/permitted for this account, rather than any other kind of
@@ -57,6 +117,7 @@ export async function githubRequest<T>(
   token: GitHubToken,
   path: string,
   init: RequestInit = {},
+  _isRetry = false,
 ): Promise<T> {
   const res = await fetch(`https://api.github.com${path}`, {
     ...init,
@@ -69,6 +130,19 @@ export async function githubRequest<T>(
   });
 
   if (!res.ok) {
+    const retryAfterSeconds = rateLimitRetryAfterSeconds(res);
+
+    if (retryAfterSeconds !== null) {
+      if (!_isRetry && retryAfterSeconds <= MAX_AUTO_RETRY_WAIT_SECONDS) {
+        console.warn(
+          `GitHub API rate limited on ${path} — waiting ${retryAfterSeconds}s and retrying once`,
+        );
+        await sleep(retryAfterSeconds * 1000);
+        return githubRequest<T>(token, path, init, true);
+      }
+      throw new GitHubRateLimitError(res.status, retryAfterSeconds);
+    }
+
     const text = await res.text();
     console.error("GitHub API error:", res.status, text);
     throw new GitHubApiError(res.status, `GitHub API ${res.status}: ${text}`);

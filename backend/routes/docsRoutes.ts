@@ -24,6 +24,7 @@ import {
   githubRequest,
   GitHubApiError,
   GitHubAppNotInstalledError,
+  GitHubRateLimitError,
 } from "../githubClient";
 import { getTokenForUser } from "./authRoutes";
 import { ensureMirrorUpToDate, loadWorkspaceMirror } from "./resetMirror";
@@ -787,6 +788,13 @@ router.post("/submit-pr", async (req, res) => {
       await commitChanges(login, workspace, scan);
     } catch (err) {
       console.error("submit-pr: commit step failed:", err);
+      if (err instanceof GitHubRateLimitError) {
+        return res.status(429).json({
+          status: "error",
+          error: err.message,
+          retryAfterSeconds: err.retryAfterSeconds,
+        });
+      }
       const notInstalled = asAppNotInstalledError(err);
       if (notInstalled) {
         return res.status(403).json({
@@ -808,6 +816,13 @@ router.post("/submit-pr", async (req, res) => {
       return res.json(prRes);
     } catch (err) {
       console.error("submit-pr: PR step failed:", err);
+      if (err instanceof GitHubRateLimitError) {
+        return res.status(429).json({
+          status: "error",
+          error: err.message,
+          retryAfterSeconds: err.retryAfterSeconds,
+        });
+      }
       const notInstalled = asAppNotInstalledError(err);
       if (notInstalled) {
         return res.status(403).json({

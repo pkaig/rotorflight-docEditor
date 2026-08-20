@@ -29,7 +29,14 @@
  */
 import express from "express";
 import { getTokenForUser } from "./authRoutes";
-import { GitHubApiError, GitHubAppNotInstalledError } from "../githubClient";
+import {
+  GitHubApiError,
+  GitHubAppNotInstalledError,
+  GitHubRateLimitError,
+  rateLimitRetryAfterSeconds,
+  MAX_AUTO_RETRY_WAIT_SECONDS,
+  sleep,
+} from "../githubClient";
 import { ensureFork, ForkError, UpstreamMergeConflictError } from "../ensureFork";
 import {
   GITHUB_OWNER,
@@ -111,6 +118,11 @@ async function syncBranchWithUpstream(
 
   if (res.status === 409) {
     throw new UpstreamMergeConflictError(branch);
+  }
+
+  const retryAfterSeconds = rateLimitRetryAfterSeconds(res);
+  if (retryAfterSeconds !== null) {
+    throw new GitHubRateLimitError(res.status, retryAfterSeconds);
   }
 
   const text = await res.text();
@@ -473,6 +485,7 @@ export async function githubRequest(
   path: string,
   method = "GET",
   body?: unknown,
+  _isRetry = false,
 ) {
   console.log("Github Request");
   const jsonBody = body ? JSON.stringify(body) : undefined;
@@ -505,6 +518,23 @@ export async function githubRequest(
   });
 
   if (!res.ok) {
+    // Checked first, before anything else — this function is what
+    // commitChanges() calls once per changed file (a blob-creation call
+    // per image, plus the tree/commit/ref calls), so a workspace with a
+    // dozen-plus images is exactly the realistic case for tripping
+    // GitHub's secondary/abuse rate limit here.
+    const retryAfterSeconds = rateLimitRetryAfterSeconds(res);
+    if (retryAfterSeconds !== null) {
+      if (!_isRetry && retryAfterSeconds <= MAX_AUTO_RETRY_WAIT_SECONDS) {
+        console.warn(
+          `GitHub API rate limited on ${path} — waiting ${retryAfterSeconds}s and retrying once`,
+        );
+        await sleep(retryAfterSeconds * 1000);
+        return githubRequest(token, path, method, body, true);
+      }
+      throw new GitHubRateLimitError(res.status, retryAfterSeconds);
+    }
+
     const text = await res.text();
     // GitHub returns this specific header on a 403 naming exactly which
     // permission was missing for the request — the only reliable way to
