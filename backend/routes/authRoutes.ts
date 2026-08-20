@@ -5,9 +5,10 @@
  *   server-side session: it's the only place req.session.login ever
  *   gets set, and it exposes /session, /status/:login, /me/:login and
  *   /logout for the frontend to read and clear that session. Also
- *   stores each user's GitHub access token on disk
- *   (routes/tokens/<login>.json) and exposes getTokenForUser() for the
- *   rest of the backend.
+ *   stores each user's GitHub access token on disk, keyed by their
+ *   immutable GitHub id (routes/tokens/<id>.json, not <login>.json — see
+ *   the comment above StoredToken for why), and exposes
+ *   getTokenForUser() for the rest of the backend.
  *
  * Info:
  *   /status/:login and /me/:login only ever answer for the caller's own
@@ -51,54 +52,75 @@ if (!fs.existsSync(TOKENS_DIR)) {
 // ---------------------------------------------
 // Helpers
 // ---------------------------------------------
+// Keyed by GitHub's immutable numeric id, not the mutable `login` handle —
+// per GitHub's own guidance (docs.github.com/en/apps/creating-github-apps/
+// about-creating-github-apps/best-practices-for-creating-a-github-app),
+// storing identity by username means a GitHub account rename silently
+// orphans the stored token: the app would look for a filename that no
+// longer matches anything. `id` never changes for the life of the
+// account, so a rename just means the *login* field inside the same file
+// gets refreshed next time this same account logs in — the record itself
+// stays found.
+//
+// Every other route in the app still calls getTokenForUser(login) with
+// the session's current username — GitHub's own APIs need the current
+// username anyway for repo/fork/PR paths (there's no numeric-id form of
+// "owner/repo"), so loadToken() here does the login->id resolution
+// internally via a directory scan, keeping every caller elsewhere in the
+// codebase completely unchanged.
 interface StoredToken {
   access_token: string;
   expires_at: number;
   login: string;
+  id: number;
 }
 
-function tokenPath(login: string) {
-  return path.join(TOKENS_DIR, `${login}.json`);
+function tokenPath(id: number) {
+  return path.join(TOKENS_DIR, `${id}.json`);
 }
 
-function loadToken(login: string): StoredToken | null {
-  const file = tokenPath(login);
-  if (!fs.existsSync(file)) return null;
-
+function readTokenFile(file: string): StoredToken | null {
   try {
     const data = JSON.parse(fs.readFileSync(file, "utf8"));
 
-    // Validate expires_at
     if (
       !data.expires_at ||
       typeof data.expires_at !== "number" ||
       Number.isNaN(data.expires_at)
     ) {
-      console.warn(
-        `Token for ${login} missing or invalid expires_at, deleting`,
-      );
+      console.warn(`Token file ${file} missing or invalid expires_at, deleting`);
       fs.unlinkSync(file);
       return null;
     }
 
-    // Check expiration
     if (Date.now() > data.expires_at) {
-      console.log(`⏳ Token for ${login} expired, deleting`);
+      console.log(`⏳ Token for ${data.login} expired, deleting`);
       fs.unlinkSync(file);
       return null;
     }
 
     return data;
   } catch (err) {
-    console.error("Failed to load token:", err);
+    console.error("Failed to load token file:", file, err);
     return null;
   }
 }
 
+function loadToken(login: string): StoredToken | null {
+  for (const name of fs.readdirSync(TOKENS_DIR)) {
+    if (!name.endsWith(".json")) continue;
+
+    const token = readTokenFile(path.join(TOKENS_DIR, name));
+    if (token && token.login === login) return token;
+  }
+
+  return null;
+}
+
 function saveToken(token: StoredToken) {
-  const file = tokenPath(token.login);
+  const file = tokenPath(token.id);
   fs.writeFileSync(file, JSON.stringify(token, null, 2), "utf8");
-  console.log(`💾 Saved token for ${token.login}`);
+  console.log(`💾 Saved token for ${token.login} (id ${token.id})`);
 }
 
 // GitHub's own device-flow response shapes — narrows the two .json()
@@ -203,6 +225,7 @@ router.post("/device/poll", async (req, res) => {
       access_token: data.access_token,
       expires_at,
       login: user.login,
+      id: user.id,
     };
 
     saveToken(token);
@@ -212,6 +235,7 @@ router.post("/device/poll", async (req, res) => {
     // request" from req.session.login, never from a client-supplied login
     // field, so this is the one place that gets to set it.
     req.session.login = token.login;
+    req.session.userId = token.id;
 
     // Fire-and-forget: starts fork creation as early as possible so it has
     // time to become usable before the user gets to submitting a PR,
