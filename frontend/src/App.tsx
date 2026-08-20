@@ -152,6 +152,8 @@ export default function App() {
     userCode,
     verificationUri,
     authError,
+    appInstalled,
+    appInstallUrl,
     startGitHubLogin,
     logout,
   } = useAuth();
@@ -665,6 +667,16 @@ export default function App() {
               Signed in as <strong>{user.login}</strong>
             </span>
           </div>
+        </div>
+      )}
+
+      {appInstalled === false && appInstallUrl && (
+        <div className="app-not-installed-banner">
+          The Rotorflight-docEditor GitHub App isn't installed for your
+          account yet — commits and pull requests won't work until it is.{" "}
+          <a href={appInstallUrl} target="_blank" rel="noreferrer">
+            Install or request the GitHub App
+          </a>
         </div>
       )}
 

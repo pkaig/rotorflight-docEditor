@@ -35,6 +35,11 @@ export function useAuth() {
   const [userCode, setUserCode] = useState("");
   const [verificationUri, setVerificationUri] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
+  // null = not checked yet, false = confirmed missing (see installUrl),
+  // true = confirmed installed. Checked once per login rather than only
+  // discovered later when a PR submission's commit/PR step 403s.
+  const [appInstalled, setAppInstalled] = useState<boolean | null>(null);
+  const [appInstallUrl, setAppInstallUrl] = useState<string | null>(null);
 
   // Restore login from the session cookie, not a client-asserted username —
   // the backend derives identity from req.session.login for every request,
@@ -148,6 +153,29 @@ export function useAuth() {
       .catch(() => {});
   }, [login]);
 
+  // Same trigger as the profile fetch above (covers both a fresh device-
+  // flow login and the restore-on-load session check, since both end up
+  // setting `login`) — surfaces a missing GitHub App install right away
+  // instead of leaving it to only be discovered later at PR-submit time.
+  useEffect(() => {
+    if (!login) {
+      setAppInstalled(null);
+      setAppInstallUrl(null);
+      return;
+    }
+
+    fetch("/api/auth/installation-status", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        setAppInstalled(!!data.installed);
+        setAppInstallUrl(data.installUrl ?? null);
+      })
+      .catch(() => {
+        // Network hiccup — fail open rather than showing a false warning.
+        setAppInstalled(true);
+      });
+  }, [login]);
+
   // Destroys the server-side session (the actual trust boundary) and clears
   // every piece of local auth state, including rf_login — leaving it behind
   // would make the next page load's restore-on-load effect briefly think a
@@ -170,6 +198,8 @@ export function useAuth() {
     userCode,
     verificationUri,
     authError,
+    appInstalled,
+    appInstallUrl,
     startGitHubLogin,
     logout,
   };

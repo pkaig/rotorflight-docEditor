@@ -22,7 +22,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
-import { GITHUB_CLIENT_ID } from "../config/github";
+import { GITHUB_CLIENT_ID, GITHUB_APP_INSTALL_URL } from "../config/github";
 import { githubRequest } from "../githubClient";
 import { ensureFork } from "../ensureFork";
 
@@ -291,6 +291,46 @@ router.get("/me/:login", async (req, res) => {
   } catch (err) {
     console.error("Failed to fetch user:", err);
     res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+
+// ---------------------------------------------
+// Installation Status — checked once right after login (see
+// frontend/src/hooks/useAuth.ts) rather than only discovered when a PR
+// submission's commit/PR steps 403 — the app can't force an install onto
+// an account (GitHub requires that account's own owner to approve it, see
+// GitHubAppNotInstalledError), but it can at least tell the user
+// immediately instead of after they've already done a session's worth of
+// edits.
+// ---------------------------------------------
+router.get("/installation-status", async (req, res) => {
+  const login = req.session.login;
+  const token = login ? loadToken(login) : null;
+
+  if (!login || !token) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  try {
+    const data = await githubRequest<{
+      installations: Array<{ account: { login: string } }>;
+    }>(token.access_token, "/user/installations");
+
+    const installed = data.installations.some(
+      (i) => i.account.login.toLowerCase() === login.toLowerCase(),
+    );
+
+    res.json({
+      installed,
+      installUrl: installed ? undefined : GITHUB_APP_INSTALL_URL,
+    });
+  } catch (err) {
+    console.error("installation-status check failed:", err);
+    // Fails open — a transient GitHub API hiccup here shouldn't put up a
+    // false "not installed" warning; the PR-submit-time check (which
+    // fails closed, since it can't complete the action either way) still
+    // catches a genuinely missing install regardless.
+    res.json({ installed: true });
   }
 });
 
