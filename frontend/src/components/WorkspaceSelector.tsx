@@ -172,7 +172,14 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
           type="text"
           placeholder="e.g. Modify Gov"
           value={newName}
-          onChange={(e) => setNewName(e.target.value)}
+          onChange={(e) =>
+            // Blocks real symbols/punctuation from ever landing in the
+            // field — space/underscore stay typeable since slugifyFileName
+            // turns those into the hyphen separators the naming scheme
+            // (and every existing workspace: "gov-review", "xdfly-gov")
+            // actually uses, rather than rejecting multi-word names outright.
+            setNewName(e.target.value.replace(/[^a-zA-Z0-9 _-]/g, ""))
+          }
           autoFocus
         />
 
