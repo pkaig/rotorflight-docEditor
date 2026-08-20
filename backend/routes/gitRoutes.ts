@@ -43,6 +43,11 @@ import { isSafePathSegment, isSafeRelativePath } from "../safePath";
 
 const router = express.Router();
 
+// Anything committed through commitChanges() with one of these extensions
+// goes through the base64 git-blob path instead of inline text content —
+// see the comment at its one call site for why that distinction matters.
+const BINARY_FILE_RE = /\.(png|jpe?g|gif|svg|webp|mp4)$/i;
+
 /* ============================================================
    Helpers
    ============================================================ */
@@ -245,6 +250,34 @@ export async function commitChanges(
   for (const item of [...changes.added, ...changes.modified]) {
     const fullPath = path.join(workspaceRoot, item.path);
     console.log("📄 Adding file:", item.path);
+
+    if (BINARY_FILE_RE.test(item.path)) {
+      // Git trees' inline `content` field is UTF-8 text only — reading a
+      // PNG/etc.'s raw bytes with fs.readFile(path, "utf8") mangles any
+      // byte sequence that isn't valid UTF-8 (silently, no error), and
+      // GitHub's tree API then commits that already-corrupted text as the
+      // blob. The file looks fine locally (nothing here ever reads it
+      // back through this path) and the commit/PR/merge all succeed
+      // without error, but the committed image is broken from that point
+      // on — reproducible every time by re-cloning and opening it fresh.
+      // A binary file has to go through its own blob first, base64-
+      // encoded, referenced by sha instead of inline content.
+      const buffer = await fs.readFile(fullPath);
+      const blob = await githubRequest(
+        token,
+        `/repos/${login}/${GITHUB_REPO}/git/blobs`,
+        "POST",
+        { content: buffer.toString("base64"), encoding: "base64" },
+      );
+
+      treeItems.push({
+        path: item.path,
+        mode: "100644",
+        type: "blob",
+        sha: blob.sha,
+      });
+      continue;
+    }
 
     const content = await fs.readFile(fullPath, "utf8");
 
