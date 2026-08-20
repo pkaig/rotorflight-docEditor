@@ -396,11 +396,29 @@ router.get("/images/local", async (req, res) => {
     ? path.join(process.cwd(), "workspaces", login, ws, clean)
     : path.join(process.cwd(), "Rotorflight-docs", "mirror", clean);
 
-  try {
-    return res.sendFile(fullPath);
-  } catch {
-    return res.status(404).end();
-  }
+  // res.sendFile() streams the response and reports errors (ENOENT etc.)
+  // asynchronously via this callback — it never throws synchronously, so
+  // the try/catch this replaced could never actually catch anything; any
+  // failure fell through to Express's own default error handler instead,
+  // which is where the plain-HTML 404 body some requests got was coming
+  // from, with no indication here of why.
+  //
+  // dotfiles: "allow" is required on Linux specifically: the send package
+  // (which sendFile uses internally) 404s any path with a segment
+  // starting with "." unless told otherwise, and Electron's own userData
+  // directory on Linux is `~/.config/<app>` — ".config" itself is such a
+  // segment. Every file in every workspace lived under that prefix, so
+  // this 404'd every single image on Linux while working fine on Windows
+  // (%APPDATA%\<app> has no dot-prefixed segment). fullPath is always
+  // our own app-data tree, never anything path-supplied without going
+  // through isSafePathSegment/isSafeRelativePath above, so there's no
+  // real dotfile-traversal risk being allowed here.
+  res.sendFile(fullPath, { dotfiles: "allow" }, (err) => {
+    if (err) {
+      console.error("images/local: sendFile failed for", fullPath, err);
+      if (!res.headersSent) res.status(404).end();
+    }
+  });
 });
 
 /* ============================================================
@@ -609,13 +627,19 @@ export async function scanLocalChanges(login: string, workspace: string) {
     const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(file);
 
     if (isImage) {
-      const localStat = await fs.stat(localPath);
-      const mirrorStat = await fs.stat(mirrorPath);
+      // Compares actual bytes, not size+mtime — mtime in particular
+      // depends on exactly how/when the local and mirror copies were each
+      // written to disk, which can differ (sometimes only by
+      // milliseconds, sometimes because of filesystem mtime-precision
+      // differences between platforms) even when their content is
+      // genuinely byte-identical, flagging every image in a workspace as
+      // "modified" with nothing actually changed.
+      const [localBuf, mirrorBuf] = await Promise.all([
+        fs.readFile(localPath),
+        fs.readFile(mirrorPath),
+      ]);
 
-      if (
-        localStat.size !== mirrorStat.size ||
-        localStat.mtimeMs !== mirrorStat.mtimeMs
-      ) {
+      if (!localBuf.equals(mirrorBuf)) {
         modified.push({ path: file, type: "modified" });
       }
 
