@@ -362,6 +362,26 @@
   margin: 1rem 0;
 }
 
+.update-image-btn {
+  background: #e0f0ff;
+  border: 1px solid #99caff;
+  color: #004a80;
+  border-radius: 6px;
+  padding: 0.45rem 0.9rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.update-image-btn:hover {
+  background: #d4e9ff;
+}
+
+.update-image-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .rf-preview blockquote {
   border-left: 4px solid #ccc;
   padding-left: 1rem;

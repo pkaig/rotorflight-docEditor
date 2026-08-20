@@ -47,18 +47,29 @@ interface PreviewProps {
   content: string;
   currentDocPath: string;
   onError?: (line: number | null) => void;
+  // Called after a successful in-place image replacement (see the
+  // "Update image" button below) so App.tsx can refresh the tree/Changes
+  // panel — this component has no other way to signal that back up.
+  onImageUpdated?: () => void;
 }
 
 export default function Preview({
   content,
   currentDocPath,
   onError = () => {},
+  onImageUpdated = () => {},
 }: PreviewProps) {
   const isImage = /\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath);
 
   const [MDXContent, setMDXContent] = useState<any>(null);
   const [error, setError] = useState<any>(null);
   const [rawMode, setRawMode] = useState(false);
+  // Cache-busts the displayed <img> after a successful update — the URL
+  // itself would otherwise be byte-identical to what the browser already
+  // has cached, so a fresh fetch never happens without this.
+  const [imageCacheBust, setImageCacheBust] = useState(0);
+  const [updatingImage, setUpdatingImage] = useState(false);
+  const imageUpdateInputRef = useRef<HTMLInputElement>(null);
 
   // Raw CSS pulled in via .module.css imports (see loadSiteModule) has no
   // build step to scope it, so it's injected globally in a single tag that
@@ -302,25 +313,80 @@ export default function(runtime) {
     else onError(null);
   }, [error, onError]);
 
+  useEffect(() => {
+    setImageCacheBust(0);
+  }, [currentDocPath]);
+
   if (isImage) {
     // /api/docs/images/local requires login + workspace (see docsRoutes.ts
     // requireToken), same as rehypeImagesPlugin.ts's in-content <img> src.
     const login = localStorage.getItem("rf_login") || "";
     const wsMatch = currentDocPath.match(/^local-workspace\/([^/]+)\//);
     const workspace = wsMatch ? wsMatch[1] : "";
+    const relPath = currentDocPath.replace(/^local-workspace\/[^/]+\//, "");
+    const folder = relPath.replace(/\/[^/]+$/, "");
+    const filename = relPath.split("/").pop() || "";
+
     const params = new URLSearchParams({
       path: currentDocPath,
       login,
       workspace,
     });
+    if (imageCacheBust) params.set("t", String(imageCacheBust));
     const url = `/api/docs/images/local?${params.toString()}`;
+
+    async function handleReplace(file: File) {
+      // Uploads under the image's own existing filename, not the picked
+      // file's — this replaces the content in place so every doc already
+      // referencing it (by that exact name) keeps working, rather than
+      // creating a second, differently-named image alongside it.
+      const renamed = new File([file], filename, { type: file.type });
+      const formData = new FormData();
+      formData.append("folder", folder);
+      formData.append("file", renamed);
+
+      setUpdatingImage(true);
+      try {
+        const res = await fetch(
+          `/api/docs/local/upload?login=${encodeURIComponent(login)}&workspace=${encodeURIComponent(workspace)}`,
+          { method: "POST", body: formData },
+        );
+        if (!res.ok) throw new Error("Upload failed");
+        setImageCacheBust(Date.now());
+        onImageUpdated();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Failed to update image");
+      } finally {
+        setUpdatingImage(false);
+      }
+    }
+
     return (
       <div className="rf-preview">
         <img
+          key={url}
           src={url}
           alt={currentDocPath}
           style={{ maxWidth: "100%", height: "auto", display: "block" }}
         />
+        <input
+          ref={imageUpdateInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleReplace(file);
+            e.target.value = "";
+          }}
+        />
+        <button
+          className="update-image-btn"
+          disabled={updatingImage}
+          onClick={() => imageUpdateInputRef.current?.click()}
+        >
+          {updatingImage ? "Updating…" : "Update image…"}
+        </button>
       </div>
     );
   }

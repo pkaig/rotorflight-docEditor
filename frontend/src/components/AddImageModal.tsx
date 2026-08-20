@@ -28,6 +28,7 @@ interface AddImageModalProps {
   isOpen: boolean;
   folder: string | null; // full virtual path, e.g. "local-workspace/<ws>/docs/setup/img"
   login: string | null;
+  existingNames: string[]; // filenames already in `folder`, for the overwrite check below
   onClose: () => void;
   onUploaded: (workspace: string) => void;
 }
@@ -53,6 +54,7 @@ export function AddImageModal({
   isOpen,
   folder,
   login,
+  existingNames,
   onClose,
   onUploaded,
 }: AddImageModalProps) {
@@ -141,6 +143,18 @@ export function AddImageModal({
     }
 
     const finalName = `${safeName}.${imageExt}`;
+
+    // The upload endpoint has no overwrite guard of its own — it just
+    // writes the file, silently replacing whatever was there. Without
+    // this check the only way to tell an overwrite even happened was
+    // watching whether the preview visibly changed.
+    if (
+      existingNames.includes(finalName) &&
+      !confirm(`"${finalName}" already exists in this folder. Overwrite it?`)
+    ) {
+      return;
+    }
+
     const renamedFile = new File([imageBlob], finalName, {
       type: imageBlob.type,
     });

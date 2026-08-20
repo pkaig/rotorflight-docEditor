@@ -114,6 +114,30 @@ function findFirstImage(nodes: TreeNode[], folderPath: string): string | null {
   return images[0] ?? null;
 }
 
+// Looks up an img/ folder directly by its own path (unlike findFirstImage
+// above, which looks up a *parent* folder and finds its img/ child) and
+// lists the image files already in it, so AddImageModal can warn before
+// silently overwriting one — the upload endpoint has no such check itself,
+// so without this the only way to tell was watching whether the preview
+// changed after uploading.
+function listImageNames(nodes: TreeNode[], imgFolderPath: string): string[] {
+  function findNode(list: TreeNode[]): TreeNode | null {
+    for (const n of list) {
+      if (n.path === imgFolderPath) return n;
+      if (n.children) {
+        const found = findNode(n.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const imgFolder = findNode(nodes);
+  return (imgFolder?.children ?? [])
+    .filter((c) => c.type === "file" && IMAGE_RE.test(c.name))
+    .map((c) => c.name);
+}
+
 /* -------------------------------------------------------
    ROOT APPLICATION COMPONENT
 ------------------------------------------------------- */
@@ -197,6 +221,7 @@ export default function App() {
   const [newFileImageName, setNewFileImageName] = useState<string | null>(null);
   const [showAddImageModal, setShowAddImageModal] = useState(false);
   const [addImageFolder, setAddImageFolder] = useState<string | null>(null);
+  const [addImageExistingNames, setAddImageExistingNames] = useState<string[]>([]);
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
   const { checking, updating } = useUpstreamStatus(login);
@@ -787,6 +812,7 @@ export default function App() {
                     onNewImage={(folderPath) => {
                       setWorkspace(ws);
                       setAddImageFolder(folderPath);
+                      setAddImageExistingNames(listImageNames(nodes, folderPath));
                       setShowAddImageModal(true);
                     }}
                   />
@@ -952,6 +978,7 @@ export default function App() {
           isOpen={showAddImageModal}
           folder={addImageFolder}
           login={login}
+          existingNames={addImageExistingNames}
           onClose={() => setShowAddImageModal(false)}
           onUploaded={async (ws) => {
             await refreshLocalWorkspace(ws);
@@ -1023,6 +1050,10 @@ export default function App() {
                     content={content}
                     currentDocPath={currentDocPath}
                     onError={(line) => setErrorLine(line)}
+                    onImageUpdated={async () => {
+                      if (workspace) await refreshLocalWorkspace(workspace);
+                      await notifyFileSaved();
+                    }}
                   />
                 )}
             </PreviewErrorBoundary>
