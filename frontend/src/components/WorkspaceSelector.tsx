@@ -16,6 +16,12 @@
  */
 import { useEffect, useState } from "react";
 import { validateWorkspaceName } from "../utils/validateWorkspaceName";
+// Same cleanup rules as the "create new page" and "add image" modals: the
+// input shows exactly what the user typed, and this only drives the "will
+// be created as" preview + what's actually submitted — so typing "My Gov
+// Tweaks" or "my_gov_tweaks" both land on the same "my-gov-tweaks" rather
+// than being rejected outright for using spaces/underscores/uppercase.
+import { slugifyFileName } from "../utils/slugifyFileName";
 
 interface WorkspaceSelectorProps {
   login: string | null;
@@ -99,14 +105,17 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
     }
   }, [loading, login]);
 
+  // What actually gets validated/submitted — the raw input stays in
+  // `newName` untouched so the user can keep typing naturally (spaces,
+  // capitals, etc.) without characters getting silently eaten mid-word.
+  const slug = slugifyFileName(newName);
+
   //
   // Validate workspace name
   //
   useEffect(() => {
-    const trimmed = newName.trim();
-    const error = validateWorkspaceName(trimmed);
-    setValidationError(error);
-  }, [newName]);
+    setValidationError(validateWorkspaceName(slug));
+  }, [slug]);
 
   //
   // Keyboard shortcuts
@@ -127,7 +136,7 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
   async function submit() {
     setCreating(true);
     try {
-      await onSelect(newName.trim());
+      await onSelect(slug);
     } finally {
       setCreating(false);
     }
@@ -161,11 +170,15 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
         <input
           className={`workspace-input ${validationError ? "invalid" : ""}`}
           type="text"
-          placeholder="e.g. modify-gov"
+          placeholder="e.g. Modify Gov"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           autoFocus
         />
+
+        <p className="workspace-name-preview">
+          Will be created as <code>{slug || "…"}</code>
+        </p>
 
         {validationError && (
           <div className="workspace-input-error">{validationError}</div>

@@ -1008,6 +1008,13 @@
   border-radius: 4px;
 }
 
+/* "Will be created as …" cleaned-name preview */
+.workspace-name-preview {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.4rem;
+}
+
 /* Button row */
 .workspace-selector-buttons {
   display: flex;
