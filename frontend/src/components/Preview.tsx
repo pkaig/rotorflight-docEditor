@@ -36,6 +36,7 @@ import remarkStripImports from "../mdx/remarkStripImports";
 import { createLoadContext, resolveDepsObject } from "../mdx/loadSiteModule";
 
 import rehypeImages from "../mdx/rehypeImagesPlugin";
+import { AddImageModal } from "./AddImageModal";
 
 import Tabs from "../mdx/Tabs";
 import TabItem from "../mdx/TabItem";
@@ -68,8 +69,7 @@ export default function Preview({
   // itself would otherwise be byte-identical to what the browser already
   // has cached, so a fresh fetch never happens without this.
   const [imageCacheBust, setImageCacheBust] = useState(0);
-  const [updatingImage, setUpdatingImage] = useState(false);
-  const imageUpdateInputRef = useRef<HTMLInputElement>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   // Raw CSS pulled in via .module.css imports (see loadSiteModule) has no
   // build step to scope it, so it's injected globally in a single tag that
@@ -335,32 +335,6 @@ export default function(runtime) {
     if (imageCacheBust) params.set("t", String(imageCacheBust));
     const url = `/api/docs/images/local?${params.toString()}`;
 
-    async function handleReplace(file: File) {
-      // Uploads under the image's own existing filename, not the picked
-      // file's — this replaces the content in place so every doc already
-      // referencing it (by that exact name) keeps working, rather than
-      // creating a second, differently-named image alongside it.
-      const renamed = new File([file], filename, { type: file.type });
-      const formData = new FormData();
-      formData.append("folder", folder);
-      formData.append("file", renamed);
-
-      setUpdatingImage(true);
-      try {
-        const res = await fetch(
-          `/api/docs/local/upload?login=${encodeURIComponent(login)}&workspace=${encodeURIComponent(workspace)}`,
-          { method: "POST", body: formData },
-        );
-        if (!res.ok) throw new Error("Upload failed");
-        setImageCacheBust(Date.now());
-        onImageUpdated();
-      } catch (err) {
-        alert(err instanceof Error ? err.message : "Failed to update image");
-      } finally {
-        setUpdatingImage(false);
-      }
-    }
-
     return (
       <div className="rf-preview">
         <img
@@ -369,24 +343,28 @@ export default function(runtime) {
           alt={currentDocPath}
           style={{ maxWidth: "100%", height: "auto", display: "block" }}
         />
-        <input
-          ref={imageUpdateInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleReplace(file);
-            e.target.value = "";
-          }}
-        />
         <button
           className="update-image-btn"
-          disabled={updatingImage}
-          onClick={() => imageUpdateInputRef.current?.click()}
+          onClick={() => setShowUpdateModal(true)}
         >
-          {updatingImage ? "Updating…" : "Update image…"}
+          Update image…
         </button>
+
+        {/* Same paste/drag/browse modal as the sidebar's "add image" flow
+            (see Tree.tsx's onNewImage), just in "replace this exact file"
+            mode — see AddImageModal's replaceFileName prop. */}
+        <AddImageModal
+          isOpen={showUpdateModal}
+          folder={`local-workspace/${workspace}/${folder}`}
+          login={login}
+          existingNames={[]}
+          replaceFileName={filename}
+          onClose={() => setShowUpdateModal(false)}
+          onUploaded={() => {
+            setImageCacheBust(Date.now());
+            onImageUpdated();
+          }}
+        />
       </div>
     );
   }
