@@ -38,6 +38,7 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import session from "express-session";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
@@ -95,6 +96,22 @@ app.use(
       secure: false,
       maxAge: 8 * 60 * 60 * 1000, // 8h, matches the device-flow token's own fallback expiry
     },
+  }),
+);
+
+// This server binds on all interfaces (see app.listen below), not just
+// localhost, so anything else on the same network can reach it — a single
+// desktop user has no reason to make hundreds of requests a minute, so a
+// generous cap here costs normal usage nothing while bounding how hard a
+// runaway client (buggy retry loop, or someone else on the LAN) can hit
+// the filesystem/GitHub-API-backed routes below.
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 60 * 1000,
+    limit: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
   }),
 );
 
