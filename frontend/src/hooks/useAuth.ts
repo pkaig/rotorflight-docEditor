@@ -157,6 +157,10 @@ export function useAuth() {
   // flow login and the restore-on-load session check, since both end up
   // setting `login`) — surfaces a missing GitHub App install right away
   // instead of leaving it to only be discovered later at PR-submit time.
+  // Also re-checked on window focus: installing the App happens on
+  // github.com in another tab/window, so without this the banner would
+  // keep showing "not installed" for the rest of the session even after
+  // the user actually installs it and switches back.
   useEffect(() => {
     if (!login) {
       setAppInstalled(null);
@@ -164,16 +168,22 @@ export function useAuth() {
       return;
     }
 
-    fetch("/api/auth/installation-status", { credentials: "include" })
-      .then((res) => res.json())
-      .then((data) => {
-        setAppInstalled(!!data.installed);
-        setAppInstallUrl(data.installUrl ?? null);
-      })
-      .catch(() => {
-        // Network hiccup — fail open rather than showing a false warning.
-        setAppInstalled(true);
-      });
+    function checkInstallStatus() {
+      fetch("/api/auth/installation-status", { credentials: "include" })
+        .then((res) => res.json())
+        .then((data) => {
+          setAppInstalled(!!data.installed);
+          setAppInstallUrl(data.installUrl ?? null);
+        })
+        .catch(() => {
+          // Network hiccup — fail open rather than showing a false warning.
+          setAppInstalled(true);
+        });
+    }
+
+    checkInstallStatus();
+    window.addEventListener("focus", checkInstallStatus);
+    return () => window.removeEventListener("focus", checkInstallStatus);
   }, [login]);
 
   // Destroys the server-side session (the actual trust boundary) and clears
