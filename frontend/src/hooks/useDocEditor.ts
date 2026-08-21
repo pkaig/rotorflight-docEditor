@@ -114,9 +114,6 @@ export function useDocEditor(
 
         // Normalize versioned docs
         .replace(/^versioned-docs\//, "versioned_docs/")
-
-        // Ensure docs/ stays docs/
-        .replace(/^docs\//, "docs/")
     );
   }
 

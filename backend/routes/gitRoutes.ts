@@ -36,6 +36,7 @@ import {
   rateLimitRetryAfterSeconds,
   MAX_AUTO_RETRY_WAIT_SECONDS,
   sleep,
+  buildGitHubUrl,
 } from "../githubClient";
 import { ensureFork, ForkError, UpstreamMergeConflictError } from "../ensureFork";
 import {
@@ -88,7 +89,7 @@ async function syncBranchWithUpstream(
   console.log(`🔄 Merging upstream (${upstreamSha}) into fork branch "${branch}"…`);
 
   const res = await fetch(
-    `https://api.github.com/repos/${login}/${GITHUB_REPO}/merges`,
+    buildGitHubUrl(`/repos/${login}/${GITHUB_REPO}/merges`),
     {
       method: "POST",
       headers: {
@@ -502,16 +503,18 @@ export async function githubRequest(
     headers["Content-Type"] = "application/json";
   }
 
+  const url = buildGitHubUrl(path);
+
   // ⭐ LOG THE FULL REQUEST EXACTLY AS IT WILL BE SENT
   console.log("========================================");
   console.log("📤 OUTGOING REQUEST");
-  console.log("URL:", `https://api.github.com${path}`);
+  console.log("URL:", url.href);
   console.log("Method:", method);
   console.log("Headers:", headers);
   console.log("Body:", jsonBody);
   console.log("========================================");
 
-  const res = await fetch(`https://api.github.com${path}`, {
+  const res = await fetch(url, {
     method,
     headers,
     body: jsonBody,

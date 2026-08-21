@@ -23,6 +23,26 @@
 
 export type GitHubToken = string;
 
+const GITHUB_API_BASE = "https://api.github.com";
+
+// Every GitHub API call in the backend builds its URL through this,
+// rather than raw template-literal concatenation
+// (`https://api.github.com${path}`) — GitHub's own code-scanning best
+// practices flag that pattern as a request-forgery risk, since a `path`
+// starting with "//" is protocol-relative and the URL constructor (or a
+// browser) would resolve it against a *different* host entirely,
+// bypassing api.github.com altogether. Every current call site only ever
+// passes a literal "/repos/..."-style string, never raw user input alone,
+// so this was never actually reachable in practice — but rejecting a
+// non-conforming path here closes it off structurally instead of relying
+// on that staying true as the code evolves.
+export function buildGitHubUrl(path: string): URL {
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    throw new Error(`Invalid GitHub API path: ${path}`);
+  }
+  return new URL(path, GITHUB_API_BASE);
+}
+
 export class GitHubApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -119,7 +139,7 @@ export async function githubRequest<T>(
   init: RequestInit = {},
   _isRetry = false,
 ): Promise<T> {
-  const res = await fetch(`https://api.github.com${path}`, {
+  const res = await fetch(buildGitHubUrl(path), {
     ...init,
     headers: {
       Accept: "application/vnd.github+json",
