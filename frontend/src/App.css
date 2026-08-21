@@ -1318,6 +1318,22 @@
   color: #1c1e21;
 }
 
+.app-header-help-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.35);
+  color: #1c1e21;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.app-header-help-btn:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
 .app-header-user {
   display: flex;
   align-items: center;
@@ -1413,6 +1429,18 @@
   color: #a0271b;
   font-size: 0.9rem;
   text-align: left;
+}
+
+.auth-help-link {
+  display: inline-block;
+  margin-top: 1.5rem;
+  color: #5b6472;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.auth-help-link:hover {
+  color: #1c1e21;
 }
 
 .auth-signin-btn {

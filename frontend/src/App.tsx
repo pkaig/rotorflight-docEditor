@@ -226,6 +226,14 @@ export default function App() {
   const [addImageExistingNames, setAddImageExistingNames] = useState<string[]>([]);
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
+  // Guards "+ Add Workspace" while a delete is still in flight — opening
+  // the modal before delete-workspace's own loadWorkspaces() call resolves
+  // let the sidebar's later re-render (removing the just-deleted
+  // workspace's row, which still had focus from the click that started the
+  // delete) steal focus back out of the modal's name field right after it
+  // had already grabbed it, leaving the input unresponsive for however
+  // long that pending request took to settle.
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const { checking, updating } = useUpstreamStatus(login);
   const [showDiff, setShowDiff] = useState(false);
   const [currentFile, setCurrentFile] = useState("");
@@ -405,6 +413,15 @@ export default function App() {
               </p>
             </div>
           )}
+
+          <a
+            className="auth-help-link"
+            href="https://github.com/pkaig/rotorflight-docEditor/wiki"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Help
+          </a>
         </div>
       </div>
     );
@@ -588,17 +605,22 @@ export default function App() {
 
     if (!confirm(`Delete workspace "${ws}"? This cannot be undone.`)) return;
 
-    await fetch(
-      `/api/docs/delete-workspace?login=${encodeURIComponent(
-        login,
-      )}&workspace=${encodeURIComponent(ws)}`,
-      { method: "DELETE" },
-    );
+    setDeletingWorkspace(true);
+    try {
+      await fetch(
+        `/api/docs/delete-workspace?login=${encodeURIComponent(
+          login,
+        )}&workspace=${encodeURIComponent(ws)}`,
+        { method: "DELETE" },
+      );
 
-    await loadWorkspaces();
+      await loadWorkspaces();
 
-    if (workspace === ws) {
-      setWorkspace(null);
+      if (workspace === ws) {
+        setWorkspace(null);
+      }
+    } finally {
+      setDeletingWorkspace(false);
     }
   }
 
@@ -647,6 +669,15 @@ export default function App() {
             <img src={rfHeliLogo} alt="" className="app-header-logo" />
             <span className="app-header-title">Rotorflight Docs Editor</span>
           </div>
+
+          <a
+            className="app-header-help-btn"
+            href="https://github.com/pkaig/rotorflight-docEditor/wiki"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Help
+          </a>
 
           <div className="app-header-user">
             <button
@@ -722,9 +753,15 @@ export default function App() {
             <div className="workspace-controls">
               <button
                 className="add-workspace-btn"
+                disabled={deletingWorkspace}
+                title={
+                  deletingWorkspace
+                    ? "Waiting for the workspace deletion to finish…"
+                    : undefined
+                }
                 onClick={() => setShowWorkspaceSelector(true)}
               >
-                + Add Workspace
+                {deletingWorkspace ? "Deleting…" : "+ Add Workspace"}
               </button>
 
               {showWorkspaceSelector && (

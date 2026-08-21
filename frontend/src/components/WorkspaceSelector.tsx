@@ -14,7 +14,7 @@
  *   looks like unfinished scaffolding for showing/avoiding duplicates,
  *   left as-is rather than removed or finished here.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { validateWorkspaceName } from "../utils/validateWorkspaceName";
 // Same cleanup rules as the "create new page" and "add image" modals: the
 // input shows exactly what the user typed, and this only drives the "will
@@ -46,6 +46,39 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
   // looking idle for the whole call, since App.tsx's own "workspace
   // created" banner only appears once that call has basically finished.
   const [creating, setCreating] = useState(false);
+
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // autoFocus/a single window.focus() call weren't reliable here: this
+  // modal is typically opened right after a window.confirm() dialog
+  // closes (e.g. delete-workspace's confirm), and the Electron window
+  // doesn't always reclaim OS-level keyboard focus back at that exact
+  // moment — it comes back on its own a couple of seconds later (the
+  // field visually looked focused the whole time, but no keystrokes
+  // actually arrived until then). A single focus() call fired immediately
+  // on mount just loses that race. Retries every 150ms, checking
+  // document.hasFocus() (the window itself, not just the DOM element) so
+  // it stops the moment focus genuinely lands rather than fighting it
+  // indefinitely, capped at ~3s so a stuck window doesn't retry forever.
+  useEffect(() => {
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout>;
+
+    function tryFocus() {
+      window.focus();
+      nameInputRef.current?.focus();
+      attempts++;
+
+      const focused =
+        document.hasFocus() && document.activeElement === nameInputRef.current;
+      if (focused || attempts >= 20) return;
+
+      timer = setTimeout(tryFocus, 150);
+    }
+
+    tryFocus();
+    return () => clearTimeout(timer);
+  }, []);
 
   //
   // Load existing workspaces
@@ -168,6 +201,7 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
         )}
 
         <input
+          ref={nameInputRef}
           className={`workspace-input ${validationError ? "invalid" : ""}`}
           type="text"
           placeholder="e.g. Modify Gov"
@@ -180,7 +214,6 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
             // actually uses, rather than rejecting multi-word names outright.
             setNewName(e.target.value.replace(/[^a-zA-Z0-9 _-]/g, ""))
           }
-          autoFocus
         />
 
         <p className="workspace-name-preview">
