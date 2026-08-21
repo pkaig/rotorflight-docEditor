@@ -23,10 +23,16 @@
    Applies to all pages and components.
    ============================================================ */
 
+/* No display:flex/place-items:center here (the original Vite scaffold
+   had them, for centering a small starter page) — this app's own
+   .app-root already fills the full window via height:100vh and its own
+   flex layout, so body just needs to not constrain its width. A flex
+   body with no explicit width centers its child at a shrink-to-fit
+   size instead of stretching it, which is what was silently squeezing
+   the whole app (sidebar + editor + preview) narrower than the actual
+   window. */
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
 }
