@@ -22,6 +22,7 @@ import { validateWorkspaceName } from "../utils/validateWorkspaceName";
 // Tweaks" or "my_gov_tweaks" both land on the same "my-gov-tweaks" rather
 // than being rejected outright for using spaces/underscores/uppercase.
 import { slugifyFileName } from "../utils/slugifyFileName";
+import { focusAppWindow } from "../utils/focusAppWindow";
 
 interface WorkspaceSelectorProps {
   login: string | null;
@@ -49,23 +50,20 @@ export function WorkspaceSelector({ login, onSelect }: WorkspaceSelectorProps) {
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // autoFocus/a single window.focus() call weren't reliable here: this
-  // modal is typically opened right after a window.confirm() dialog
-  // closes (e.g. delete-workspace's confirm), and the Electron window
-  // doesn't always reclaim OS-level keyboard focus back at that exact
-  // moment — it comes back on its own a couple of seconds later (the
-  // field visually looked focused the whole time, but no keystrokes
-  // actually arrived until then). A single focus() call fired immediately
-  // on mount just loses that race. Retries every 150ms, checking
-  // document.hasFocus() (the window itself, not just the DOM element) so
-  // it stops the moment focus genuinely lands rather than fighting it
-  // indefinitely, capped at ~3s so a stuck window doesn't retry forever.
+  // autoFocus/plain window.focus() weren't reliable here: this modal is
+  // typically opened right after a window.confirm() dialog closes (e.g.
+  // delete-workspace's confirm), and window.focus() from a renderer is a
+  // request the OS is free to ignore (especially on Windows) — see
+  // focusAppWindow's own header comment for the real fix (routing through
+  // BrowserWindow.focus() in the main process instead). Still retries for
+  // a few seconds and checks document.hasFocus(), since even the reliable
+  // path can lose a narrow race against whatever just closed.
   useEffect(() => {
     let attempts = 0;
     let timer: ReturnType<typeof setTimeout>;
 
     function tryFocus() {
-      window.focus();
+      focusAppWindow();
       nameInputRef.current?.focus();
       attempts++;
 

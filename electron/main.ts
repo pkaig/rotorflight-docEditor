@@ -32,7 +32,7 @@
  *   frontend/dist" the way it is in plain `node dist/server.js` — so
  *   this is passed explicitly instead.
  */
-import { app, BrowserWindow, dialog, shell } from "electron";
+import { app, BrowserWindow, dialog, shell, ipcMain } from "electron";
 import path from "path";
 import fs from "fs";
 import http from "http";
@@ -139,6 +139,8 @@ function waitForServer(url: string, timeoutMs: number): Promise<void> {
 // is resolved.
 const ICON_PATH = path.join(RESOURCES_ROOT, "electron", "icon.ico");
 
+const PRELOAD_PATH = path.join(__dirname, "preload.js");
+
 async function createWindow(): Promise<void> {
   const win = new BrowserWindow({
     width: 1400,
@@ -148,6 +150,7 @@ async function createWindow(): Promise<void> {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: PRELOAD_PATH,
     },
   });
 
@@ -162,6 +165,16 @@ async function createWindow(): Promise<void> {
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  // Backs preload.ts's window.electronAPI.focusWindow() — see that
+  // file's header comment for why the renderer's own window.focus() call
+  // isn't reliable enough on its own (it's a request the OS is free to
+  // ignore, especially on Windows) and this main-process-side
+  // BrowserWindow.focus() is needed as the actually-reliable fallback.
+  ipcMain.handle("focus-window", () => {
+    win.focus();
+    win.webContents.focus();
   });
 
   await win.loadURL(`http://localhost:${PORT}/`);
