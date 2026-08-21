@@ -91,6 +91,11 @@ interface EditorPanelProps {
   ) => Promise<{ ok: boolean; error?: string } | undefined>;
   newDocTemplate: string;
   newFileImageName: string | null;
+  // Forwarded straight through to the underlying <textarea> — the
+  // editor/preview scroll-sync hook (owned by App.tsx, a sibling of this
+  // component) needs the real DOM node to read/drive scrollTop and to
+  // measure image-line pixel offsets against.
+  textareaRef?: React.Ref<HTMLTextAreaElement>;
 }
 
 export const EditorPanel = React.memo(function EditorPanel({
@@ -115,6 +120,7 @@ export const EditorPanel = React.memo(function EditorPanel({
   notifyFileCreated,
   newDocTemplate,
   newFileImageName,
+  textareaRef,
 }: EditorPanelProps) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -139,7 +145,7 @@ export const EditorPanel = React.memo(function EditorPanel({
         </div>
       )}
 
-      <h3>{conflict ? "Resolve Conflict" : "Editor"}</h3>
+      {conflict && <h3>Resolve Conflict</h3>}
 
       {/* EDITOR BODY */}
       {conflict && workspace ? (
@@ -156,6 +162,7 @@ export const EditorPanel = React.memo(function EditorPanel({
         />
       ) : (
         <SpellcheckTextarea
+          ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           login={login}
@@ -170,7 +177,7 @@ export const EditorPanel = React.memo(function EditorPanel({
             fontFamily: "Consolas, 'Courier New', monospace",
             fontSize: "14px",
             padding: "1rem",
-            border: "1px solid #ccc",
+            border: "1px solid #ddd",
             borderRadius: 4,
             background:
               errorLine !== null

@@ -563,6 +563,59 @@
   flex-direction: column;
   overflow: hidden;
   height: 100%;
+  flex-shrink: 0;
+  transition: width 0.18s ease;
+}
+
+/* Collapses to nothing — the toggle to re-expand now lives entirely in
+   .sidebar-toggle-bar, a separate element outside .sidebar (see App.tsx),
+   so there's no button of its own left inside here needing room. */
+.sidebar.collapsed {
+  width: 0;
+  padding: 0;
+  border-right: none;
+}
+
+/* Full-height bar between the sidebar and the editor column — click
+   anywhere along it to collapse/expand, same visual language as
+   SplitScrollbar's track between the editor and preview columns. */
+.sidebar-toggle-bar {
+  flex-shrink: 0;
+  width: 14px;
+  padding: 0;
+  border: none;
+  border-left: 1px solid #ddd;
+  border-right: 1px solid #ddd;
+  background: #eef2f7;
+  color: #1a4d8f;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Same neutral look as .split-scrollbar-track on either side of it —
+     no colored ring on click, just a background shift, same as :hover. */
+  outline: none;
+}
+
+/* index.css's leftover Vite-scaffold `button:focus-visible { outline: 4px
+   auto -webkit-focus-ring-color }` is more specific (element+pseudo-class
+   beats a single class) than the plain .sidebar-toggle-bar rule above, so
+   it was winning and drawing that rule's amber ring right back on click —
+   this repeats the outline:none at matching specificity to actually beat it. */
+.sidebar-toggle-bar:focus,
+.sidebar-toggle-bar:focus-visible {
+  outline: none;
+}
+
+.sidebar-toggle-bar:hover,
+.sidebar-toggle-bar:focus-visible {
+  background: #dceafc;
+}
+
+.sidebar-toggle-bar span {
+  font-size: 0.9rem;
+  line-height: 1;
+  writing-mode: horizontal-tb;
 }
 
 .docs-panel {
@@ -1601,7 +1654,50 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* No border-right here anymore — SplitScrollbar renders in the gap
+     between this column and .preview-panel and serves as the visual
+     divider between them now that they share one scrollbar instead of
+     each having its own. */
+}
+
+/* Hides the native scrollbar on an element that's still natively
+   scrollable (wheel/keyboard/touch keep working) — used on the editor
+   textarea and the preview panel now that SplitScrollbar is the only
+   visible scrollbar for either of them. scrollbar-width covers
+   Firefox; the pseudo-element covers Chromium/Electron. */
+.rf-synced-scroll-hidden {
+  scrollbar-width: none;
+}
+.rf-synced-scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.split-scrollbar-track {
+  flex-shrink: 0;
+  width: 10px;
+  position: relative;
+  /* Dragging the track itself (as opposed to the thumb, see below)
+     resizes the editor/preview split — col-resize is the standard
+     cursor affordance for that. */
+  cursor: col-resize;
+  background: #eef2f7;
+  border-left: 1px solid #ddd;
   border-right: 1px solid #ddd;
+}
+
+.split-scrollbar-thumb {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  border-radius: 4px;
+  background: #b7c6da;
+  transition: background 0.1s ease;
+  cursor: ns-resize;
+}
+
+.split-scrollbar-track:hover .split-scrollbar-thumb,
+.split-scrollbar-thumb:active {
+  background: #8fa5c2;
 }
 
 /* toolbar */
@@ -1622,8 +1718,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 1rem;
-  padding-bottom: 2rem; /* inner margin from bottom */
+  padding: 0.4rem 1rem 2rem; /* tighter top now the "Editor" heading is gone */
 }
 
 /* preview column */

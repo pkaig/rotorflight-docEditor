@@ -24,7 +24,7 @@
  *   manipulation, so the browser's native undo stack treats a
  *   correction as one undoable step.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react";
 import { useSpellchecker } from "../hooks/useSpellchecker";
 import { tokenizeMarkdown, type WordToken } from "../spellcheck/tokenizeMarkdown";
 
@@ -35,19 +35,19 @@ import { tokenizeMarkdown, type WordToken } from "../spellcheck/tokenizeMarkdown
 // a backdrop <div> that mirrors the same text with misspelled words
 // wrapped in <mark> — the classic "highlighted textarea" technique, since
 // a native textarea can't style substrings itself.
-export function SpellcheckTextarea({
-  value,
-  onChange,
-  style,
-  login,
-  workspace,
-}: {
+export const SpellcheckTextarea = forwardRef<HTMLTextAreaElement, {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   style?: React.CSSProperties;
   login: string | null;
   workspace: string | null;
-}) {
+}>(function SpellcheckTextarea({
+  value,
+  onChange,
+  style,
+  login,
+  workspace,
+}, forwardedRef) {
   const { ready, checkWord, isProjectWord, suggest, addWord } =
     useSpellchecker(login, workspace);
 
@@ -64,6 +64,7 @@ export function SpellcheckTextarea({
   const containerRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(forwardedRef, () => textareaRef.current as HTMLTextAreaElement);
 
   // The backdrop must have the exact same content width as the real
   // textarea for their word-wrap to land on the same points. Trying to
@@ -293,7 +294,11 @@ export function SpellcheckTextarea({
           width: taSize ? `${taSize.width + borderWidthPx * 2}px` : "100%",
           height: taSize ? `${taSize.height + borderWidthPx * 2}px` : "100%",
           overflow: "hidden",
-          borderColor: "#ccc",
+          // Matches SplitScrollbar's neutral #ddd rather than a
+          // separately-chosen gray, so the editor panel's own border
+          // reads as part of the same visual language as the shared
+          // scrollbar next to it.
+          borderColor: "#ddd",
           background: style?.background ?? "white",
           color: "#000",
           pointerEvents: "none",
@@ -313,19 +318,28 @@ export function SpellcheckTextarea({
         onContextMenu={handleContextMenu}
         onKeyUp={() => setPopover(null)}
         spellCheck={false}
+        className="rf-synced-scroll-hidden"
         style={{
           ...sharedBox,
           position: "relative",
           width: "100%",
           height: "100%",
-          // Natural scrolling — whatever real or overlay scrollbar the
-          // platform gives it, the ResizeObserver above measures its
-          // actual content width afterward and resizes the backdrop to
-          // match, so there's no need to force a permanently-reserved
-          // scrollbar gutter here anymore.
+          // Still natively scrollable (wheel/keyboard/touch all keep
+          // working) — only the visible scrollbar itself is hidden, via
+          // the rf-synced-scroll-hidden class in App.css, since the
+          // editor and preview now share a single scrollbar between them
+          // (see SplitScrollbar.tsx) instead of each panel showing its
+          // own. The ResizeObserver above still measures the real
+          // clientWidth either way, so the backdrop stays aligned.
           overflowY: "auto",
           overflowX: "hidden",
           borderColor: "transparent",
+          // The browser's default focus ring on a <textarea> is a
+          // separate outline, not this border — without suppressing it,
+          // clicking into the editor drew a bright accent-colored ring
+          // around the whole panel that had nothing to do with either
+          // layer's actual (transparent/#ccc) border color.
+          outline: "none",
           background: "transparent",
           color: "transparent",
           caretColor: "black",
@@ -372,4 +386,4 @@ export function SpellcheckTextarea({
       )}
     </div>
   );
-}
+});

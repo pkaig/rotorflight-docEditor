@@ -22,7 +22,9 @@
  */
 import "./App.css";
 import { version as APP_VERSION } from "../package.json";
-import { useState, useEffect } from "react"; // <-- UPDATED
+import { useState, useEffect, useRef } from "react"; // <-- UPDATED
+import { SplitScrollbar } from "./components/SplitScrollbar";
+import { useEditorPreviewScrollSync } from "./hooks/useEditorPreviewScrollSync";
 import rfHeliLogo from "./assets/RFHeli.svg";
 import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
 import Preview from "./components/Preview";
@@ -211,11 +213,6 @@ export default function App() {
   } = useDocEditor(login, workspace, notifyFileSaved);
 
   /* UI STATE */
-  // Return value unused — the resizable editor/preview divider this hook
-  // drives isn't currently wired to any draggable handle in the JSX below,
-  // so it's inert today. Still called so its window mousemove/mouseup
-  // listeners are attached, in case that wiring comes back.
-  useDragResize(50);
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const [showNewFileModal, setShowNewFileModal] = useState(false);
@@ -251,7 +248,29 @@ export default function App() {
     onConfirm: () => void;
   } | null>(null);
   const { checking, updating } = useUpstreamStatus(login);
+  // Collapsing the sidebar just shrinks .sidebar's width — the editor and
+  // preview columns are already flex:1/50%-50% of whatever space is left
+  // in .main-layout, so they expand to fill the freed space automatically
+  // with no width math needed here.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
+
+  // Editor/preview share one scrollbar (see SplitScrollbar below) instead
+  // of each panel keeping its own — useEditorPreviewScrollSync needs the
+  // real DOM nodes to read/drive scrollTop and to measure image
+  // positions against.
+  const editorTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewPanelRef = useRef<HTMLDivElement | null>(null);
+  const { fraction: scrollFraction, setFraction: setScrollFraction, thumbSize: scrollThumbSize } =
+    useEditorPreviewScrollSync(content, editorTextareaRef, previewPanelRef);
+
+  // Dragging SplitScrollbar's track (not its thumb, which scrolls
+  // instead) resizes the editor/preview split, clamped to 50% ± 25%.
+  const editorPreviewRowRef = useRef<HTMLDivElement | null>(null);
+  const { editorPercent, startDrag: startColumnResize } = useDragResize(
+    editorPreviewRowRef,
+    50,
+  );
   const [currentFile, setCurrentFile] = useState("");
 
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -752,7 +771,9 @@ export default function App() {
       {/* MAIN LAYOUT */}
       <div className="main-layout">
         {/* SIDEBAR */}
-        <div className="sidebar">
+        <div className={`sidebar${sidebarCollapsed ? " collapsed" : ""}`}>
+          {!sidebarCollapsed && (
+            <>
           <div className="sidebar-top">
             {/* <h3>Docs</h3> */}
 
@@ -1037,7 +1058,18 @@ export default function App() {
               />
             </div>
           </div>
+            </>
+          )}
         </div>
+
+        <button
+          type="button"
+          className="sidebar-toggle-bar"
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={() => setSidebarCollapsed((prev) => !prev)}
+        >
+          <span>{sidebarCollapsed ? "»" : "«"}</span>
+        </button>
 
         {showConflictModal && conflictData && (
           <ConflictResolver
@@ -1087,9 +1119,9 @@ export default function App() {
         />
 
         {/* MAIN EDITOR + PREVIEW AREA */}
-        <div className="editor-preview-row">
+        <div className="editor-preview-row" ref={editorPreviewRowRef}>
           {/* EDITOR COLUMN */}
-          <div className="editor-column">
+          <div className="editor-column" style={{ width: `${editorPercent}%` }}>
             <div className="editor-toolbar">
               {!showDiff && (
                 <button onClick={() => setShowDiff(true)}>Show Diff</button>
@@ -1134,13 +1166,25 @@ export default function App() {
                   notifyFileCreated={notifyFileCreated}
                   newDocTemplate={newDocTemplate}
                   newFileImageName={newFileImageName}
+                  textareaRef={editorTextareaRef}
                 />
               )}
             </div>
           </div>
 
+          <SplitScrollbar
+            fraction={scrollFraction}
+            thumbSize={scrollThumbSize}
+            onFractionChange={setScrollFraction}
+            onResizeStart={startColumnResize}
+          />
+
           {/* PREVIEW COLUMN */}
-          <div className="preview-panel">
+          <div
+            className="preview-panel rf-synced-scroll-hidden"
+            ref={previewPanelRef}
+            style={{ width: `${100 - editorPercent}%` }}
+          >
             <h3>Preview</h3>
             <PreviewErrorBoundary key={currentDocPath} onError={setErrorLine}>
               {currentDocPath &&
