@@ -23,6 +23,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { slugifyFileName } from "../utils/slugifyFileName";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface AddImageModalProps {
   isOpen: boolean;
@@ -73,6 +74,7 @@ export function AddImageModal({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [confirmOverwriteName, setConfirmOverwriteName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const wsMatch = folder?.match(/^local-workspace\/([^/]+)\//);
@@ -141,35 +143,8 @@ export function AddImageModal({
 
   if (!isOpen) return null;
 
-  async function handleUpload() {
+  async function doUpload(finalName: string) {
     if (!imageBlob || !ws || !relFolder || !login) return;
-
-    let finalName: string;
-    if (replaceFileName) {
-      // Always the original name, regardless of what got pasted/dropped —
-      // that's the entire point of this mode, so every doc already
-      // referencing it keeps working.
-      finalName = replaceFileName;
-    } else {
-      const safeName = slugifyFileName(name);
-      if (!safeName) {
-        setError("Enter a name for the image.");
-        return;
-      }
-      finalName = `${safeName}.${imageExt}`;
-
-      // The upload endpoint has no overwrite guard of its own — it just
-      // writes the file, silently replacing whatever was there. Without
-      // this check the only way to tell an overwrite even happened was
-      // watching whether the preview visibly changed. Not needed in
-      // replace mode above — overwriting IS the point there.
-      if (
-        existingNames.includes(finalName) &&
-        !confirm(`"${finalName}" already exists in this folder. Overwrite it?`)
-      ) {
-        return;
-      }
-    }
 
     const renamedFile = new File([imageBlob], finalName, {
       type: imageBlob.type,
@@ -200,6 +175,37 @@ export function AddImageModal({
     } finally {
       setUploading(false);
     }
+  }
+
+  function handleUpload() {
+    if (!imageBlob) return;
+
+    if (replaceFileName) {
+      // Always the original name, regardless of what got pasted/dropped —
+      // that's the entire point of this mode, so every doc already
+      // referencing it keeps working. Overwriting IS the point here, so
+      // no confirm needed.
+      doUpload(replaceFileName);
+      return;
+    }
+
+    const safeName = slugifyFileName(name);
+    if (!safeName) {
+      setError("Enter a name for the image.");
+      return;
+    }
+    const finalName = `${safeName}.${imageExt}`;
+
+    // The upload endpoint has no overwrite guard of its own — it just
+    // writes the file, silently replacing whatever was there. Without
+    // this check the only way to tell an overwrite even happened was
+    // watching whether the preview visibly changed.
+    if (existingNames.includes(finalName)) {
+      setConfirmOverwriteName(finalName);
+      return;
+    }
+
+    doUpload(finalName);
   }
 
   return (
@@ -296,6 +302,19 @@ export function AddImageModal({
           </button>
         </div>
       </div>
+
+      {confirmOverwriteName && (
+        <ConfirmDialog
+          message={`"${confirmOverwriteName}" already exists in this folder. Overwrite it?`}
+          danger
+          onConfirm={() => {
+            const finalName = confirmOverwriteName;
+            setConfirmOverwriteName(null);
+            doUpload(finalName);
+          }}
+          onCancel={() => setConfirmOverwriteName(null)}
+        />
+      )}
     </div>
   );
 }

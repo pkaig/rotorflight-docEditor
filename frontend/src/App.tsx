@@ -51,6 +51,7 @@ import { useDocTrees } from "./hooks/useDocTrees";
 import { useDocEditor } from "./hooks/useDocEditor";
 import { useDragResize } from "./hooks/useDragResize";
 import { WorkspaceSelector } from "./components/WorkspaceSelector";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { useWorkspaces } from "./hooks/useWorkspaces";
 import { validateWorkspaceName } from "./utils/validateWorkspaceName";
 
@@ -234,6 +235,21 @@ export default function App() {
   // had already grabbed it, leaving the input unresponsive for however
   // long that pending request took to settle.
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
+
+  // In-page replacement for window.confirm() across the whole app — see
+  // ConfirmDialog.tsx's header comment for why: a native confirm() dialog
+  // turned out to be the actual trigger behind a real, reproducible
+  // Windows-only bug where the app lost keyboard focus afterward and
+  // couldn't reliably reclaim it programmatically by any means tried
+  // (BrowserWindow.focus(), the alwaysOnTop-toggle workaround for
+  // Windows' foreground lock), recoverable only by an actual alt-tab away
+  // and back. Rendering the confirmation in-page instead means there's no
+  // native OS dialog, and thus no OS-level focus handoff, to go wrong.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    message: string;
+    danger?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
   const { checking, updating } = useUpstreamStatus(login);
   const [showDiff, setShowDiff] = useState(false);
   const [currentFile, setCurrentFile] = useState("");
@@ -600,28 +616,44 @@ export default function App() {
   }
 
   /* DELETE WORKSPACE */
-  async function handleDeleteWorkspace(ws: string) {
+  function handleDeleteWorkspace(ws: string) {
     if (!login) return;
 
-    if (!confirm(`Delete workspace "${ws}"? This cannot be undone.`)) return;
+    setPendingConfirm({
+      message: `Delete workspace "${ws}"? This cannot be undone.`,
+      danger: true,
+      onConfirm: async () => {
+        setPendingConfirm(null);
 
-    setDeletingWorkspace(true);
-    try {
-      await fetch(
-        `/api/docs/delete-workspace?login=${encodeURIComponent(
-          login,
-        )}&workspace=${encodeURIComponent(ws)}`,
-        { method: "DELETE" },
-      );
+        // Cleared before the delete request goes out, not after — leaving
+        // the app still pointed at a workspace (and possibly a doc within
+        // it) that's about to stop existing on disk left other effects
+        // depending on `workspace`/currentDocPath free to fire against it
+        // during the delete's own request, a plausible extra contributor
+        // to the focus-loss bug the ConfirmDialog change above addresses
+        // more directly.
+        if (workspace === ws) {
+          setWorkspace(null);
+          if (currentDocPath.startsWith(`local-workspace/${ws}/`)) {
+            setCurrentDocPath("");
+          }
+        }
 
-      await loadWorkspaces();
+        setDeletingWorkspace(true);
+        try {
+          await fetch(
+            `/api/docs/delete-workspace?login=${encodeURIComponent(
+              login,
+            )}&workspace=${encodeURIComponent(ws)}`,
+            { method: "DELETE" },
+          );
 
-      if (workspace === ws) {
-        setWorkspace(null);
-      }
-    } finally {
-      setDeletingWorkspace(false);
-    }
+          await loadWorkspaces();
+        } finally {
+          setDeletingWorkspace(false);
+        }
+      },
+    });
   }
 
   /* Loading Local Workspace Banner */
@@ -685,7 +717,13 @@ export default function App() {
               className="app-header-avatar-btn"
               title="Log out"
               onClick={() => {
-                if (confirm("Do you want to logout?")) logout();
+                setPendingConfirm({
+                  message: "Do you want to logout?",
+                  onConfirm: () => {
+                    setPendingConfirm(null);
+                    logout();
+                  },
+                });
               }}
             >
               <img
@@ -881,7 +919,7 @@ export default function App() {
             <div className="changes-actions">
               <button
                 className="clear-selected-btn"
-                onClick={async (e) => {
+                onClick={(e) => {
                   e.stopPropagation();
 
                   const selected = Object.keys(selectedChanges).filter(
@@ -889,47 +927,50 @@ export default function App() {
                   );
                   if (selected.length === 0) return;
 
-                  if (
-                    !confirm(
-                      `Restore ${selected.length} file(s) from baseline?`,
-                    )
-                  )
-                    return;
+                  setPendingConfirm({
+                    message: `Restore ${selected.length} file(s) from baseline?`,
+                    danger: true,
+                    onConfirm: async () => {
+                      setPendingConfirm(null);
 
-                  const ws = workspace;
-                  if (!ws) return;
+                      const ws = workspace;
+                      if (!ws) return;
 
-                  const cleanPaths = selected.map((p) => {
-                    let clean = p.replace(/^local-workspace\/[^/]+\//, "");
+                      const cleanPaths = selected.map((p) => {
+                        let clean = p.replace(/^local-workspace\/[^/]+\//, "");
 
-                    if (clean.startsWith("docs/"))
-                      clean = clean.slice("docs/".length);
-                    if (clean.startsWith("versioned_docs/"))
-                      clean = clean.slice("versioned_docs/".length);
+                        if (clean.startsWith("docs/"))
+                          clean = clean.slice("docs/".length);
+                        if (clean.startsWith("versioned_docs/"))
+                          clean = clean.slice("versioned_docs/".length);
 
-                    return clean;
+                        return clean;
+                      });
+
+                      await fetch("/api/reset-mirror/clear-selected", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          login,
+                          workspace: ws,
+                          files: cleanPaths,
+                        }),
+                      });
+
+                      await refreshLocalWorkspace(ws);
+                      await loadChangesFromMirror();
+
+                      if (
+                        cleanPaths.includes(
+                          currentDocPath.replace(/^docs\//, ""),
+                        )
+                      ) {
+                        loadDoc(currentDocPath, ws);
+                      }
+
+                      setSelectedChanges({});
+                    },
                   });
-
-                  await fetch("/api/reset-mirror/clear-selected", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      login,
-                      workspace: ws,
-                      files: cleanPaths,
-                    }),
-                  });
-
-                  await refreshLocalWorkspace(ws);
-                  await loadChangesFromMirror();
-
-                  if (
-                    cleanPaths.includes(currentDocPath.replace(/^docs\//, ""))
-                  ) {
-                    loadDoc(currentDocPath, ws);
-                  }
-
-                  setSelectedChanges({});
                 }}
               >
                 Clear selected
@@ -937,29 +978,30 @@ export default function App() {
 
               <button
                 className="clear-all-btn"
-                onClick={async () => {
-                  if (
-                    !confirm(
-                      "This will restore ALL files from baseline. Continue?",
-                    )
-                  )
-                    return;
+                onClick={() => {
+                  setPendingConfirm({
+                    message: "This will restore ALL files from baseline. Continue?",
+                    danger: true,
+                    onConfirm: async () => {
+                      setPendingConfirm(null);
 
-                  const ws = workspace;
-                  if (!ws) return;
+                      const ws = workspace;
+                      if (!ws) return;
 
-                  await fetch("/api/reset-mirror/clear-all", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ login, workspace: ws }),
+                      await fetch("/api/reset-mirror/clear-all", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ login, workspace: ws }),
+                      });
+
+                      await refreshLocalWorkspace(ws);
+                      await loadChangesFromMirror();
+
+                      if (currentDocPath) {
+                        loadDoc(currentDocPath, ws);
+                      }
+                    },
                   });
-
-                  await refreshLocalWorkspace(ws);
-                  await loadChangesFromMirror();
-
-                  if (currentDocPath) {
-                    loadDoc(currentDocPath, ws);
-                  }
                 }}
               >
                 Clear all
@@ -1020,6 +1062,15 @@ export default function App() {
               setShowConflictModal(false);
               refreshLocalWorkspace(conflictData.workspace);
             }}
+          />
+        )}
+
+        {pendingConfirm && (
+          <ConfirmDialog
+            message={pendingConfirm.message}
+            danger={pendingConfirm.danger}
+            onConfirm={pendingConfirm.onConfirm}
+            onCancel={() => setPendingConfirm(null)}
           />
         )}
 
