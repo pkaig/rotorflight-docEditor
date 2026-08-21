@@ -167,13 +167,24 @@ async function createWindow(): Promise<void> {
     return { action: "deny" };
   });
 
-  // Backs preload.ts's window.electronAPI.focusWindow() — see that
-  // file's header comment for why the renderer's own window.focus() call
-  // isn't reliable enough on its own (it's a request the OS is free to
-  // ignore, especially on Windows) and this main-process-side
-  // BrowserWindow.focus() is needed as the actually-reliable fallback.
+  // Backs preload.ts's window.electronAPI.focusWindow() — see that file's
+  // header comment for why the renderer's own window.focus() call isn't
+  // reliable enough on its own.
+  //
+  // Plain win.focus() turned out not to be reliable either: Windows has a
+  // "foreground lock" that blocks a process from programmatically
+  // stealing focus unless the request is tied to genuine recent user
+  // input in that process — even for a window reclaiming its own focus.
+  // That's exactly why a real alt-tab away and back (genuine OS-level
+  // input) fixed it instantly while this same win.focus() call, fired
+  // from a React effect rather than directly off a user input event,
+  // silently did nothing. Toggling alwaysOnTop is the standard workaround
+  // — Windows treats a z-order change differently from a bare
+  // SetForegroundWindow call and actually brings the window forward.
   ipcMain.handle("focus-window", () => {
+    win.setAlwaysOnTop(true);
     win.focus();
+    win.setAlwaysOnTop(false);
     win.webContents.focus();
   });
 
