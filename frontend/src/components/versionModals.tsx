@@ -157,9 +157,14 @@ const modalTitle = {
   fontSize: "1.4rem",
 };
 
-const modalMessage = {
+const modalMessage: CSSProperties = {
   marginBottom: "1rem",
   lineHeight: 1.4,
+  // Lets a remote updateMessage/blockMessage use real "\n" line breaks
+  // (e.g. a bulleted "what's new" list) instead of every newline
+  // collapsing into a single run-on line, which is HTML's default for
+  // a plain string rendered into a <p>.
+  whiteSpace: "pre-line",
 };
 
 const primaryButton = {
