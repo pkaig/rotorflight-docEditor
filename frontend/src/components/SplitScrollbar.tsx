@@ -15,6 +15,14 @@
  *   the editor's own clientHeight/scrollHeight for the sync math, so it
  *   passes the ratio through rather than this component re-deriving it
  *   from a ref of its own.
+ *
+ *   showThumb=false (used while the Diff view replaces the editor
+ *   textarea — see App.tsx) hides just the thumb, not the whole track:
+ *   the sync hook has no textarea to read/drive in that mode, so the
+ *   thumb would otherwise sit permanently full-height/undraggable,
+ *   looking like "nothing to scroll" even though the diff view itself
+ *   scrolls fine on its own. The track keeps working as the column
+ *   resize handle either way.
  */
 import { useRef } from "react";
 
@@ -23,6 +31,7 @@ interface SplitScrollbarProps {
   thumbSize: number;
   onFractionChange: (f: number) => void;
   onResizeStart: (e: React.MouseEvent) => void;
+  showThumb?: boolean;
 }
 
 export function SplitScrollbar({
@@ -30,6 +39,7 @@ export function SplitScrollbar({
   thumbSize,
   onFractionChange,
   onResizeStart,
+  showThumb = true,
 }: SplitScrollbarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -72,12 +82,14 @@ export function SplitScrollbar({
       title="Drag to resize the editor/preview split"
       onMouseDown={onResizeStart}
     >
-      <div
-        className="split-scrollbar-thumb"
-        title="Drag to scroll"
-        style={{ height: `${thumbPercent}%`, top: `${topPercent}%` }}
-        onMouseDown={startScrollDrag}
-      />
+      {showThumb && (
+        <div
+          className="split-scrollbar-thumb"
+          title="Drag to scroll"
+          style={{ height: `${thumbPercent}%`, top: `${topPercent}%` }}
+          onMouseDown={startScrollDrag}
+        />
+      )}
     </div>
   );
 }

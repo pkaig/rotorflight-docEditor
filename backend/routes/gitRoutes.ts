@@ -479,6 +479,73 @@ router.post("/pr", async (req, res) => {
 });
 
 /* ============================================================
+   2b. PR STATUS CHECK
+   ============================================================ */
+
+// The frontend's own PR state (activePR) only ever moves forward from
+// submitPR's own response — it has no way to notice a PR was merged or
+// closed out-of-band (on github.com, or by a maintainer), so it just
+// kept showing "Update PR" forever. usePRStatus.ts calls this on login
+// and on window focus — the exact moment someone's likely to have just
+// checked/merged their PR in a browser tab and switched back — and
+// feeds the result through the same pr_merged/pr_closed/pr_open
+// handling submitPR's own responses already use. Also reports the
+// PR's conversation-comment count while it's still open, so the
+// frontend can notice a reviewer left feedback — the list endpoint
+// used to find the PR doesn't include that count, only the single-PR
+// (or, equivalently, issue) endpoint does, hence the second request.
+router.get("/pr-status", async (req, res) => {
+  const login = req.session?.login;
+  const workspace = req.query.workspace as string;
+
+  if (!login) {
+    return res.status(401).json({ error: "Not signed in" });
+  }
+  if (!isSafePathSegment(workspace)) {
+    return res.status(400).json({ error: "Invalid workspace" });
+  }
+
+  try {
+    const token = getTokenForUser(login);
+
+    // state=all, not just "open" — a merged or closed-without-merging PR
+    // is exactly what this route exists to detect.
+    const prs = await githubRequest(
+      token,
+      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/pulls?head=${login}:${workspace}&state=all`,
+    );
+
+    if (!prs || prs.length === 0) {
+      return res.json({ state: "none" });
+    }
+
+    // Most recent first — resubmitting after a close/merge could in
+    // principle leave more than one PR against the same branch name.
+    const pr = [...prs].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )[0];
+
+    const state = pr.state === "open" ? "open" : pr.merged_at ? "merged" : "closed";
+
+    let comments: number | undefined;
+    if (state === "open") {
+      // Comments only matter while there's still a live PR to review —
+      // skip the extra request once it's merged/closed.
+      const issue = await githubRequest(
+        token,
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues/${pr.number}`,
+      );
+      comments = issue.comments ?? 0;
+    }
+
+    return res.json({ state, prNumber: pr.number, url: pr.html_url, comments });
+  } catch (err) {
+    console.error("❌ PR status check failed:", err);
+    return res.status(500).json({ error: "Failed to check PR status" });
+  }
+});
+
+/* ============================================================
    3. GITHUB REQUEST
    ============================================================ */
 export async function githubRequest(

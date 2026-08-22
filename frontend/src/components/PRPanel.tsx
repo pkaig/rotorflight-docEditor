@@ -50,6 +50,20 @@ interface PRPanelProps {
   submitting: boolean;
   clearBanner: () => void;
   onConflictsDetected?: (conflicts: unknown[]) => void;
+  // True once this workspace's PR is detected as merged (see
+  // useGitPR.tsx's prState) — hides the submit button rather than
+  // offering "Update PR" against a PR that no longer exists, or "Set up
+  // PR" for changes already merged. Note this is a one-way trip today:
+  // nothing currently clears prState back to "open"/"none" on its own,
+  // so once a workspace's PR is seen as merged, its submit button stays
+  // hidden even if new edits are made afterward.
+  prMerged?: boolean;
+  // Set once checkPRStatus (useGitPR.tsx) sees the open PR's comment
+  // count go above whatever was last recorded as "seen" (localStorage,
+  // survives an app restart) — a reviewer leaving feedback while this
+  // app was closed is exactly the case that needs to persist.
+  newCommentNotice: { prNumber: number; url: string; commentCount: number } | null;
+  dismissCommentNotice: () => void;
 }
 
 // banner/activePR/submitPR/submitting/clearBanner come from App.tsx's own
@@ -67,6 +81,9 @@ export function PRPanel({
   submitting,
   clearBanner,
   onConflictsDetected = warnNoConflictUI,
+  prMerged = false,
+  newCommentNotice,
+  dismissCommentNotice,
 }: PRPanelProps) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -108,10 +125,13 @@ export function PRPanel({
             </>
           )}
           {banner.type === "pr_merged" && (
-            <>Pull Request #{banner.prNumber} merged. Workspace reset.</>
+            <>
+              Pull Request #{banner.prNumber} merged — this workspace's
+              changes are now part of the docs.
+            </>
           )}
           {banner.type === "pr_closed" && (
-            <>Pull Request #{banner.prNumber} closed. Workspace reset.</>
+            <>Pull Request #{banner.prNumber} was closed without merging.</>
           )}
           {banner.type === "error" && (
             <>
@@ -130,11 +150,23 @@ export function PRPanel({
         </div>
       )}
 
+      {newCommentNotice && (
+        <div className="banner banner-comment">
+          New PR comment. Please review.{" "}
+          <a href={newCommentNotice.url} target="_blank" rel="noreferrer">
+            View on GitHub
+          </a>
+          <button onClick={dismissCommentNotice}>×</button>
+        </div>
+      )}
+
       {activePR && <div className="active-pr">Working on PR #{activePR}</div>}
 
-      <button className="submit-pr" onClick={handleOpenModal} disabled={submitting}>
-        {submitting ? "Submitting…" : activePR ? "Update PR" : "Set up PR"}
-      </button>
+      {!prMerged && (
+        <button className="submit-pr" onClick={handleOpenModal} disabled={submitting}>
+          {submitting ? "Submitting…" : activePR ? "Update PR" : "Set up PR"}
+        </button>
+      )}
 
       <PRDescriptionModal
         isOpen={modalOpen}

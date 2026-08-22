@@ -48,6 +48,13 @@ interface TreeProps {
   // image instead (see onNewImage).
   onNewFile?: (folderPath: string) => void;
   onNewImage?: (folderPath: string) => void;
+  // Shows a small delete button on each file row, mirroring onNewFile's
+  // "+" on folder rows. Undefined omits the button entirely.
+  onDeleteFile?: (path: string) => void;
+  // Rendered next to the workspace-root node's own name only (e.g. a
+  // "merged" badge — see App.tsx) — never passed down to the recursive
+  // call below, since no other node is ever isWorkspaceRoot.
+  rootBadge?: React.ReactNode;
 }
 
 export function Tree({
@@ -61,6 +68,8 @@ export function Tree({
   currentPath,
   onNewFile,
   onNewImage,
+  onDeleteFile,
+  rootBadge,
 }: TreeProps) {
   const safeNodes = Array.isArray(nodes) ? nodes : [];
   const folders = openFolders || {};
@@ -103,6 +112,7 @@ export function Tree({
                   onDrop={() => node.path && onDropFolder(node.path)}
                 >
                   <span className="tree-node-name">{node.name}</span>
+                  {node.isWorkspaceRoot && rootBadge}
                   {!node.isWorkspaceRoot && <span className="tree-chevron" aria-hidden="true" />}
                   {!node.isWorkspaceRoot &&
                     (node.name.toLowerCase() === "img" ? onNewImage : onNewFile) && (
@@ -141,21 +151,39 @@ export function Tree({
                     currentPath={currentPath}
                     onNewFile={onNewFile}
                     onNewImage={onNewImage}
+                    onDeleteFile={onDeleteFile}
                   />
                 )}
               </div>
             ) : (
-              <button
+              <div
                 className={
                   "tree-node file" +
                   (node.path && node.path === currentPath ? " active" : "")
                 }
                 draggable
                 onDragStart={() => node.path && setDraggedItem(node.path)}
-                onClick={() => node.path && onSelect(node.path)}
               >
-                {node.name}
-              </button>
+                <span
+                  className="tree-node-name"
+                  onClick={() => node.path && onSelect(node.path)}
+                >
+                  {node.name}
+                </span>
+                {onDeleteFile && (
+                  <button
+                    type="button"
+                    className="tree-delete-file-btn"
+                    title="Delete this file"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (node.path) onDeleteFile(node.path);
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             )}
           </li>
         );

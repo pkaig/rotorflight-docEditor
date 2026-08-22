@@ -25,6 +25,7 @@ import { version as APP_VERSION } from "../package.json";
 import { useState, useEffect, useRef } from "react"; // <-- UPDATED
 import { SplitScrollbar } from "./components/SplitScrollbar";
 import { useEditorPreviewScrollSync } from "./hooks/useEditorPreviewScrollSync";
+import { useDiffPreviewScrollSync } from "./hooks/useDiffPreviewScrollSync";
 import rfHeliLogo from "./assets/RFHeli.svg";
 import PreviewErrorBoundary from "./components/PreviewErrorBoundary";
 import Preview from "./components/Preview";
@@ -56,6 +57,40 @@ import { WorkspaceSelector } from "./components/WorkspaceSelector";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { useWorkspaces } from "./hooks/useWorkspaces";
 import { validateWorkspaceName } from "./utils/validateWorkspaceName";
+import { slugifyFileName } from "./utils/slugifyFileName";
+import { PreviewToolbar, type TopToolKey } from "./components/PreviewToolbar";
+import {
+  findImageLines,
+  extractMarkdownImagePath,
+  removeImageReference,
+} from "./utils/findImageLines";
+import {
+  insertImageReference,
+  convertMarkdownImagesToJsx,
+} from "./utils/insertImageReference";
+import { ImageInsertChoiceModal } from "./components/ImageInsertChoiceModal";
+import { ChooseExistingImageModal } from "./components/ChooseExistingImageModal";
+import { AdmonitionEntryModal } from "./components/AdmonitionEntryModal";
+import {
+  findAdmonitionBlock,
+  buildAdmonitionBlock,
+  type AdmonitionBlock,
+} from "./utils/admonitions";
+import { TableEntryModal } from "./components/TableEntryModal";
+import {
+  findTableBlock,
+  buildMarkdownTable,
+  type TableBlock,
+} from "./utils/tables";
+import { TabsEntryModal } from "./components/TabsEntryModal";
+import {
+  findTabsBlock,
+  buildTabsBlock,
+  ensureTabsImports,
+  removeTabsImportsIfUnused,
+  type TabsBlock,
+} from "./utils/tabs";
+import { relativePosixPath } from "./utils/relativePosixPath";
 
 const IMAGE_RE = /\.(png|jpe?g|gif|svg|webp)$/i;
 
@@ -141,6 +176,29 @@ function listImageNames(nodes: TreeNode[], imgFolderPath: string): string[] {
     .map((c) => c.name);
 }
 
+// Walks the whole workspace tree (not just one img/ folder, unlike
+// listImageNames above) for the Images toolbar's "Choose image" picker —
+// reusing an image from elsewhere in the project only needs to know
+// where every image actually is, regardless of which doc's img/ folder
+// it lives in.
+function findAllImages(
+  nodes: TreeNode[],
+): { name: string; path: string }[] {
+  const results: { name: string; path: string }[] = [];
+
+  function walk(list: TreeNode[]) {
+    for (const n of list) {
+      if (n.type === "file" && IMAGE_RE.test(n.name)) {
+        results.push({ name: n.name, path: n.path });
+      }
+      if (n.children) walk(n.children);
+    }
+  }
+
+  walk(nodes);
+  return results;
+}
+
 /* -------------------------------------------------------
    ROOT APPLICATION COMPONENT
 ------------------------------------------------------- */
@@ -191,9 +249,13 @@ export default function App() {
     changes,
     notifyFileSaved,
     notifyFileRenamed,
+    notifyFileDeleted,
     notifyFileCreated,
     clearBanner,
     loadChangesFromMirror,
+    prState,
+    newCommentNotice,
+    dismissCommentNotice,
   } = useGitPR({
     login: login || "",
     workspace,
@@ -222,6 +284,91 @@ export default function App() {
   const [showAddImageModal, setShowAddImageModal] = useState(false);
   const [addImageFolder, setAddImageFolder] = useState<string | null>(null);
   const [addImageExistingNames, setAddImageExistingNames] = useState<string[]>([]);
+  // Routes AddImageModal's onUploaded to the right follow-up: the
+  // sidebar's own "+" flow just refreshes the tree, "insert" also
+  // splices a reference into the doc at the captured cursor position.
+  const [imageModalContext, setImageModalContext] = useState<
+    "sidebar" | "insert"
+  >("sidebar");
+  // Captured when "Insert" is clicked, before the modal (which steals
+  // focus) opens — selectionStart survives the focus change, but reading
+  // it fresh after upload would just see wherever focus last was instead.
+  const insertCursorOffsetRef = useRef<number | null>(null);
+
+  // Images toolbar: "move"/"remove" put the preview into "click an image
+  // to pick it" mode. Owned here (not in PreviewToolbar) because it has
+  // to coordinate a click on previewPanelRef with, for Move, a live
+  // drop-indicator tracking the cursor over the *rendered* preview
+  // (mapped back to a source line via each element's data-source-line —
+  // see rehypeSourceLines.ts) rather than making the user go pick a line
+  // in the raw Editor text.
+  const [imagesMode, setImagesMode] = useState<"move" | "remove" | null>(null);
+  const [pendingMove, setPendingMove] = useState<{ sourceLine: number } | null>(
+    null,
+  );
+  // Insert reuses the exact same drop-indicator mechanism as Move (see
+  // the shared tracking effect below) — the only difference is what
+  // happens on confirm: Move relocates an existing line, Insert opens
+  // ImageInsertChoiceModal at the picked line instead.
+  const [pendingInsertPick, setPendingInsertPick] = useState(false);
+  const [insertAtLine, setInsertAtLine] = useState<number | null>(null);
+  const [showImageInsertChoice, setShowImageInsertChoice] = useState(false);
+  const [showChooseExistingImage, setShowChooseExistingImage] = useState(false);
+  const [moveIndicator, setMoveIndicator] = useState<{
+    line: number;
+    y: number;
+  } | null>(null);
+  const moveIndicatorRef = useRef<{ line: number; y: number } | null>(null);
+
+  // Admonitions toolbar — Insert shares the exact same drop-indicator
+  // mechanism as the images toolbar's Insert (same tracking effect,
+  // below); Modify/Remove instead put the preview into "click an
+  // existing admonition to pick it" mode, parsed via
+  // findAdmonitionBlock's data-source-line-based lookup.
+  const [admonitionsMode, setAdmonitionsMode] = useState<
+    "modify" | "remove" | null
+  >(null);
+  const [pendingAdmonitionInsertPick, setPendingAdmonitionInsertPick] =
+    useState(false);
+  const [admonitionInsertAtLine, setAdmonitionInsertAtLine] = useState<
+    number | null
+  >(null);
+  const [editingAdmonition, setEditingAdmonition] =
+    useState<AdmonitionBlock | null>(null);
+  const [showAdmonitionEntry, setShowAdmonitionEntry] = useState(false);
+
+  // Table toolbar — same shape as Admonitions above: Insert shares the
+  // drop-indicator, Modify/Remove click an existing table (parsed via
+  // findTableBlock's data-source-line-based lookup on the <table>
+  // element itself).
+  const [tableMode, setTableMode] = useState<"modify" | "remove" | null>(
+    null,
+  );
+  const [pendingTableInsertPick, setPendingTableInsertPick] = useState(false);
+  const [tableInsertAtLine, setTableInsertAtLine] = useState<number | null>(
+    null,
+  );
+  const [editingTable, setEditingTable] = useState<TableBlock | null>(null);
+  const [showTableEntry, setShowTableEntry] = useState(false);
+
+  // Tabs toolbar — same shape again, but Tabs is JSX (<Tabs>/<TabItem>),
+  // not a plain HTML element or remark-directive block, so it only
+  // makes sense in .mdx docs — handleTabsInsert below guards that,
+  // rather than letting Insert silently produce JSX a .md file can't
+  // actually render on the real site.
+  const [tabsMode, setTabsMode] = useState<"modify" | "remove" | null>(null);
+  const [pendingTabsInsertPick, setPendingTabsInsertPick] = useState(false);
+  const [tabsInsertAtLine, setTabsInsertAtLine] = useState<number | null>(
+    null,
+  );
+  const [editingTabs, setEditingTabs] = useState<TabsBlock | null>(null);
+  const [showTabsEntry, setShowTabsEntry] = useState(false);
+
+  // Which of PreviewToolbar's top-level tool rows (if any) is open —
+  // owned here rather than inside PreviewToolbar itself so the
+  // click-outside effect below can close it once an action finishes and
+  // nothing's actively pending anymore.
+  const [activeTopTool, setActiveTopTool] = useState<TopToolKey | null>(null);
   const [errorLine, setErrorLine] = useState<number | null>(null);
   const [showWorkspaceSelector, setShowWorkspaceSelector] = useState(false);
   // Guards "+ Add Workspace" while a delete is still in flight — opening
@@ -245,8 +392,28 @@ export default function App() {
   const [pendingConfirm, setPendingConfirm] = useState<{
     message: string;
     danger?: boolean;
+    // Plain informational notices (e.g. "Tabs need .mdx") have nothing
+    // to actually confirm — showing a Cancel button next to a message
+    // with no real choice would be misleading, so this hides it and
+    // leaves just the single dismiss button.
+    hideCancel?: boolean;
+    confirmLabel?: string;
+    cancelLabel?: string;
     onConfirm: () => void;
+    // Runs (in addition to closing the dialog) when the user declines —
+    // e.g. the MD->MDX prompt uses this to remember the decline for the
+    // rest of the session instead of nagging again on every open.
+    onCancel?: () => void;
   } | null>(null);
+  // Paths the user has already said "no" to converting to MDX for, so the
+  // prompt doesn't re-ask every time the same .md file is reopened within
+  // this session.
+  const skipMdxPromptRef = useRef<Set<string>>(new Set());
+  // handleConvertMdToMdx's slowest step (notifyFileRenamed -> scan-local-
+  // changes, which diffs the whole workspace against the mirror) can take
+  // several seconds — without this, clicking "Yes" on the MD->MDX prompt
+  // looked like it did nothing until the file suddenly reappeared as .mdx.
+  const [convertingMdToMdx, setConvertingMdToMdx] = useState(false);
   const { checking, updating } = useUpstreamStatus(login);
   // Collapsing the sidebar just shrinks .sidebar's width — the editor and
   // preview columns are already flex:1/50%-50% of whatever space is left
@@ -264,6 +431,12 @@ export default function App() {
   const { fraction: scrollFraction, setFraction: setScrollFraction, thumbSize: scrollThumbSize } =
     useEditorPreviewScrollSync(content, editorTextareaRef, previewPanelRef);
 
+  // Diff view <-> preview: a separate, simpler (percentage-only, not
+  // image-anchored) sync — see useDiffPreviewScrollSync for why it can't
+  // reuse the pair above. Only active while Show Diff is open.
+  const diffScrollRef = useRef<HTMLDivElement | null>(null);
+  useDiffPreviewScrollSync(diffScrollRef, previewPanelRef, showDiff, currentDocPath);
+
   // Dragging SplitScrollbar's track (not its thumb, which scrolls
   // instead) resizes the editor/preview split, clamped to 50% ± 25%.
   const editorPreviewRowRef = useRef<HTMLDivElement | null>(null);
@@ -271,6 +444,630 @@ export default function App() {
     editorPreviewRowRef,
     50,
   );
+
+  // Images toolbar — Move/Update: click delegation on previewPanelRef
+  // (already exists for scroll-sync) makes every rendered <img>
+  // selectable while a mode is active, without Preview.tsx needing its
+  // own per-image click handlers.
+  useEffect(() => {
+    const panel = previewPanelRef.current;
+    if (!panel || !imagesMode) return;
+
+    function onClick(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (target.tagName !== "IMG") return;
+      e.preventDefault();
+
+      const imgs = Array.from(panel!.querySelectorAll("img"));
+      const index = imgs.indexOf(target as HTMLImageElement);
+      const lineNumber = findImageLines(content)[index];
+      if (lineNumber == null) return;
+
+      if (imagesMode === "move") {
+        // Move only relocates a line within the doc, so it only makes
+        // sense for a plain Markdown image line — a JSX <img> tag's
+        // surrounding import statement wouldn't travel with it.
+        const lineText = content.split("\n")[lineNumber - 1] || "";
+        if (!extractMarkdownImagePath(lineText)) {
+          alert(
+            "Only Markdown-syntax images (![]()) can be moved from this " +
+              "toolbar right now — this one uses a JSX <img> tag.",
+          );
+          setImagesMode(null);
+          return;
+        }
+        setPendingMove({ sourceLine: lineNumber });
+        setImagesMode(null);
+      } else if (imagesMode === "remove") {
+        // Unlike Move, Remove handles JSX <img> images too — it deletes
+        // the whole reference (and its import, for MDX), so there's
+        // nothing left that could end up orphaned.
+        setContent((prev) => removeImageReference(prev, lineNumber));
+        setImagesMode(null);
+      }
+    }
+
+    panel.addEventListener("click", onClick);
+    return () => panel.removeEventListener("click", onClick);
+  }, [imagesMode, content]);
+
+  // Images toolbar — Move's destination step: with a source image picked
+  // (pendingMove set), tracks the cursor over the *rendered* preview and
+  // shows a drop-indicator line at the nearest element boundary, mapped
+  // back to a source line via that element's data-source-line (see
+  // rehypeSourceLines.ts). Only considers block-level tags — every
+  // inline element (<strong>, <a>, <code>...) on the same visual line
+  // carries its own close-together data-source-line too, which would
+  // make the indicator jitter between near-identical positions for no
+  // visible reason if they weren't filtered out.
+  const MOVE_BLOCK_TAGS = new Set([
+    "P", "H1", "H2", "H3", "H4", "H5", "H6",
+    "UL", "OL", "LI", "TABLE", "TR", "BLOCKQUOTE", "PRE", "IMG", "HR",
+  ]);
+
+  function findDropTarget(
+    panel: HTMLElement,
+    clientY: number,
+  ): { line: number; y: number } | null {
+    const panelRect = panel.getBoundingClientRect();
+    const candidates = Array.from(
+      panel.querySelectorAll<HTMLElement>("[data-source-line]"),
+    )
+      .filter((el) => MOVE_BLOCK_TAGS.has(el.tagName))
+      .map((el) => ({
+        line: parseInt(el.dataset.sourceLine || "", 10),
+        rect: el.getBoundingClientRect(),
+      }))
+      .filter((c) => !Number.isNaN(c.line))
+      .sort((a, b) => a.rect.top - b.rect.top);
+
+    if (candidates.length === 0) return null;
+
+    for (const c of candidates) {
+      if (clientY < c.rect.top + c.rect.height / 2) {
+        return { line: c.line, y: c.rect.top - panelRect.top + panel.scrollTop };
+      }
+    }
+
+    const last = candidates[candidates.length - 1];
+    return {
+      line: content.split("\n").length + 1,
+      y: last.rect.bottom - panelRect.top + panel.scrollTop,
+    };
+  }
+
+  function confirmMove(destLine: number) {
+    const lines = content.split("\n");
+    const sourceIdx = (pendingMove?.sourceLine ?? 0) - 1;
+    if (sourceIdx < 0 || sourceIdx >= lines.length) {
+      setPendingMove(null);
+      setMoveIndicator(null);
+      return;
+    }
+
+    const [movedLine] = lines.splice(sourceIdx, 1);
+    // Removing the source line above the destination shifts everything
+    // below it up by one, so the destination index needs the same
+    // adjustment before re-inserting.
+    let destIdx = destLine - 1;
+    if (sourceIdx < destIdx) destIdx -= 1;
+    destIdx = Math.max(0, Math.min(lines.length, destIdx));
+    lines.splice(destIdx, 0, movedLine);
+
+    setContent(lines.join("\n"));
+    setPendingMove(null);
+    setMoveIndicator(null);
+  }
+
+  function confirmInsertPosition(line: number) {
+    setPendingInsertPick(false);
+    setMoveIndicator(null);
+    setInsertAtLine(line);
+    setShowImageInsertChoice(true);
+  }
+
+  function confirmAdmonitionInsertPosition(line: number) {
+    setPendingAdmonitionInsertPick(false);
+    setMoveIndicator(null);
+    setAdmonitionInsertAtLine(line);
+    setEditingAdmonition(null);
+    setShowAdmonitionEntry(true);
+  }
+
+  function confirmTableInsertPosition(line: number) {
+    setPendingTableInsertPick(false);
+    setMoveIndicator(null);
+    setTableInsertAtLine(line);
+    setEditingTable(null);
+    setShowTableEntry(true);
+  }
+
+  function confirmTabsInsertPosition(line: number) {
+    setPendingTabsInsertPick(false);
+    setMoveIndicator(null);
+    setTabsInsertAtLine(line);
+    setEditingTabs(null);
+    setShowTabsEntry(true);
+  }
+
+  useEffect(() => {
+    const panel = previewPanelRef.current;
+    if (
+      !panel ||
+      (!pendingMove &&
+        !pendingInsertPick &&
+        !pendingAdmonitionInsertPick &&
+        !pendingTableInsertPick &&
+        !pendingTabsInsertPick)
+    )
+      return;
+
+    function onMouseMove(e: MouseEvent) {
+      if (!panel) return;
+      const next = findDropTarget(panel, e.clientY);
+      moveIndicatorRef.current = next;
+      setMoveIndicator(next);
+    }
+
+    function confirm(line: number) {
+      if (pendingMove) confirmMove(line);
+      else if (pendingInsertPick) confirmInsertPosition(line);
+      else if (pendingAdmonitionInsertPick) confirmAdmonitionInsertPosition(line);
+      else if (pendingTableInsertPick) confirmTableInsertPosition(line);
+      else if (pendingTabsInsertPick) confirmTabsInsertPosition(line);
+    }
+
+    function onClick(e: MouseEvent) {
+      e.preventDefault();
+      if (moveIndicatorRef.current) confirm(moveIndicatorRef.current.line);
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Enter" && moveIndicatorRef.current) {
+        e.preventDefault();
+        confirm(moveIndicatorRef.current.line);
+      } else if (e.key === "Escape") {
+        setPendingMove(null);
+        setPendingInsertPick(false);
+        setPendingAdmonitionInsertPick(false);
+        setPendingTableInsertPick(false);
+        setPendingTabsInsertPick(false);
+        setMoveIndicator(null);
+      }
+    }
+
+    panel.addEventListener("mousemove", onMouseMove);
+    panel.addEventListener("click", onClick);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      panel.removeEventListener("mousemove", onMouseMove);
+      panel.removeEventListener("click", onClick);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+    // moveIndicator itself deliberately isn't a dependency — it's read via
+    // moveIndicatorRef instead, so a mousemove updating it doesn't tear
+    // down and re-attach all three listeners on every pixel of movement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pendingMove,
+    pendingInsertPick,
+    pendingAdmonitionInsertPick,
+    pendingTableInsertPick,
+    pendingTabsInsertPick,
+    content,
+  ]);
+
+  // Admonitions toolbar — Modify/Remove: click delegation on
+  // previewPanelRef (same pattern as the images toolbar's own) for
+  // clicking an *existing* admonition, as opposed to Insert's
+  // drop-indicator above.
+  useEffect(() => {
+    const panel = previewPanelRef.current;
+    if (!panel || !admonitionsMode) return;
+
+    function onClick(e: MouseEvent) {
+      const target = (e.target as HTMLElement).closest(
+        ".admonition",
+      ) as HTMLElement | null;
+      if (!target) return;
+      e.preventDefault();
+
+      const lineAttr = target.dataset.sourceLine;
+      if (!lineAttr) return;
+      const block = findAdmonitionBlock(content, parseInt(lineAttr, 10));
+      if (!block) return;
+
+      if (admonitionsMode === "modify") {
+        setEditingAdmonition(block);
+        setAdmonitionInsertAtLine(null);
+        setShowAdmonitionEntry(true);
+        setAdmonitionsMode(null);
+      } else if (admonitionsMode === "remove") {
+        const lines = content.split("\n");
+        lines.splice(
+          block.startLine - 1,
+          block.endLine - block.startLine + 1,
+        );
+        setContent(lines.join("\n"));
+        setAdmonitionsMode(null);
+      }
+    }
+
+    panel.addEventListener("click", onClick);
+    return () => panel.removeEventListener("click", onClick);
+  }, [admonitionsMode, content]);
+
+  // Table toolbar — Modify/Remove: click delegation for clicking an
+  // *existing* table, same pattern as the admonitions effect above —
+  // .closest("table") since a click could land on any cell inside it.
+  useEffect(() => {
+    const panel = previewPanelRef.current;
+    if (!panel || !tableMode) return;
+
+    function onClick(e: MouseEvent) {
+      const target = (e.target as HTMLElement).closest(
+        "table",
+      ) as HTMLElement | null;
+      if (!target) return;
+      e.preventDefault();
+
+      const lineAttr = target.dataset.sourceLine;
+      if (!lineAttr) return;
+      const block = findTableBlock(content, parseInt(lineAttr, 10));
+      if (!block) return;
+
+      if (tableMode === "modify") {
+        setEditingTable(block);
+        setTableInsertAtLine(null);
+        setShowTableEntry(true);
+        setTableMode(null);
+      } else if (tableMode === "remove") {
+        const lines = content.split("\n");
+        lines.splice(block.startLine - 1, block.endLine - block.startLine + 1);
+        setContent(lines.join("\n"));
+        setTableMode(null);
+      }
+    }
+
+    panel.addEventListener("click", onClick);
+    return () => panel.removeEventListener("click", onClick);
+  }, [tableMode, content]);
+
+  // Tabs toolbar — Modify/Remove: click delegation for clicking an
+  // *existing* Tabs block. Tabs.tsx's own root div carries a plain
+  // data-rf-tabs marker (not a CSS-module class, which is hashed per
+  // build and can't be selected reliably from here) alongside
+  // data-source-line — see rehypeSourceLines.ts for why <Tabs> needed
+  // its own tagging path, unlike a plain HTML element or admonition.
+  useEffect(() => {
+    const panel = previewPanelRef.current;
+    if (!panel || !tabsMode) return;
+
+    function onClick(e: MouseEvent) {
+      const target = (e.target as HTMLElement).closest(
+        "[data-rf-tabs]",
+      ) as HTMLElement | null;
+      if (!target) return;
+      e.preventDefault();
+
+      const lineAttr = target.dataset.sourceLine;
+      if (!lineAttr) return;
+      const block = findTabsBlock(content, parseInt(lineAttr, 10));
+      if (!block) return;
+
+      if (tabsMode === "modify") {
+        setEditingTabs(block);
+        setTabsInsertAtLine(null);
+        setShowTabsEntry(true);
+        setTabsMode(null);
+      } else if (tabsMode === "remove") {
+        const lines = content.split("\n");
+        lines.splice(block.startLine - 1, block.endLine - block.startLine + 1);
+        setContent(removeTabsImportsIfUnused(lines.join("\n")));
+        setTabsMode(null);
+      }
+    }
+
+    panel.addEventListener("click", onClick);
+    return () => panel.removeEventListener("click", onClick);
+  }, [tabsMode, content]);
+
+  // Closes the open toolbar row (e.g. Images' Move/Insert/Remove) on a
+  // click elsewhere in the preview, but only once nothing's actually
+  // pending — while a pick is in progress, that same click is the pick
+  // itself (handled by the effects above), not a dismissal.
+  useEffect(() => {
+    const panel = previewPanelRef.current;
+    if (!panel || !activeTopTool) return;
+    if (
+      imagesMode ||
+      admonitionsMode ||
+      tableMode ||
+      tabsMode ||
+      pendingMove ||
+      pendingInsertPick ||
+      pendingAdmonitionInsertPick ||
+      pendingTableInsertPick ||
+      pendingTabsInsertPick
+    )
+      return;
+
+    function onClick(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (target.closest(".preview-toolbar")) return;
+      setActiveTopTool(null);
+    }
+
+    panel.addEventListener("click", onClick);
+    return () => panel.removeEventListener("click", onClick);
+  }, [
+    activeTopTool,
+    imagesMode,
+    admonitionsMode,
+    tableMode,
+    tabsMode,
+    pendingMove,
+    pendingInsertPick,
+    pendingAdmonitionInsertPick,
+    pendingTableInsertPick,
+    pendingTabsInsertPick,
+  ]);
+
+  // Mirrors the sidebar's own per-workspace node construction (see the
+  // Tree render below) so listImageNames/findFirstImage can be reused
+  // here for the currently-open doc rather than whichever workspace a
+  // sidebar row happens to be for.
+  function getCurrentWorkspaceNodes(): TreeNode[] {
+    if (!workspace) return [];
+    const raw = localTrees[workspace] || [];
+    const backendRoot = raw[0];
+    if (!backendRoot) return [];
+    return [
+      {
+        ...backendRoot,
+        isWorkspaceRoot: true,
+        path: `local-workspace/${workspace}`,
+      },
+    ];
+  }
+
+  // Images live in an "img" folder alongside the doc that references
+  // them — same convention as buildNewFileContent's own "./img/..." and
+  // AddImageModal's per-folder "+" button.
+  function currentDocImgFolder(): string | null {
+    if (!workspace || !currentDocPath) return null;
+    const relPath = currentDocPath.replace(/^local-workspace\/[^/]+\//, "");
+    const docFolder = relPath.replace(/\/[^/]+$/, "");
+    return `local-workspace/${workspace}/${docFolder ? docFolder + "/" : ""}img`;
+  }
+
+  // Converts a 1-indexed line number (as picked by the drop-indicator,
+  // which works in line numbers same as findDropTarget above) into a
+  // character offset into `text`, for splicing/insertImageReference.
+  function lineNumberToOffset(text: string, lineNumber: number): number {
+    const lines = text.split("\n");
+    const clamped = Math.max(1, Math.min(lineNumber, lines.length + 1));
+    let offset = 0;
+    for (let i = 0; i < clamped - 1; i++) {
+      offset += (lines[i]?.length ?? 0) + 1; // +1 for the newline itself
+    }
+    return offset;
+  }
+
+  function handleImagesInsert() {
+    setPendingInsertPick((prev) => !prev);
+  }
+
+  function handleImagesMove() {
+    setImagesMode((prev) => (prev === "move" ? null : "move"));
+  }
+
+  function handleImagesRemove() {
+    setImagesMode((prev) => (prev === "remove" ? null : "remove"));
+  }
+
+  function handleImageInsertChoiceCancel() {
+    setShowImageInsertChoice(false);
+    setInsertAtLine(null);
+  }
+
+  function handleChooseNewImage() {
+    const folder = currentDocImgFolder();
+    if (!folder || insertAtLine == null) return;
+    insertCursorOffsetRef.current = lineNumberToOffset(content, insertAtLine);
+    setImageModalContext("insert");
+    setAddImageFolder(folder);
+    setAddImageExistingNames(listImageNames(getCurrentWorkspaceNodes(), folder));
+    setShowImageInsertChoice(false);
+    setShowAddImageModal(true);
+  }
+
+  function handleChooseExisting() {
+    setShowImageInsertChoice(false);
+    setShowChooseExistingImage(true);
+  }
+
+  function handleExistingImageChosen(image: { name: string; path: string }) {
+    if (insertAtLine == null || !currentDocPath) return;
+
+    const docRelPath = currentDocPath.replace(/^local-workspace\/[^/]+\//, "");
+    const docFolder = docRelPath.replace(/\/[^/]+$/, "");
+    const imgRelPath = image.path.replace(/^local-workspace\/[^/]+\//, "");
+
+    let relPath = relativePosixPath(docFolder, imgRelPath);
+    if (!relPath.startsWith(".")) relPath = `./${relPath}`;
+
+    const offset = lineNumberToOffset(content, insertAtLine);
+    const isMdx = currentDocPath.endsWith(".mdx");
+    setContent((prev) => insertImageReference(prev, offset, isMdx, relPath));
+
+    setShowChooseExistingImage(false);
+    setInsertAtLine(null);
+  }
+
+  function handleAdmonitionsInsert() {
+    setPendingAdmonitionInsertPick((prev) => !prev);
+  }
+
+  function handleAdmonitionsModify() {
+    setAdmonitionsMode((prev) => (prev === "modify" ? null : "modify"));
+  }
+
+  function handleAdmonitionsRemove() {
+    setAdmonitionsMode((prev) => (prev === "remove" ? null : "remove"));
+  }
+
+  // Shared by Insert (admonitionInsertAtLine set, editingAdmonition null)
+  // and Modify (editingAdmonition set instead) — the entry form itself
+  // doesn't know or care which one it's serving.
+  function handleAdmonitionEntrySubmit(data: {
+    type: string;
+    title: string;
+    body: string;
+  }) {
+    const block = buildAdmonitionBlock(data.type, data.title, data.body);
+
+    if (editingAdmonition) {
+      const lines = content.split("\n");
+      const count = editingAdmonition.endLine - editingAdmonition.startLine + 1;
+      lines.splice(editingAdmonition.startLine - 1, count, ...block.split("\n"));
+      setContent(lines.join("\n"));
+      setEditingAdmonition(null);
+    } else if (admonitionInsertAtLine != null) {
+      const offset = lineNumberToOffset(content, admonitionInsertAtLine);
+      setContent(
+        (prev) => prev.slice(0, offset) + block + "\n\n" + prev.slice(offset),
+      );
+      setAdmonitionInsertAtLine(null);
+    }
+
+    setShowAdmonitionEntry(false);
+  }
+
+  function handleAdmonitionEntryCancel() {
+    setShowAdmonitionEntry(false);
+    setEditingAdmonition(null);
+    setAdmonitionInsertAtLine(null);
+  }
+
+  function handleTableInsert() {
+    setPendingTableInsertPick((prev) => !prev);
+  }
+
+  function handleTableModify() {
+    setTableMode((prev) => (prev === "modify" ? null : "modify"));
+  }
+
+  function handleTableRemove() {
+    setTableMode((prev) => (prev === "remove" ? null : "remove"));
+  }
+
+  // Shared by Insert (tableInsertAtLine set, editingTable null) and
+  // Modify (editingTable set instead) — same shape as
+  // handleAdmonitionEntrySubmit above.
+  function handleTableEntrySubmit(data: {
+    headers: string[];
+    rows: string[][];
+  }) {
+    const block = buildMarkdownTable(data.headers, data.rows);
+
+    if (editingTable) {
+      const lines = content.split("\n");
+      const count = editingTable.endLine - editingTable.startLine + 1;
+      lines.splice(editingTable.startLine - 1, count, ...block.split("\n"));
+      setContent(lines.join("\n"));
+      setEditingTable(null);
+    } else if (tableInsertAtLine != null) {
+      const offset = lineNumberToOffset(content, tableInsertAtLine);
+      setContent(
+        (prev) => prev.slice(0, offset) + block + "\n\n" + prev.slice(offset),
+      );
+      setTableInsertAtLine(null);
+    }
+
+    setShowTableEntry(false);
+  }
+
+  function handleTableEntryCancel() {
+    setShowTableEntry(false);
+    setEditingTable(null);
+    setTableInsertAtLine(null);
+  }
+
+  function handleTabsInsert() {
+    // Tabs is JSX (<Tabs>/<TabItem>) — a .md file can't render it on the
+    // real Docusaurus site, so this is caught here rather than letting
+    // the user pick a position only to find out at the end. An in-page
+    // notice rather than a native alert() — same reasoning as
+    // ConfirmDialog replacing window.confirm() elsewhere in this app:
+    // a real OS dialog risked the Windows focus-loss bug that fix was
+    // for in the first place.
+    if (!currentDocPath.endsWith(".mdx")) {
+      setPendingConfirm({
+        message:
+          "Cannot use Tabs for an MD file. This file needs to be converted to MDX first.",
+        hideCancel: true,
+        onConfirm: () => setPendingConfirm(null),
+      });
+      return;
+    }
+    setPendingTabsInsertPick((prev) => !prev);
+  }
+
+  function handleTabsModify() {
+    setTabsMode((prev) => (prev === "modify" ? null : "modify"));
+  }
+
+  function handleTabsRemove() {
+    setTabsMode((prev) => (prev === "remove" ? null : "remove"));
+  }
+
+  // Shared by Insert (tabsInsertAtLine set, editingTabs null) and Modify
+  // (editingTabs set instead) — same shape as handleTableEntrySubmit
+  // above. Each tab's `value` is derived from its label, de-duplicated
+  // within this block the same way makeImportVarName in
+  // insertImageReference.ts de-duplicates import names.
+  function handleTabsEntrySubmit(entries: { label: string; content: string }[]) {
+    const docRelPath = currentDocPath.replace(/^local-workspace\/[^/]+\//, "");
+    const used = new Set<string>();
+    const tabsData = entries.map((entry) => {
+      const base = slugifyFileName(entry.label) || "tab";
+      let value = base;
+      let n = 2;
+      while (used.has(value)) {
+        value = `${base}-${n}`;
+        n++;
+      }
+      used.add(value);
+      return { value, label: entry.label.trim(), content: entry.content };
+    });
+    const block = buildTabsBlock(tabsData);
+
+    if (editingTabs) {
+      const lines = content.split("\n");
+      const count = editingTabs.endLine - editingTabs.startLine + 1;
+      lines.splice(editingTabs.startLine - 1, count, ...block.split("\n"));
+      setContent(ensureTabsImports(lines.join("\n"), docRelPath));
+      setEditingTabs(null);
+    } else if (tabsInsertAtLine != null) {
+      const offset = lineNumberToOffset(content, tabsInsertAtLine);
+      setContent((prev) => {
+        const withBlock =
+          prev.slice(0, offset) + block + "\n\n" + prev.slice(offset);
+        return ensureTabsImports(withBlock, docRelPath);
+      });
+      setTabsInsertAtLine(null);
+    }
+
+    setShowTabsEntry(false);
+  }
+
+  function handleTabsEntryCancel() {
+    setShowTabsEntry(false);
+    setEditingTabs(null);
+    setTabsInsertAtLine(null);
+  }
+
   const [currentFile, setCurrentFile] = useState("");
 
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -560,12 +1357,10 @@ export default function App() {
       return; // stop normal file loading
     }
 
-    // 3. If file is changed but not conflicted → show diff viewer
-    // `changes` is { added, modified, deleted, renamed } arrays of
-    // { path } entries (from scan-local-changes), not a path-keyed map —
-    // `changes[path]` was always undefined, so this branch never actually
-    // ran, and even when it did, it set state (showDiffViewer/diffFile)
-    // that nothing in the render tree ever read.
+    // Whether to open this doc straight into the diff viewer. `changes` is
+    // { added, modified, deleted, renamed } arrays of { path } entries
+    // (from scan-local-changes), not a path-keyed map, hence the .some()
+    // scan rather than a lookup.
     //
     // Excludes images: the diff viewer only knows how to show a text
     // diff, and a brand-new (or modified) image is just as much a
@@ -580,13 +1375,6 @@ export default function App() {
         .concat(changes.modified, changes.deleted, changes.renamed)
         .some((c) => c.path === relPath);
 
-    if (isChangedFile) {
-      setCurrentFile(relPath);
-      setShowDiff(true);
-      loadDoc(path, ws);
-      return;
-    }
-
     // -----------------------------------------------------
     // 3. Normal file selection
     // -----------------------------------------------------
@@ -600,12 +1388,92 @@ export default function App() {
     // relPath (docs/-prefixed), not cleanPath (stripped) — currentFile must
     // stay in the same full-path format /diff-file and `changes` use, or
     // the diff view resolves the wrong file and comes back empty once this
-    // file is edited and saved (see the isChangedFile branch above, which
-    // already gets this right).
+    // file is edited and saved.
     setCurrentFile(relPath);
-    setShowDiff(false);
+    setShowDiff(isChangedFile);
+
+    // A doc actively being worked on is exactly the case that's usually
+    // "changed" (added/modified) — this prompt has to fire regardless of
+    // isChangedFile, or it would essentially never show for a file someone
+    // is mid-edit on.
+    if (path.toLowerCase().endsWith(".md") && !skipMdxPromptRef.current.has(path)) {
+      setPendingConfirm({
+        message: "MD file detected. Our new standard is MDX. Do you want to convert?",
+        confirmLabel: "Yes",
+        cancelLabel: "No",
+        onConfirm: () => {
+          setPendingConfirm(null);
+          handleConvertMdToMdx(path, ws);
+        },
+        onCancel: () => {
+          skipMdxPromptRef.current.add(path);
+          loadDoc(path, ws);
+        },
+      });
+      return;
+    }
+
     loadDoc(path, ws);
   };
+
+  // Renames a .md file to .mdx and converts any Markdown image syntax to
+  // import + <img> in the same pass. Also adds the Tabs imports if the
+  // raw content already contains a <Tabs> block — vanishingly rare for a
+  // plain .md file (Tabs is JSX, so it wouldn't have rendered before
+  // conversion anyway) but kept for consistency with how Insert handles
+  // it. Fetches the file's on-disk content directly rather than trusting
+  // `content` state, since that may still hold whatever doc was open
+  // before this one and loadDoc's own fetch hasn't necessarily resolved
+  // yet.
+  async function handleConvertMdToMdx(path: string, ws: string) {
+    if (!login) return;
+    const storedLogin = login || localStorage.getItem("rf_login");
+
+    const canonicalOld = path.startsWith("local-workspace/")
+      ? path
+      : `local-workspace/${ws}/${path}`;
+    const canonicalNew = canonicalOld.replace(/\.md$/i, ".mdx");
+    const newDocRelPath = canonicalOld
+      .replace(/^local-workspace\/[^/]+\//, "")
+      .replace(/\.md$/i, ".mdx");
+
+    setConvertingMdToMdx(true);
+    try {
+      const loadRes = await fetch(
+        `/api/docs/load?path=${encodeURIComponent(
+          canonicalOld,
+        )}&login=${encodeURIComponent(storedLogin || "")}&workspace=${encodeURIComponent(ws)}`,
+      );
+      const rawContent = loadRes.ok ? (await loadRes.json()).content || "" : "";
+      const withImages = convertMarkdownImagesToJsx(rawContent);
+      const converted = rawContent.includes("<Tabs")
+        ? ensureTabsImports(withImages, newDocRelPath)
+        : withImages;
+
+      await notifyFileRenamed("local-workspace", canonicalOld, canonicalNew);
+
+      const saveRes = await fetch(
+        `/api/docs/save?login=${encodeURIComponent(login)}&workspace=${encodeURIComponent(ws)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: newDocRelPath, content: converted }),
+        },
+      );
+      if (!saveRes.ok) {
+        console.error("MD->MDX conversion save failed:", saveRes.status, await saveRes.text());
+      }
+
+      await refreshLocalWorkspace(ws);
+      setCurrentFile(newDocRelPath);
+      setShowDiff(false);
+      loadDoc(canonicalNew, ws);
+    } catch (err) {
+      console.error("MD->MDX conversion failed:", err);
+    } finally {
+      setConvertingMdToMdx(false);
+    }
+  }
 
   /* MOVE FILES / NEW PAGE */
   function onDropFolder(ws: string, targetFolderPath: string) {
@@ -632,6 +1500,33 @@ export default function App() {
     });
 
     setDraggedItem(null);
+  }
+
+  /* DELETE FILE */
+  // Only ever removes the file from the local workspace, never the real
+  // rotorflight-docs repo — that stays untouched unless a PR gets
+  // submitted and merged, so a plain single confirm (matching every
+  // other destructive action in this app) is enough here.
+  function handleDeleteFile(ws: string, filePath: string) {
+    if (!login) return;
+    const filename = filePath.split("/").pop() || filePath;
+
+    setPendingConfirm({
+      message: `Delete "${filename}"? This removes it from your local workspace (it won't affect the real repo unless you submit a PR).`,
+      danger: true,
+      onConfirm: async () => {
+        setPendingConfirm(null);
+
+        const wasOpen = filePath === currentDocPath;
+        if (wasOpen) {
+          setCurrentDocPath("");
+          setContent("");
+        }
+
+        await notifyFileDeleted("local-workspace", filePath);
+        await refreshLocalWorkspace(ws);
+      },
+    });
   }
 
   /* DELETE WORKSPACE */
@@ -919,10 +1814,22 @@ export default function App() {
                     }}
                     onNewImage={(folderPath) => {
                       setWorkspace(ws);
+                      setImageModalContext("sidebar");
                       setAddImageFolder(folderPath);
                       setAddImageExistingNames(listImageNames(nodes, folderPath));
                       setShowAddImageModal(true);
                     }}
+                    onDeleteFile={(filePath) => handleDeleteFile(ws, filePath)}
+                    rootBadge={
+                      ws === workspace && prState === "merged" ? (
+                        <span
+                          className="workspace-pr-badge"
+                          title="This workspace's PR has been merged. Nothing here is deleted or reset automatically — copy anything you still want to keep working on into a new workspace when you're ready."
+                        >
+                          ✓ Merged
+                        </span>
+                      ) : undefined
+                    }
                   />
                 </div>
               );
@@ -1055,6 +1962,9 @@ export default function App() {
                 submitPR={submitPR}
                 submitting={submitting}
                 clearBanner={clearBanner}
+                prMerged={prState === "merged"}
+                newCommentNotice={newCommentNotice}
+                dismissCommentNotice={dismissCommentNotice}
               />
             </div>
           </div>
@@ -1101,8 +2011,14 @@ export default function App() {
           <ConfirmDialog
             message={pendingConfirm.message}
             danger={pendingConfirm.danger}
+            hideCancel={pendingConfirm.hideCancel}
+            confirmLabel={pendingConfirm.confirmLabel}
+            cancelLabel={pendingConfirm.cancelLabel}
             onConfirm={pendingConfirm.onConfirm}
-            onCancel={() => setPendingConfirm(null)}
+            onCancel={() => {
+              pendingConfirm.onCancel?.();
+              setPendingConfirm(null);
+            }}
           />
         )}
 
@@ -1112,11 +2028,83 @@ export default function App() {
           login={login}
           existingNames={addImageExistingNames}
           onClose={() => setShowAddImageModal(false)}
-          onUploaded={async (ws) => {
+          onUploaded={async (ws, filename) => {
+            if (imageModalContext === "insert") {
+              const offset = insertCursorOffsetRef.current ?? content.length;
+              const isMdx = currentDocPath.endsWith(".mdx");
+              setContent((prev) =>
+                insertImageReference(prev, offset, isMdx, `./img/${filename}`),
+              );
+              insertCursorOffsetRef.current = null;
+            }
             await refreshLocalWorkspace(ws);
             await notifyFileSaved();
           }}
         />
+
+        {showImageInsertChoice && (
+          <ImageInsertChoiceModal
+            onNewImage={handleChooseNewImage}
+            onChooseExisting={handleChooseExisting}
+            onCancel={handleImageInsertChoiceCancel}
+          />
+        )}
+
+        {showChooseExistingImage && (
+          <ChooseExistingImageModal
+            images={findAllImages(getCurrentWorkspaceNodes())}
+            login={login}
+            workspace={workspace}
+            onChoose={handleExistingImageChosen}
+            onCancel={() => {
+              setShowChooseExistingImage(false);
+              setInsertAtLine(null);
+            }}
+          />
+        )}
+
+        {showAdmonitionEntry && (
+          <AdmonitionEntryModal
+            initial={
+              editingAdmonition
+                ? {
+                    type: editingAdmonition.type,
+                    title: editingAdmonition.title,
+                    body: editingAdmonition.body,
+                  }
+                : undefined
+            }
+            onSubmit={handleAdmonitionEntrySubmit}
+            onCancel={handleAdmonitionEntryCancel}
+          />
+        )}
+
+        {showTableEntry && (
+          <TableEntryModal
+            initial={
+              editingTable
+                ? { headers: editingTable.headers, rows: editingTable.rows }
+                : undefined
+            }
+            onSubmit={handleTableEntrySubmit}
+            onCancel={handleTableEntryCancel}
+          />
+        )}
+
+        {showTabsEntry && (
+          <TabsEntryModal
+            initial={
+              editingTabs
+                ? editingTabs.tabs.map((t) => ({
+                    label: t.label,
+                    content: t.content,
+                  }))
+                : undefined
+            }
+            onSubmit={handleTabsEntrySubmit}
+            onCancel={handleTabsEntryCancel}
+          />
+        )}
 
         {/* MAIN EDITOR + PREVIEW AREA */}
         <div className="editor-preview-row" ref={editorPreviewRowRef}>
@@ -1132,6 +2120,12 @@ export default function App() {
               )}
             </div>
 
+            {convertingMdToMdx && (
+              <div className="editor-converting-banner">
+                <LoadingLocalBanner message="Converting file to MDX…" />
+              </div>
+            )}
+
             <div className="editor-scroll-area">
               {showDiff ? (
                 <UnifiedDiffViewer
@@ -1144,6 +2138,7 @@ export default function App() {
                   // local-workspace/<ws>/ virtual-tree prefix gets stripped.
                   file={currentFile.replace(/^local-workspace\/[^/]+\//, "")}
                   onClose={() => setShowDiff(false)}
+                  scrollRef={diffScrollRef}
                 />
               ) : (
                 <EditorPanel
@@ -1177,15 +2172,78 @@ export default function App() {
             thumbSize={scrollThumbSize}
             onFractionChange={setScrollFraction}
             onResizeStart={startColumnResize}
+            showThumb={!showDiff}
           />
 
           {/* PREVIEW COLUMN */}
           <div
-            className="preview-panel rf-synced-scroll-hidden"
+            // The custom thumb above only tracks the editor textarea, which
+            // is unmounted while Show Diff is active (see UnifiedDiffViewer)
+            // — rf-synced-scroll-hidden is skipped in that case so the
+            // preview keeps a real, working scrollbar instead of looking
+            // unscrollable behind a hidden one with no synced thumb to
+            // replace it.
+            className={`preview-panel${showDiff ? "" : " rf-synced-scroll-hidden"}${imagesMode ? " picking-image" : ""}${admonitionsMode ? " picking-admonition" : ""}${tableMode ? " picking-table" : ""}${tabsMode ? " picking-tabs" : ""}${pendingMove || pendingInsertPick || pendingAdmonitionInsertPick || pendingTableInsertPick || pendingTabsInsertPick ? " picking-move-target" : ""}`}
             ref={previewPanelRef}
             style={{ width: `${100 - editorPercent}%` }}
           >
             <h3>Preview</h3>
+
+            {currentDocPath && !/\.(png|jpe?g|gif|svg|webp)$/i.test(currentDocPath) && (
+              <PreviewToolbar
+                activeTopTool={activeTopTool}
+                onActiveTopToolChange={setActiveTopTool}
+                imagesMode={imagesMode}
+                imagesInsertActive={pendingInsertPick}
+                onImagesMove={handleImagesMove}
+                onImagesRemove={handleImagesRemove}
+                onImagesInsert={handleImagesInsert}
+                admonitionsMode={admonitionsMode}
+                admonitionsInsertActive={pendingAdmonitionInsertPick}
+                onAdmonitionsInsert={handleAdmonitionsInsert}
+                onAdmonitionsModify={handleAdmonitionsModify}
+                onAdmonitionsRemove={handleAdmonitionsRemove}
+                tableMode={tableMode}
+                tableInsertActive={pendingTableInsertPick}
+                onTableInsert={handleTableInsert}
+                onTableModify={handleTableModify}
+                onTableRemove={handleTableRemove}
+                tabsMode={tabsMode}
+                tabsInsertActive={pendingTabsInsertPick}
+                onTabsInsert={handleTabsInsert}
+                onTabsModify={handleTabsModify}
+                onTabsRemove={handleTabsRemove}
+              />
+            )}
+
+            {(pendingMove ||
+              pendingInsertPick ||
+              pendingAdmonitionInsertPick ||
+              pendingTableInsertPick ||
+              pendingTabsInsertPick) && (
+              <>
+                <div className="move-drop-hint">
+                  Click (or press Enter) to{" "}
+                  {pendingMove
+                    ? "drop the image"
+                    : pendingInsertPick
+                      ? "insert the image"
+                      : pendingAdmonitionInsertPick
+                        ? "insert the admonition"
+                        : pendingTableInsertPick
+                          ? "insert the table"
+                          : "insert the tabs"}{" "}
+                  here — Esc to cancel
+                </div>
+                {moveIndicator && (
+                  <div
+                    className="move-drop-indicator"
+                    style={{ top: `${moveIndicator.y}px` }}
+                  />
+                )}
+              </>
+            )}
+
             <PreviewErrorBoundary key={currentDocPath} onError={setErrorLine}>
               {currentDocPath &&
                 (content.length > 0 ||

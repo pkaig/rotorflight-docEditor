@@ -128,12 +128,13 @@ export function useDocEditor(
       return;
     }
 
+    const normalisedPath = normaliseSavePath(currentDocPath, workspace);
+
     setSaveState("saving");
 
     try {
       console.log("Workspace start:", workspace);
       console.log("Path start:", currentDocPath);
-      const normalisedPath = normaliseSavePath(currentDocPath, workspace);
       console.log("Normalised Path:", normalisedPath);
       const res = await fetch(
         `/api/docs/save?login=${encodeURIComponent(login)}&workspace=${encodeURIComponent(workspace)}`,

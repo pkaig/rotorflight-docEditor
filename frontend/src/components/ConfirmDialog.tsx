@@ -21,6 +21,11 @@ export interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  // Plain informational notices have nothing to actually confirm —
+  // showing a Cancel button next to a message with no real choice
+  // would be misleading, so this hides it, leaving a single dismiss
+  // button (confirmLabel still applies, defaulting to "OK").
+  hideCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -30,6 +35,7 @@ export function ConfirmDialog({
   confirmLabel = "OK",
   cancelLabel = "Cancel",
   danger = false,
+  hideCancel = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -45,9 +51,11 @@ export function ConfirmDialog({
           >
             {confirmLabel}
           </button>
-          <button className="confirm-dialog-cancel-btn" onClick={onCancel}>
-            {cancelLabel}
-          </button>
+          {!hideCancel && (
+            <button className="confirm-dialog-cancel-btn" onClick={onCancel}>
+              {cancelLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>

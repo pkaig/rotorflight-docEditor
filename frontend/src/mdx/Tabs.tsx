@@ -47,16 +47,29 @@ interface TabsProps {
   // this preview-sandbox re-implementation.
   groupId?: string;
   defaultValue?: string;
+  // Injected by rehypeSourceLines.ts (only for <Tabs>, by name) so the
+  // Tabs toolbar's Modify/Remove can map a click back to this block's
+  // raw source line — forwarded onto the root div below rather than
+  // just accepted and dropped, unlike every other unknown prop here.
+  "data-source-line"?: string;
 }
 
-export default function Tabs({ children, defaultValue }: TabsProps) {
+export default function Tabs({
+  children,
+  defaultValue,
+  "data-source-line": dataSourceLine,
+}: TabsProps) {
   const items = Children.toArray(children).filter(isTabItemElement);
 
   const first = defaultValue || items[0]?.props.value;
   const [active, setActive] = useState(first);
 
   return (
-    <div className={styles.tabsContainer}>
+    <div
+      className={styles.tabsContainer}
+      data-source-line={dataSourceLine}
+      data-rf-tabs="true"
+    >
       <div className={styles.tabHeader}>
         {items.map((item) => (
           <button

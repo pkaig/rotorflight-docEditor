@@ -510,6 +510,123 @@ router.post("/create", async (req, res) => {
   }
 });
 
+/* ============================================================
+   9c. RENAME / MOVE FILE
+   ============================================================ */
+
+// Backs both the tree's drag-to-move and the MD -> MDX conversion
+// prompt (App.tsx's onDropFolder and handleConvertMdToMdx) — a plain
+// filesystem move, source and dest both workspace-relative.
+router.post("/rename", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, workspace } = auth;
+  let { oldPath, newPath } = req.body;
+
+  if (!oldPath || !newPath) {
+    return res.status(400).json({ error: "Missing oldPath or newPath" });
+  }
+
+  try {
+    oldPath = String(oldPath).replace(/\\/g, "/");
+    newPath = String(newPath).replace(/\\/g, "/");
+
+    if (oldPath.startsWith("local-workspace/")) {
+      const [, , ...rest] = oldPath.split("/");
+      oldPath = rest.join("/");
+    }
+    if (newPath.startsWith("local-workspace/")) {
+      const [, , ...rest] = newPath.split("/");
+      newPath = rest.join("/");
+    }
+
+    if (!isSafeRelativePath(oldPath) || !isSafeRelativePath(newPath)) {
+      return res.status(400).json({ error: "Invalid path" });
+    }
+
+    const fullOldPath = path.join(
+      process.cwd(),
+      "workspaces",
+      login,
+      workspace,
+      oldPath,
+    );
+    const fullNewPath = path.join(
+      process.cwd(),
+      "workspaces",
+      login,
+      workspace,
+      newPath,
+    );
+
+    if (!(await fs.pathExists(fullOldPath))) {
+      return res.status(404).json({ error: "Source file not found" });
+    }
+    if (fullOldPath !== fullNewPath && (await fs.pathExists(fullNewPath))) {
+      return res.status(409).json({ error: "A file already exists at that path" });
+    }
+
+    await fs.ensureDir(path.dirname(fullNewPath));
+    await fs.move(fullOldPath, fullNewPath);
+
+    return res.json({ ok: true });
+  } catch {
+    return res.status(500).json({ error: "Failed to rename document" });
+  }
+});
+
+/* ============================================================
+   9d. DELETE FILE
+   ============================================================ */
+
+// Only ever removes the file from the *local workspace* — the real
+// rotorflight-docs repo is untouched until (and unless) a PR is
+// submitted and merged, so this is a plain filesystem delete, no
+// different in blast radius than any other local edit.
+router.post("/delete", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, workspace } = auth;
+  let { path: filePath } = req.body;
+
+  if (!filePath) {
+    return res.status(400).json({ error: "Missing path" });
+  }
+
+  try {
+    filePath = String(filePath).replace(/\\/g, "/");
+
+    if (filePath.startsWith("local-workspace/")) {
+      const [, , ...rest] = filePath.split("/");
+      filePath = rest.join("/");
+    }
+
+    if (!isSafeRelativePath(filePath)) {
+      return res.status(400).json({ error: "Invalid path" });
+    }
+
+    const fullPath = path.join(
+      process.cwd(),
+      "workspaces",
+      login,
+      workspace,
+      filePath,
+    );
+
+    if (!(await fs.pathExists(fullPath))) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    await fs.remove(fullPath);
+
+    return res.json({ ok: true });
+  } catch {
+    return res.status(500).json({ error: "Failed to delete document" });
+  }
+});
+
 // Minimal shapes for the two GitHub Git Data / Contents API responses used
 // below — just enough to narrow githubRequest()'s otherwise-unknown result.
 interface GitHubTreeResponse {
