@@ -46,6 +46,7 @@ import authRoutes from "./routes/authRoutes";
 import docsRoutes from "./routes/docsRoutes";
 import resetMirrorRoutes from "./routes/resetMirror";
 import versionRouter from "./routes/version";
+import docStandardRouter from "./routes/docStandardRoute";
 import git from "./routes/gitRoutes";
 
 const app = express();
@@ -124,6 +125,9 @@ app.use("/api/reset-mirror", resetMirrorRoutes);
 
 // Version Gate (must be BEFORE listen)
 app.use("/api", versionRouter);
+
+// Remote doc-standard config (must be BEFORE listen)
+app.use("/api", docStandardRouter);
 
 // Git PR + Commit Routes (must be BEFORE listen)
 app.use("/api/git", git);
