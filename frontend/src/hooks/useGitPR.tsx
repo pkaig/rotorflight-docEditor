@@ -271,10 +271,15 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
   useEffect(() => {
     if (!login || !workspace) return;
     // Reset immediately on switch rather than waiting for the check to
-    // resolve, so a previous workspace's badge/notice doesn't briefly
-    // show against the newly-selected one.
+    // resolve, so a previous workspace's banner/badge/notice doesn't
+    // linger against the newly-selected one — banner in particular has
+    // no natural reset otherwise: handleBackendResponse's "none" case
+    // (no PR exists yet for the new workspace) is a no-op, so without
+    // this a stale "PR merged"/"PR closed" banner from whatever
+    // workspace was open before would just sit there indefinitely.
     setPrState("none");
     setNewCommentNotice(null);
+    setBanner(null);
     checkPRStatus();
     window.addEventListener("focus", checkPRStatus);
     return () => window.removeEventListener("focus", checkPRStatus);
