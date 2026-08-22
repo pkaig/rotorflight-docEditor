@@ -1960,6 +1960,7 @@ export default function App() {
                 submitPR={submitPR}
                 submitting={submitting}
                 clearBanner={clearBanner}
+                prMerged={prState === "merged"}
               />
             </div>
           </div>

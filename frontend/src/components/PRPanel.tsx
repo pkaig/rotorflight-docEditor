@@ -50,6 +50,14 @@ interface PRPanelProps {
   submitting: boolean;
   clearBanner: () => void;
   onConflictsDetected?: (conflicts: unknown[]) => void;
+  // True once this workspace's PR is detected as merged (see
+  // useGitPR.tsx's prState) — hides the submit button rather than
+  // offering "Update PR" against a PR that no longer exists, or "Set up
+  // PR" for changes already merged. Note this is a one-way trip today:
+  // nothing currently clears prState back to "open"/"none" on its own,
+  // so once a workspace's PR is seen as merged, its submit button stays
+  // hidden even if new edits are made afterward.
+  prMerged?: boolean;
 }
 
 // banner/activePR/submitPR/submitting/clearBanner come from App.tsx's own
@@ -67,6 +75,7 @@ export function PRPanel({
   submitting,
   clearBanner,
   onConflictsDetected = warnNoConflictUI,
+  prMerged = false,
 }: PRPanelProps) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -135,9 +144,11 @@ export function PRPanel({
 
       {activePR && <div className="active-pr">Working on PR #{activePR}</div>}
 
-      <button className="submit-pr" onClick={handleOpenModal} disabled={submitting}>
-        {submitting ? "Submitting…" : activePR ? "Update PR" : "Set up PR"}
-      </button>
+      {!prMerged && (
+        <button className="submit-pr" onClick={handleOpenModal} disabled={submitting}>
+          {submitting ? "Submitting…" : activePR ? "Update PR" : "Set up PR"}
+        </button>
+      )}
 
       <PRDescriptionModal
         isOpen={modalOpen}
