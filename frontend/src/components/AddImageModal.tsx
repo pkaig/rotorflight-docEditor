@@ -31,7 +31,12 @@ interface AddImageModalProps {
   login: string | null;
   existingNames: string[]; // filenames already in `folder`, for the overwrite check below
   onClose: () => void;
-  onUploaded: (workspace: string) => void;
+  // filename is the exact name it was actually saved under (replaceFileName
+  // itself in replace mode, or the slugified name the user entered
+  // otherwise) — callers that need to reference the upload afterward (e.g.
+  // inserting a Markdown image tag at the editor's cursor) don't have to
+  // re-derive it themselves.
+  onUploaded: (workspace: string, filename: string) => void;
   // When set, this is "replace this exact image" rather than "add a new
   // one": the name field is skipped entirely, the upload always goes out
   // under this exact filename (so every doc already referencing it keeps
@@ -168,7 +173,7 @@ export function AddImageModal({
         throw new Error(body.error || "Upload failed");
       }
 
-      onUploaded(ws);
+      onUploaded(ws, finalName);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
