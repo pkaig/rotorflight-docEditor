@@ -8,7 +8,10 @@
  *   Markdown line for a .md file, or an import + <img> pair for .mdx
  *   (matching the pattern the "new page" template's own worked example
  *   already uses, per the user's preference for MDX docs to use real
- *   imports rather than a bare Markdown image tag).
+ *   imports rather than a bare Markdown image tag). Also owns
+ *   convertMarkdownImagesToJsx, the batch version of that same
+ *   conversion used once by MD -> MDX conversion (App.tsx's
+ *   handleConvertMdToMdx) rather than per-insert.
  */
 
 // Converts a filename into a valid, readable JS identifier for the
@@ -75,4 +78,44 @@ export function insertImageReference(
     jsxTag +
     original.slice(importInsertOffset)
   );
+}
+
+const MD_IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+
+// Skips remote URLs and data URIs — only a local, relative image path
+// makes sense to import as a bundler-resolved asset.
+function isLocalImagePath(src: string): boolean {
+  return !/^([a-z]+:)?\/\//i.test(src) && !src.startsWith("data:");
+}
+
+// Converts every Markdown image (![alt](path)) in a doc to an
+// import + <img> pair in one pass — used once, at MD -> MDX conversion
+// time, since a doc's Markdown images all need to become real imports
+// the moment it becomes .mdx. Markdown image paths are left untouched
+// as import specifiers since they're already relative to the doc's own
+// folder, exactly like a hand-written import would be.
+export function convertMarkdownImagesToJsx(content: string): string {
+  const imports: string[] = [];
+  const body = content.replace(
+    MD_IMAGE_RE,
+    (match: string, alt: string, src: string) => {
+      if (!isLocalImagePath(src)) return match;
+
+      const filename = src.split("/").pop() || src;
+      const varName = makeImportVarName(
+        content + "\n" + imports.join("\n"),
+        filename,
+      );
+      imports.push(`import ${varName} from "${src}";`);
+      const altAttr = alt ? ` alt="${alt.replace(/"/g, "&quot;")}"` : "";
+      return `<img src={${varName}}${altAttr} style={{ maxWidth: '100%' }} />`;
+    },
+  );
+
+  if (imports.length === 0) return body;
+
+  const frontmatterMatch = body.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+  const insertOffset = frontmatterMatch ? frontmatterMatch[0].length : 0;
+  const importBlock = imports.join("\n") + "\n";
+  return body.slice(0, insertOffset) + importBlock + body.slice(insertOffset);
 }

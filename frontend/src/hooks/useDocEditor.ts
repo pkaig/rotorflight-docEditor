@@ -16,22 +16,8 @@
  *   resolves — Preview.tsx's compile effect has a specific
  *   settle-window workaround for the resulting double-fire this causes
  *   on file open.
- *
- *   saveDocument also brings an .mdx doc's imports up to the current
- *   doc standard (docStandard.ts) before writing, every time it saves —
- *   not just once at MD -> MDX conversion time — so a doc a file added
- *   to Changes by an ordinary edit/autosave stays compliant even if it
- *   was hand-edited into drift, or the remote standard changed after
- *   the doc was first converted. mdxRequiredImportRules is passed in
- *   rather than imported directly so it reflects whatever App.tsx's own
- *   doc-standard check resolved (baked-in default or remote override).
  */
 import { useState, useRef, useEffect } from "react";
-import {
-  applyMissingStandardImports,
-  DEFAULT_MDX_IMPORT_RULES,
-  type StandardImportRule,
-} from "../utils/docStandard";
 
 // notifyFileSaved is passed in rather than obtained from its own
 // useGitPR(...) call here — every call to that hook creates an
@@ -45,7 +31,6 @@ export function useDocEditor(
   login: string | null,
   workspace: string | null,
   notifyFileSaved: () => void,
-  mdxRequiredImportRules: StandardImportRule[] = DEFAULT_MDX_IMPORT_RULES,
 ) {
   const [content, setContent] = useState("");
   const [currentDocPath, setCurrentDocPath] = useState("");
@@ -145,15 +130,6 @@ export function useDocEditor(
 
     const normalisedPath = normaliseSavePath(currentDocPath, workspace);
 
-    // Bring an .mdx doc's imports up to the current standard on every
-    // save, not just at MD -> MDX conversion time — a doc that drifted
-    // (hand-edited, or the remote standard changed since it was
-    // converted) gets fixed up the next time it's actually saved, which
-    // is also the moment it becomes/stays part of Changes.
-    const contentToSave = normalisedPath.toLowerCase().endsWith(".mdx")
-      ? applyMissingStandardImports(newContent, normalisedPath, mdxRequiredImportRules)
-      : newContent;
-
     setSaveState("saving");
 
     try {
@@ -167,7 +143,7 @@ export function useDocEditor(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             path: normalisedPath,
-            content: contentToSave,
+            content: newContent,
           }),
         },
       );
@@ -177,19 +153,8 @@ export function useDocEditor(
         return;
       }
 
-      // The saved content may differ from what's still in the editor if
-      // imports were just auto-added — keep them in sync so the next
-      // keystroke's autosave diffs against what's actually on disk, and
-      // so the editor visibly shows the imports that were added.
-      if (contentToSave !== newContent) {
-        setContent(contentToSave);
-      }
-
-      // ⭐ Update baseline AFTER successful save — contentToSave (what
-      // actually landed on disk), not newContent, so a doc whose imports
-      // just got auto-added doesn't immediately look "changed again" on
-      // the very next autosave tick.
-      lastSavedContentRef.current = contentToSave;
+      // ⭐ Update baseline AFTER successful save
+      lastSavedContentRef.current = newContent;
       notifyFileSaved();
 
       setSaveState("saved");

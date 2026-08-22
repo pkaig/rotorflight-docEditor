@@ -64,7 +64,10 @@ import {
   extractMarkdownImagePath,
   removeImageReference,
 } from "./utils/findImageLines";
-import { insertImageReference } from "./utils/insertImageReference";
+import {
+  insertImageReference,
+  convertMarkdownImagesToJsx,
+} from "./utils/insertImageReference";
 import { ImageInsertChoiceModal } from "./components/ImageInsertChoiceModal";
 import { ChooseExistingImageModal } from "./components/ChooseExistingImageModal";
 import { AdmonitionEntryModal } from "./components/AdmonitionEntryModal";
@@ -84,15 +87,10 @@ import {
   findTabsBlock,
   buildTabsBlock,
   ensureTabsImports,
+  removeTabsImportsIfUnused,
   type TabsBlock,
 } from "./utils/tabs";
 import { relativePosixPath } from "./utils/relativePosixPath";
-import {
-  convertMdToMdx,
-  resolveRequiredImportRules,
-  DEFAULT_MDX_IMPORT_RULES,
-  type StandardImportRule,
-} from "./utils/docStandard";
 
 const IMAGE_RE = /\.(png|jpe?g|gif|svg|webp)$/i;
 
@@ -230,11 +228,6 @@ export default function App() {
   /* VERSION GATE */
   const [editorStatus, setEditorStatus] = useState<EditorStatus>(null);
 
-  /* MDX DOC STANDARD (remote-overridable — see docStandard.ts) */
-  const [mdxRequiredImportRules, setMdxRequiredImportRules] = useState<
-    StandardImportRule[]
-  >(DEFAULT_MDX_IMPORT_RULES);
-
   /* DOCUMENT TREES (LOCAL ONLY) */
   const { localTrees, loadingLocal, refreshLocalWorkspace } = useDocTrees(
     login,
@@ -275,7 +268,7 @@ export default function App() {
     setSuppressNextAutosave,
     saveState,
     saveDocument,
-  } = useDocEditor(login, workspace, notifyFileSaved, mdxRequiredImportRules);
+  } = useDocEditor(login, workspace, notifyFileSaved);
 
   /* UI STATE */
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
@@ -766,7 +759,7 @@ export default function App() {
       } else if (tabsMode === "remove") {
         const lines = content.split("\n");
         lines.splice(block.startLine - 1, block.endLine - block.startLine + 1);
-        setContent(lines.join("\n"));
+        setContent(removeTabsImportsIfUnused(lines.join("\n")));
         setTabsMode(null);
       }
     }
@@ -1031,6 +1024,7 @@ export default function App() {
   // within this block the same way makeImportVarName in
   // insertImageReference.ts de-duplicates import names.
   function handleTabsEntrySubmit(entries: { label: string; content: string }[]) {
+    const docRelPath = currentDocPath.replace(/^local-workspace\/[^/]+\//, "");
     const used = new Set<string>();
     const tabsData = entries.map((entry) => {
       const base = slugifyFileName(entry.label) || "tab";
@@ -1049,14 +1043,14 @@ export default function App() {
       const lines = content.split("\n");
       const count = editingTabs.endLine - editingTabs.startLine + 1;
       lines.splice(editingTabs.startLine - 1, count, ...block.split("\n"));
-      setContent(ensureTabsImports(lines.join("\n")));
+      setContent(ensureTabsImports(lines.join("\n"), docRelPath));
       setEditingTabs(null);
     } else if (tabsInsertAtLine != null) {
       const offset = lineNumberToOffset(content, tabsInsertAtLine);
       setContent((prev) => {
         const withBlock =
           prev.slice(0, offset) + block + "\n\n" + prev.slice(offset);
-        return ensureTabsImports(withBlock);
+        return ensureTabsImports(withBlock, docRelPath);
       });
       setTabsInsertAtLine(null);
     }
@@ -1177,26 +1171,6 @@ export default function App() {
     }
 
     checkStatus();
-  }, []);
-
-  // -----------------------------
-  // MDX DOC STANDARD CHECK
-  // -----------------------------
-  // Same fetch-once-fail-open shape as the version gate above: a missing
-  // route, a missing docStandard.json upstream, or any other failure just
-  // leaves mdxRequiredImportRules at its DEFAULT_MDX_IMPORT_RULES initial
-  // value — this can ship before docStandard.json exists in the docs repo
-  // at all.
-  useEffect(() => {
-    async function checkDocStandard() {
-      const res = await fetch("/api/doc-standard", { cache: "no-store" });
-      if (!res.ok) return;
-
-      const cfg = await res.json();
-      setMdxRequiredImportRules(resolveRequiredImportRules(cfg?.mdxRequiredImports));
-    }
-
-    checkDocStandard();
   }, []);
 
   /* AUTH UI */
@@ -1438,12 +1412,15 @@ export default function App() {
     loadDoc(path, ws);
   };
 
-  // Renames a .md file to .mdx and brings its content up to the MDX
-  // standard (docStandard.ts) in the same pass: required imports plus
-  // converting any Markdown image syntax to import + <img>. Fetches the
-  // file's on-disk content directly rather than trusting `content` state,
-  // since that may still hold whatever doc was open before this one and
-  // loadDoc's own fetch hasn't necessarily resolved yet.
+  // Renames a .md file to .mdx and converts any Markdown image syntax to
+  // import + <img> in the same pass. Also adds the Tabs imports if the
+  // raw content already contains a <Tabs> block — vanishingly rare for a
+  // plain .md file (Tabs is JSX, so it wouldn't have rendered before
+  // conversion anyway) but kept for consistency with how Insert handles
+  // it. Fetches the file's on-disk content directly rather than trusting
+  // `content` state, since that may still hold whatever doc was open
+  // before this one and loadDoc's own fetch hasn't necessarily resolved
+  // yet.
   async function handleConvertMdToMdx(path: string, ws: string) {
     if (!login) return;
     const storedLogin = login || localStorage.getItem("rf_login");
@@ -1464,7 +1441,10 @@ export default function App() {
         )}&login=${encodeURIComponent(storedLogin || "")}&workspace=${encodeURIComponent(ws)}`,
       );
       const rawContent = loadRes.ok ? (await loadRes.json()).content || "" : "";
-      const converted = convertMdToMdx(rawContent, newDocRelPath, mdxRequiredImportRules);
+      const withImages = convertMarkdownImagesToJsx(rawContent);
+      const converted = rawContent.includes("<Tabs")
+        ? ensureTabsImports(withImages, newDocRelPath)
+        : withImages;
 
       await notifyFileRenamed("local-workspace", canonicalOld, canonicalNew);
 
