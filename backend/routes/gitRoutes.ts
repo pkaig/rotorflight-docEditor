@@ -489,7 +489,11 @@ router.post("/pr", async (req, res) => {
 // and on window focus — the exact moment someone's likely to have just
 // checked/merged their PR in a browser tab and switched back — and
 // feeds the result through the same pr_merged/pr_closed/pr_open
-// handling submitPR's own responses already use.
+// handling submitPR's own responses already use. Also reports the
+// PR's conversation-comment count while it's still open, so the
+// frontend can notice a reviewer left feedback — the list endpoint
+// used to find the PR doesn't include that count, only the single-PR
+// (or, equivalently, issue) endpoint does, hence the second request.
 router.get("/pr-status", async (req, res) => {
   const login = req.session?.login;
   const workspace = req.query.workspace as string;
@@ -523,7 +527,18 @@ router.get("/pr-status", async (req, res) => {
 
     const state = pr.state === "open" ? "open" : pr.merged_at ? "merged" : "closed";
 
-    return res.json({ state, prNumber: pr.number, url: pr.html_url });
+    let comments: number | undefined;
+    if (state === "open") {
+      // Comments only matter while there's still a live PR to review —
+      // skip the extra request once it's merged/closed.
+      const issue = await githubRequest(
+        token,
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues/${pr.number}`,
+      );
+      comments = issue.comments ?? 0;
+    }
+
+    return res.json({ state, prNumber: pr.number, url: pr.html_url, comments });
   } catch (err) {
     console.error("❌ PR status check failed:", err);
     return res.status(500).json({ error: "Failed to check PR status" });

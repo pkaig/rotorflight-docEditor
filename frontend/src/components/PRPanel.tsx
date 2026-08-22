@@ -58,6 +58,12 @@ interface PRPanelProps {
   // so once a workspace's PR is seen as merged, its submit button stays
   // hidden even if new edits are made afterward.
   prMerged?: boolean;
+  // Set once checkPRStatus (useGitPR.tsx) sees the open PR's comment
+  // count go above whatever was last recorded as "seen" (localStorage,
+  // survives an app restart) — a reviewer leaving feedback while this
+  // app was closed is exactly the case that needs to persist.
+  newCommentNotice: { prNumber: number; url: string; commentCount: number } | null;
+  dismissCommentNotice: () => void;
 }
 
 // banner/activePR/submitPR/submitting/clearBanner come from App.tsx's own
@@ -76,6 +82,8 @@ export function PRPanel({
   clearBanner,
   onConflictsDetected = warnNoConflictUI,
   prMerged = false,
+  newCommentNotice,
+  dismissCommentNotice,
 }: PRPanelProps) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -139,6 +147,16 @@ export function PRPanel({
             </>
           )}
           <button onClick={clearBanner}>×</button>
+        </div>
+      )}
+
+      {newCommentNotice && (
+        <div className="banner banner-comment">
+          New PR comment. Please review.{" "}
+          <a href={newCommentNotice.url} target="_blank" rel="noreferrer">
+            View on GitHub
+          </a>
+          <button onClick={dismissCommentNotice}>×</button>
         </div>
       )}
 

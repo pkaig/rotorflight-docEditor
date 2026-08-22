@@ -254,6 +254,8 @@ export default function App() {
     clearBanner,
     loadChangesFromMirror,
     prState,
+    newCommentNotice,
+    dismissCommentNotice,
   } = useGitPR({
     login: login || "",
     workspace,
@@ -1961,6 +1963,8 @@ export default function App() {
                 submitting={submitting}
                 clearBanner={clearBanner}
                 prMerged={prState === "merged"}
+                newCommentNotice={newCommentNotice}
+                dismissCommentNotice={dismissCommentNotice}
               />
             </div>
           </div>

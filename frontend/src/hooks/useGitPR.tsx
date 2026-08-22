@@ -183,6 +183,36 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
     "none",
   );
 
+  // A reviewer commenting on an open PR while this app is closed/idle is
+  // exactly the case a workspace-scoped in-memory flag can't catch — the
+  // "seen" count needs to survive across app restarts, hence localStorage
+  // rather than another useState. Keyed by workspace *and* PR number so
+  // a resubmission after close/merge (a new PR number) doesn't inherit
+  // an old PR's already-seen count.
+  const [newCommentNotice, setNewCommentNotice] = useState<{
+    prNumber: number;
+    url: string;
+    commentCount: number;
+  } | null>(null);
+
+  function commentsSeenKey(ws: string, prNumber: number) {
+    return `rf_pr_comments_seen:${ws}:${prNumber}`;
+  }
+
+  // Records the current comment count as "seen" so the same comments
+  // don't re-trigger the notice on the next check — called when the
+  // user dismisses it, which in PRPanel also means they clicked through
+  // to actually look at the PR.
+  const dismissCommentNotice = useCallback(() => {
+    if (newCommentNotice && workspace) {
+      localStorage.setItem(
+        commentsSeenKey(workspace, newCommentNotice.prNumber),
+        String(newCommentNotice.commentCount),
+      );
+    }
+    setNewCommentNotice(null);
+  }, [newCommentNotice, workspace]);
+
   const checkPRStatus = useCallback(async () => {
     if (!login || !workspace) return;
 
@@ -197,9 +227,28 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
         state: "none" | "open" | "merged" | "closed";
         prNumber?: number;
         url?: string;
+        comments?: number;
       } = await res.json();
 
       setPrState(data.state);
+
+      if (
+        data.state === "open" &&
+        data.prNumber != null &&
+        typeof data.comments === "number"
+      ) {
+        const seenBefore = parseInt(
+          localStorage.getItem(commentsSeenKey(workspace, data.prNumber)) || "0",
+          10,
+        );
+        setNewCommentNotice(
+          data.comments > seenBefore
+            ? { prNumber: data.prNumber, url: data.url || "", commentCount: data.comments }
+            : null,
+        );
+      } else {
+        setNewCommentNotice(null);
+      }
 
       if (data.state === "merged") {
         handleBackendResponse({ status: "pr_merged", prNumber: data.prNumber });
@@ -217,14 +266,15 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
   // Checked on mount/workspace-switch and again on every window focus —
   // the same pattern useAuth.ts already uses for re-checking GitHub App
   // install status, and for the same reason: switching back to this
-  // window is exactly when someone's likely to have just merged or
-  // closed their PR in a browser tab.
+  // window is exactly when someone's likely to have just merged, closed,
+  // or commented on their PR in a browser tab.
   useEffect(() => {
     if (!login || !workspace) return;
     // Reset immediately on switch rather than waiting for the check to
-    // resolve, so a previous workspace's badge doesn't briefly show
-    // against the newly-selected one.
+    // resolve, so a previous workspace's badge/notice doesn't briefly
+    // show against the newly-selected one.
     setPrState("none");
+    setNewCommentNotice(null);
     checkPRStatus();
     window.addEventListener("focus", checkPRStatus);
     return () => window.removeEventListener("focus", checkPRStatus);
@@ -355,6 +405,8 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
     notifyFileCreated,
     checkPRStatus,
     prState,
+    newCommentNotice,
+    dismissCommentNotice,
     clearBanner: () => setBanner(null),
   };
 }

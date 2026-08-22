@@ -387,6 +387,29 @@
   color: #7a1c19;
 }
 
+/* A reviewer left feedback on an open PR — distinct from the plain
+   info-blue .banner default (nothing to act on) and error-red
+   .banner-error, using the same amber already established for
+   "needs attention" loading banners elsewhere in this app. */
+.banner-comment {
+  background: #fff8e6;
+  border-left-color: #d9a400;
+  color: #7a5c00;
+}
+
+.banner-comment a {
+  color: #7a5c00;
+  font-weight: 600;
+}
+
+.banner-comment button {
+  color: #7a5c00;
+}
+
+.banner-comment button:hover {
+  color: #5c4500;
+}
+
 /* ============================================================
    9. MARKDOWN PREVIEW
    ============================================================ */
