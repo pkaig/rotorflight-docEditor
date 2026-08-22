@@ -1,10 +1,13 @@
-/* frontend/src/hooks/useEditorImageLineOffsets.ts
+/* frontend/src/hooks/useEditorLineOffsets.ts
  *
  * Description of responsibility:
  *   Measures the pixel offset (within the editor textarea's own scroll
- *   content) of every line that references an image, so the scroll-sync
- *   hook has real anchor points instead of assuming every source line
- *   takes the same vertical space as every other.
+ *   content) of an arbitrary set of source lines, so the scroll-sync
+ *   hook has real anchor points for whichever lines the preview
+ *   actually rendered something at — not just image lines (see
+ *   useEditorPreviewScrollSync, which now anchors on every
+ *   data-source-line the preview produced, generalizing what this hook
+ *   used to do only for images).
  *
  * Info:
  *   A <textarea> can't report "where is line N on screen" itself once
@@ -13,18 +16,19 @@
  *   read live via getComputedStyle rather than hardcoded, matching the
  *   technique SpellcheckTextarea's own backdrop already uses to stay
  *   pixel-aligned — with a marker <span> at the start of every
- *   image-referencing line, then reads each marker's offsetTop. Re-runs
- *   on content changes and on the textarea's own resize (e.g. the
- *   sidebar collapsing changes editor width, which changes wrapping).
+ *   requested line, then reads each marker's offsetTop. Re-runs on
+ *   content/line-number changes and on the textarea's own resize (e.g.
+ *   the sidebar collapsing changes editor width, which changes
+ *   wrapping).
  */
 import { useEffect, useRef, useState } from "react";
-import { findImageLines } from "../utils/findImageLines";
 
-export function useEditorImageLineOffsets(
+export function useEditorLineOffsets(
   content: string,
   textareaEl: HTMLTextAreaElement | null,
-): number[] {
-  const [offsets, setOffsets] = useState<number[]>([]);
+  lineNumbers: number[],
+): Map<number, number> {
+  const [offsets, setOffsets] = useState<Map<number, number>>(new Map());
   const mirrorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -44,6 +48,11 @@ export function useEditorImageLineOffsets(
     };
   }, []);
 
+  // lineNumbers is a derived array (recomputed each render in the
+  // caller) — stringifying it for the dependency comparison avoids
+  // re-measuring every render when the actual line set hasn't changed.
+  const lineNumbersKey = lineNumbers.join(",");
+
   useEffect(() => {
     if (!textareaEl) return;
 
@@ -51,9 +60,8 @@ export function useEditorImageLineOffsets(
       const mirror = mirrorRef.current;
       if (!mirror || !textareaEl) return;
 
-      const imageLines = findImageLines(content);
-      if (imageLines.length === 0) {
-        setOffsets([]);
+      if (lineNumbers.length === 0) {
+        setOffsets(new Map());
         return;
       }
 
@@ -74,13 +82,13 @@ export function useEditorImageLineOffsets(
       mirror.style.overflowWrap = "normal";
 
       const lines = content.split("\n");
-      const imageLineSet = new Set(imageLines);
+      const wanted = new Set(lineNumbers);
       mirror.textContent = "";
 
       const markers = new Map<number, HTMLSpanElement>();
       lines.forEach((lineText, idx) => {
         const lineNumber = idx + 1;
-        if (imageLineSet.has(lineNumber)) {
+        if (wanted.has(lineNumber)) {
           const marker = document.createElement("span");
           marker.textContent = "";
           mirror.appendChild(marker);
@@ -90,9 +98,10 @@ export function useEditorImageLineOffsets(
         if (idx < lines.length - 1) mirror.appendChild(document.createTextNode("\n"));
       });
 
-      const measured = imageLines
-        .map((ln) => markers.get(ln)?.offsetTop)
-        .filter((v): v is number => typeof v === "number");
+      const measured = new Map<number, number>();
+      markers.forEach((marker, lineNumber) => {
+        measured.set(lineNumber, marker.offsetTop);
+      });
 
       setOffsets(measured);
     }
@@ -102,7 +111,8 @@ export function useEditorImageLineOffsets(
     const observer = new ResizeObserver(measure);
     observer.observe(textareaEl);
     return () => observer.disconnect();
-  }, [content, textareaEl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, textareaEl, lineNumbersKey]);
 
   return offsets;
 }
