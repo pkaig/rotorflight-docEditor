@@ -36,6 +36,7 @@ import remarkStripImports from "../mdx/remarkStripImports";
 import { createLoadContext, resolveDepsObject } from "../mdx/loadSiteModule";
 
 import rehypeImages from "../mdx/rehypeImagesPlugin";
+import rehypeSourceLines from "../mdx/rehypeSourceLines";
 import { AddImageModal } from "./AddImageModal";
 
 import Tabs from "../mdx/Tabs";
@@ -172,7 +173,10 @@ export default function Preview({
         ? [...commonPlugins, [remarkStripImports, loadCtx]]
         : commonPlugins;
 
-      const rehypePlugins: any[] = [[rehypeImages, currentDocPath]];
+      const rehypePlugins: any[] = [
+        [rehypeImages, currentDocPath],
+        rehypeSourceLines,
+      ];
 
       let compiled: any;
 
