@@ -1177,6 +1177,35 @@ export default function App() {
     checkStatus();
   }, []);
 
+  /* -------------------------------------------
+     VERSION-GATE MODALS (MAINTENANCE INCLUDED)
+  ------------------------------------------- */
+  // Checked before the auth screen, not after — a version below
+  // minSupportedVersion (or a maintenance block) is meant to stop the
+  // app from being usable at all, including signing in. With this
+  // after the auth check instead, someone on a blocked/unsupported
+  // version could complete the entire GitHub device-flow login and
+  // only then get turned away, and updateAvailable's "just a warning,
+  // dismiss and continue" never had a chance to show before login either.
+  if (editorStatus === null) return null;
+
+  if (editorStatus.type === "blocked") {
+    return <MaintenanceModal message={editorStatus.message} />;
+  }
+
+  if (editorStatus.type === "forceUpdate") {
+    return <ForceUpdateModal {...editorStatus} />;
+  }
+
+  if (editorStatus.type === "updateAvailable") {
+    return (
+      <UpdateAvailableModal
+        {...editorStatus}
+        onContinue={() => setEditorStatus({ type: "ok" })}
+      />
+    );
+  }
+
   /* AUTH UI */
   if (!isAuthenticated) {
     return (
@@ -1256,28 +1285,6 @@ export default function App() {
           </a>
         </div>
       </div>
-    );
-  }
-
-  /* -------------------------------------------
-     VERSION-GATE MODALS (MAINTENANCE INCLUDED)
-  ------------------------------------------- */
-  if (editorStatus === null) return null;
-
-  if (editorStatus.type === "blocked") {
-    return <MaintenanceModal message={editorStatus.message} />;
-  }
-
-  if (editorStatus.type === "forceUpdate") {
-    return <ForceUpdateModal {...editorStatus} />;
-  }
-
-  if (editorStatus.type === "updateAvailable") {
-    return (
-      <UpdateAvailableModal
-        {...editorStatus}
-        onContinue={() => setEditorStatus({ type: "ok" })}
-      />
     );
   }
 
@@ -1614,6 +1621,7 @@ export default function App() {
           <div className="app-header-brand">
             <img src={rfHeliLogo} alt="" className="app-header-logo" />
             <span className="app-header-title">Rotorflight Docs Editor</span>
+            <span className="app-header-version">v{APP_VERSION}</span>
           </div>
 
           <a

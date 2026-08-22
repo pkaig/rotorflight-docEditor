@@ -2115,6 +2115,14 @@
   color: #1c1e21;
 }
 
+.app-header-version {
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: #86888d;
+  align-self: flex-end;
+  margin-bottom: 0.15rem;
+}
+
 .app-header-help-btn {
   display: inline-flex;
   align-items: center;
