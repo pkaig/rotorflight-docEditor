@@ -51,6 +51,10 @@ interface TreeProps {
   // Shows a small delete button on each file row, mirroring onNewFile's
   // "+" on folder rows. Undefined omits the button entirely.
   onDeleteFile?: (path: string) => void;
+  // Rendered next to the workspace-root node's own name only (e.g. a
+  // "merged" badge — see App.tsx) — never passed down to the recursive
+  // call below, since no other node is ever isWorkspaceRoot.
+  rootBadge?: React.ReactNode;
 }
 
 export function Tree({
@@ -65,6 +69,7 @@ export function Tree({
   onNewFile,
   onNewImage,
   onDeleteFile,
+  rootBadge,
 }: TreeProps) {
   const safeNodes = Array.isArray(nodes) ? nodes : [];
   const folders = openFolders || {};
@@ -107,6 +112,7 @@ export function Tree({
                   onDrop={() => node.path && onDropFolder(node.path)}
                 >
                   <span className="tree-node-name">{node.name}</span>
+                  {node.isWorkspaceRoot && rootBadge}
                   {!node.isWorkspaceRoot && <span className="tree-chevron" aria-hidden="true" />}
                   {!node.isWorkspaceRoot &&
                     (node.name.toLowerCase() === "img" ? onNewImage : onNewFile) && (

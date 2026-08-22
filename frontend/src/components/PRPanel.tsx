@@ -108,10 +108,13 @@ export function PRPanel({
             </>
           )}
           {banner.type === "pr_merged" && (
-            <>Pull Request #{banner.prNumber} merged. Workspace reset.</>
+            <>
+              Pull Request #{banner.prNumber} merged — this workspace's
+              changes are now part of the docs.
+            </>
           )}
           {banner.type === "pr_closed" && (
-            <>Pull Request #{banner.prNumber} closed. Workspace reset.</>
+            <>Pull Request #{banner.prNumber} was closed without merging.</>
           )}
           {banner.type === "error" && (
             <>

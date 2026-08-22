@@ -169,6 +169,68 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
   );
 
   /* -------------------------------------------------------
+     PR status check (detects a merge/close that happened outside
+     this app — on github.com, or by a maintainer)
+  ------------------------------------------------------- */
+  // Deliberately separate from `banner`: banner is dismissible (the ×
+  // button in PRPanel clears it), but a merged/closed indicator should
+  // stay put until the user actually does something about it — someone
+  // might keep adding to a workspace after its PR merges (preparing a
+  // follow-up), so this app must never auto-reset anything on its own;
+  // it only surfaces the state and leaves the decision to the user (see
+  // the workspace-pr-badge rendered in App.tsx).
+  const [prState, setPrState] = useState<"none" | "open" | "merged" | "closed">(
+    "none",
+  );
+
+  const checkPRStatus = useCallback(async () => {
+    if (!login || !workspace) return;
+
+    try {
+      const res = await fetch(
+        `/api/git/pr-status?workspace=${encodeURIComponent(workspace)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return;
+
+      const data: {
+        state: "none" | "open" | "merged" | "closed";
+        prNumber?: number;
+        url?: string;
+      } = await res.json();
+
+      setPrState(data.state);
+
+      if (data.state === "merged") {
+        handleBackendResponse({ status: "pr_merged", prNumber: data.prNumber });
+      } else if (data.state === "closed") {
+        handleBackendResponse({ status: "pr_closed", prNumber: data.prNumber });
+      } else if (data.state === "open") {
+        handleBackendResponse({ status: "pr_open", prNumber: data.prNumber });
+      }
+      // "none" — no PR exists yet for this workspace's branch, nothing to do.
+    } catch (err) {
+      console.error("❌ Failed to check PR status:", err);
+    }
+  }, [login, workspace, handleBackendResponse]);
+
+  // Checked on mount/workspace-switch and again on every window focus —
+  // the same pattern useAuth.ts already uses for re-checking GitHub App
+  // install status, and for the same reason: switching back to this
+  // window is exactly when someone's likely to have just merged or
+  // closed their PR in a browser tab.
+  useEffect(() => {
+    if (!login || !workspace) return;
+    // Reset immediately on switch rather than waiting for the check to
+    // resolve, so a previous workspace's badge doesn't briefly show
+    // against the newly-selected one.
+    setPrState("none");
+    checkPRStatus();
+    window.addEventListener("focus", checkPRStatus);
+    return () => window.removeEventListener("focus", checkPRStatus);
+  }, [login, workspace, checkPRStatus]);
+
+  /* -------------------------------------------------------
      Submit PR
   ------------------------------------------------------- */
   const submitPR = useCallback(
@@ -291,6 +353,8 @@ export function useGitPR({ login, workspace }: UseGitPROptions) {
     notifyFileRenamed,
     notifyFileDeleted,
     notifyFileCreated,
+    checkPRStatus,
+    prState,
     clearBanner: () => setBanner(null),
   };
 }

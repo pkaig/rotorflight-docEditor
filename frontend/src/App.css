@@ -1668,6 +1668,23 @@
   margin-bottom: 6px;
 }
 
+/* Shown next to the workspace name once its PR is detected as merged
+   (see useGitPR.tsx's prState) — deliberately just an indicator, never
+   anything that changes/resets the workspace itself, so someone who
+   kept adding to it after submitting doesn't lose that work. */
+.workspace-pr-badge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #1e7e34;
+  background: #d9f2e3;
+  border: 1px solid #a6e0bc;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 /* Sidebar is already flex column */
 .sidebar {
   display: flex;
