@@ -1666,21 +1666,28 @@
   color: #004a80;
   border: 1px solid #99caff;
   margin-bottom: 6px;
+  /* Reserves clearance for .workspace-delete-btn, which floats
+     (position: absolute) over this row's top-right corner — without
+     this, .workspace-pr-badge (pushed to the row's own right edge by
+     .tree-node-name's flex:1) sits directly underneath it. */
+  padding-right: 34px;
 }
 
 /* Shown next to the workspace name once its PR is detected as merged
    (see useGitPR.tsx's prState) — deliberately just an indicator, never
    anything that changes/resets the workspace itself, so someone who
-   kept adding to it after submitting doesn't lose that work. */
+   kept adding to it after submitting doesn't lose that work. Styled as
+   a muted variant of the workspace pill's own blue (not a semantic
+   green/success color) so it reads as part of the same pill rather
+   than an unrelated status sticker. */
 .workspace-pr-badge {
   flex-shrink: 0;
   font-size: 0.7rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #1e7e34;
-  background: #d9f2e3;
-  border: 1px solid #a6e0bc;
+  letter-spacing: 0.02em;
+  color: #004a80;
+  background: #ffffff;
+  border: 1px solid #99caff;
   border-radius: 999px;
   padding: 2px 8px;
 }

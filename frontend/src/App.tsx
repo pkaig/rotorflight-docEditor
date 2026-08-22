@@ -1824,7 +1824,7 @@ export default function App() {
                           className="workspace-pr-badge"
                           title="This workspace's PR has been merged. Nothing here is deleted or reset automatically — copy anything you still want to keep working on into a new workspace when you're ready."
                         >
-                          merged
+                          ✓ Merged
                         </span>
                       ) : undefined
                     }
