@@ -576,6 +576,57 @@ router.post("/rename", async (req, res) => {
   }
 });
 
+/* ============================================================
+   9d. DELETE FILE
+   ============================================================ */
+
+// Only ever removes the file from the *local workspace* — the real
+// rotorflight-docs repo is untouched until (and unless) a PR is
+// submitted and merged, so this is a plain filesystem delete, no
+// different in blast radius than any other local edit.
+router.post("/delete", async (req, res) => {
+  const auth = requireToken(req, res);
+  if (!auth) return;
+
+  const { login, workspace } = auth;
+  let { path: filePath } = req.body;
+
+  if (!filePath) {
+    return res.status(400).json({ error: "Missing path" });
+  }
+
+  try {
+    filePath = String(filePath).replace(/\\/g, "/");
+
+    if (filePath.startsWith("local-workspace/")) {
+      const [, , ...rest] = filePath.split("/");
+      filePath = rest.join("/");
+    }
+
+    if (!isSafeRelativePath(filePath)) {
+      return res.status(400).json({ error: "Invalid path" });
+    }
+
+    const fullPath = path.join(
+      process.cwd(),
+      "workspaces",
+      login,
+      workspace,
+      filePath,
+    );
+
+    if (!(await fs.pathExists(fullPath))) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    await fs.remove(fullPath);
+
+    return res.json({ ok: true });
+  } catch {
+    return res.status(500).json({ error: "Failed to delete document" });
+  }
+});
+
 // Minimal shapes for the two GitHub Git Data / Contents API responses used
 // below — just enough to narrow githubRequest()'s otherwise-unknown result.
 interface GitHubTreeResponse {

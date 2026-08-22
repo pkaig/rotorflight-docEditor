@@ -249,6 +249,7 @@ export default function App() {
     changes,
     notifyFileSaved,
     notifyFileRenamed,
+    notifyFileDeleted,
     notifyFileCreated,
     clearBanner,
     loadChangesFromMirror,
@@ -1498,6 +1499,33 @@ export default function App() {
     setDraggedItem(null);
   }
 
+  /* DELETE FILE */
+  // Only ever removes the file from the local workspace, never the real
+  // rotorflight-docs repo — that stays untouched unless a PR gets
+  // submitted and merged, so a plain single confirm (matching every
+  // other destructive action in this app) is enough here.
+  function handleDeleteFile(ws: string, filePath: string) {
+    if (!login) return;
+    const filename = filePath.split("/").pop() || filePath;
+
+    setPendingConfirm({
+      message: `Delete "${filename}"? This removes it from your local workspace (it won't affect the real repo unless you submit a PR).`,
+      danger: true,
+      onConfirm: async () => {
+        setPendingConfirm(null);
+
+        const wasOpen = filePath === currentDocPath;
+        if (wasOpen) {
+          setCurrentDocPath("");
+          setContent("");
+        }
+
+        await notifyFileDeleted("local-workspace", filePath);
+        await refreshLocalWorkspace(ws);
+      },
+    });
+  }
+
   /* DELETE WORKSPACE */
   function handleDeleteWorkspace(ws: string) {
     if (!login) return;
@@ -1788,6 +1816,7 @@ export default function App() {
                       setAddImageExistingNames(listImageNames(nodes, folderPath));
                       setShowAddImageModal(true);
                     }}
+                    onDeleteFile={(filePath) => handleDeleteFile(ws, filePath)}
                   />
                 </div>
               );

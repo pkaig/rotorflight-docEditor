@@ -48,6 +48,9 @@ interface TreeProps {
   // image instead (see onNewImage).
   onNewFile?: (folderPath: string) => void;
   onNewImage?: (folderPath: string) => void;
+  // Shows a small delete button on each file row, mirroring onNewFile's
+  // "+" on folder rows. Undefined omits the button entirely.
+  onDeleteFile?: (path: string) => void;
 }
 
 export function Tree({
@@ -61,6 +64,7 @@ export function Tree({
   currentPath,
   onNewFile,
   onNewImage,
+  onDeleteFile,
 }: TreeProps) {
   const safeNodes = Array.isArray(nodes) ? nodes : [];
   const folders = openFolders || {};
@@ -141,21 +145,39 @@ export function Tree({
                     currentPath={currentPath}
                     onNewFile={onNewFile}
                     onNewImage={onNewImage}
+                    onDeleteFile={onDeleteFile}
                   />
                 )}
               </div>
             ) : (
-              <button
+              <div
                 className={
                   "tree-node file" +
                   (node.path && node.path === currentPath ? " active" : "")
                 }
                 draggable
                 onDragStart={() => node.path && setDraggedItem(node.path)}
-                onClick={() => node.path && onSelect(node.path)}
               >
-                {node.name}
-              </button>
+                <span
+                  className="tree-node-name"
+                  onClick={() => node.path && onSelect(node.path)}
+                >
+                  {node.name}
+                </span>
+                {onDeleteFile && (
+                  <button
+                    type="button"
+                    className="tree-delete-file-btn"
+                    title="Delete this file"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (node.path) onDeleteFile(node.path);
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             )}
           </li>
         );
