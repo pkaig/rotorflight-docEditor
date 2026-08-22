@@ -2,13 +2,14 @@
  *
  * Description of responsibility:
  *   The one definition of what an MDX doc in this project is expected
- *   to contain — currently the four imports every .mdx file should
- *   carry (React, Tabs, TabItem, the shared tabs.module.css) — plus the
- *   MD -> MDX conversion that applies it. Insert-Tabs (tabs.ts) already
- *   adds its own three of these independently the first time someone
- *   actually inserts a Tabs block; this module is the standard a doc
- *   is brought up to as a whole, in one pass, when it's converted from
- *   Markdown.
+ *   to contain — currently the four imports a .mdx file needs once it
+ *   actually uses a <Tabs> block (React, Tabs, TabItem, the shared
+ *   tabs.module.css; see usedWhen below) — plus the MD -> MDX
+ *   conversion that applies it. Insert-Tabs (tabs.ts) already adds its
+ *   own three of these independently the first time someone actually
+ *   inserts a Tabs block; this module is the standard a doc is brought
+ *   up to as a whole, in one pass, when it's converted from Markdown,
+ *   and kept up to on every subsequent save.
  *
  *   Which imports are required can be overridden remotely (docStandard
  *   .json in the docs repo, proxied via /api/doc-standard) without an
@@ -37,6 +38,13 @@ export interface StandardImportRule {
   id: string;
   detect: RegExp;
   buildLine: (docRelPath: string) => string;
+  // A plain substring (not a regex — no need for one, and no ReDoS risk
+  // from a remote-supplied pattern) that must appear in the doc before
+  // this import is added at all. Undefined means "always required."
+  // Without this, every .mdx doc carried all four Tabs-related imports
+  // whether or not it ever used <Tabs> — harmless at runtime, but a
+  // real unused-import lint risk in the docs repo's own CI.
+  usedWhen?: string;
 }
 
 function tabsModuleCssTarget(docRelPath: string): string {
@@ -46,8 +54,14 @@ function tabsModuleCssTarget(docRelPath: string): string {
 
 // Ids whose correct import line can't be a fixed string — it depends on
 // which file it's being inserted into. Never overridable by a remote
-// `line`; only selectable by id.
-const COMPUTED_RULES: Record<string, Omit<StandardImportRule, "id">> = {
+// `line`; only selectable by id. usedWhen still comes from the remote
+// entry (or the default below) rather than being baked in here, so the
+// same doc-standard config controls it for both computed and literal
+// rules alike.
+const COMPUTED_RULES: Record<
+  string,
+  Omit<StandardImportRule, "id" | "usedWhen">
+> = {
   tabStyles: {
     detect: /^\s*import\s+tabStyles\s+from\s+['"][^'"]*tabs\.module\.css['"]\s*;?\s*$/m,
     buildLine: (docRelPath) => {
@@ -74,7 +88,11 @@ const IMPORT_LINE_RE = /^import\s+\S+\s+from\s+(['"])([^'"]+)\1;?$/;
 // spacing/quote convention, the same reasoning every rule here already
 // follows (see tabs.ts's own ensureTabsImports for the bug this avoided
 // the first time around).
-function ruleFromLine(id: string, rawLine: string): StandardImportRule | null {
+function ruleFromLine(
+  id: string,
+  rawLine: string,
+  usedWhen?: string,
+): StandardImportRule | null {
   const line = rawLine.trim();
   const match = IMPORT_LINE_RE.exec(line);
   if (!match) return null;
@@ -84,24 +102,35 @@ function ruleFromLine(id: string, rawLine: string): StandardImportRule | null {
     `^\\s*import\\s+\\S+\\s+from\\s+['"]${escapeRegExp(specifier)}['"]\\s*;?\\s*$`,
     "m",
   );
-  return { id, detect, buildLine: () => line };
+  return { id, detect, buildLine: () => line, usedWhen };
 }
 
-function computedRule(id: string): StandardImportRule | null {
+function computedRule(id: string, usedWhen?: string): StandardImportRule | null {
   const rule = COMPUTED_RULES[id];
-  return rule ? { id, ...rule } : null;
+  return rule ? { id, ...rule, usedWhen } : null;
 }
+
+// All four are only meaningful once a doc actually has a <Tabs> block —
+// unlike a plain image import (needed the instant it's referenced),
+// these support a specific, optional JSX component, so they shouldn't
+// show up in a doc that never uses it. tabs.ts's own ensureTabsImports
+// (run when the Tabs toolbar inserts a block) adds three of these
+// independently the moment they're actually needed; this usedWhen just
+// means an ongoing save (see applyMissingStandardImports) or an MD ->
+// MDX conversion agrees, instead of adding all four unconditionally.
+const TABS_USED_WHEN = "<Tabs";
 
 export const DEFAULT_MDX_IMPORT_RULES: StandardImportRule[] = [
-  ruleFromLine("react", "import React from 'react';"),
-  ruleFromLine("tabs", "import Tabs from '@theme/Tabs';"),
-  ruleFromLine("tabItem", "import TabItem from '@theme/TabItem';"),
-  computedRule("tabStyles"),
+  ruleFromLine("react", "import React from 'react';", TABS_USED_WHEN),
+  ruleFromLine("tabs", "import Tabs from '@theme/Tabs';", TABS_USED_WHEN),
+  ruleFromLine("tabItem", "import TabItem from '@theme/TabItem';", TABS_USED_WHEN),
+  computedRule("tabStyles", TABS_USED_WHEN),
 ].filter((r): r is StandardImportRule => !!r);
 
 interface RemoteImportEntry {
   id?: unknown;
   line?: unknown;
+  usedWhen?: unknown;
 }
 
 // Resolves docStandard.json's `mdxRequiredImports` into the rules to
@@ -112,23 +141,27 @@ interface RemoteImportEntry {
 // else — an unrecognised id with no line, a malformed line, or the
 // whole config being unreachable/malformed — is dropped, and if that
 // leaves nothing at all, DEFAULT_MDX_IMPORT_RULES is used instead: a
-// broken remote config can never mean "no required imports."
+// broken remote config can never mean "no required imports." A missing
+// `usedWhen` on a remote entry means that entry is always required,
+// same as before this field existed — an older docStandard.json without
+// it keeps working exactly as it did.
 export function resolveRequiredImportRules(remote: unknown): StandardImportRule[] {
   if (!Array.isArray(remote)) return DEFAULT_MDX_IMPORT_RULES;
 
   const rules: StandardImportRule[] = [];
   for (const entry of remote as RemoteImportEntry[]) {
     if (!entry || typeof entry.id !== "string") continue;
+    const usedWhen = typeof entry.usedWhen === "string" ? entry.usedWhen : undefined;
 
     if (typeof entry.line === "string") {
-      const rule = ruleFromLine(entry.id, entry.line);
+      const rule = ruleFromLine(entry.id, entry.line, usedWhen);
       if (rule) {
         rules.push(rule);
         continue;
       }
     }
 
-    const known = computedRule(entry.id);
+    const known = computedRule(entry.id, usedWhen);
     if (known) rules.push(known);
   }
 
@@ -158,7 +191,11 @@ function insertMissingImports(
   extraImports: string[] = [],
 ): string {
   const standardImports = requiredImportRules
-    .filter((rule) => !rule.detect.test(originalContent))
+    .filter(
+      (rule) =>
+        (rule.usedWhen === undefined || originalContent.includes(rule.usedWhen)) &&
+        !rule.detect.test(originalContent),
+    )
     .map((rule) => rule.buildLine(docRelPath));
 
   const allImports = [...standardImports, ...extraImports];
