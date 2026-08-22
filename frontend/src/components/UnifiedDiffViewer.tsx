@@ -21,6 +21,11 @@ interface UnifiedDiffViewerProps {
   workspace: string | null;
   file: string;
   onClose: () => void;
+  // Forwarded straight through to .diff-scroll — App.tsx's
+  // useDiffPreviewScrollSync needs the real DOM node to read/drive
+  // scrollTop against, the same way the editor/preview pair's own sync
+  // needs the textarea (see EditorPanel's textareaRef).
+  scrollRef?: React.Ref<HTMLDivElement>;
 }
 
 export default function UnifiedDiffViewer({
@@ -28,6 +33,7 @@ export default function UnifiedDiffViewer({
   workspace,
   file,
   onClose,
+  scrollRef,
 }: UnifiedDiffViewerProps) {
   const [workspaceText, setWorkspaceText] = useState("");
   const [baselineText, setBaselineText] = useState("");
@@ -82,7 +88,7 @@ export default function UnifiedDiffViewer({
         </button>
       </div>
 
-      <div className="diff-scroll">
+      <div className="diff-scroll" ref={scrollRef}>
         {diffs.map((part, i) => {
           const cls = part.added
             ? "diff-line diff-added"

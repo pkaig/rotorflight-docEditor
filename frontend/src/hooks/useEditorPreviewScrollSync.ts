@@ -83,7 +83,14 @@ export function useEditorPreviewScrollSync(
     function measure() {
       if (!panel) return;
       const panelRect = panel.getBoundingClientRect();
-      const imgs = Array.from(panel.querySelectorAll("img"));
+      // :not(.preview-toolbar-icon) — the floating WYSIWYG toolbar (see
+      // PreviewToolbar.tsx) renders its own <img> icons directly inside
+      // this same panel; without excluding them they get counted as
+      // "rendered images" here, shifting every anchor pairing below by
+      // however many toolbar icons exist and badly misaligning the sync.
+      const imgs = Array.from(
+        panel.querySelectorAll("img:not(.preview-toolbar-icon)"),
+      );
       const offsets = imgs.map(
         (img) =>
           img.getBoundingClientRect().top - panelRect.top + panel.scrollTop,
